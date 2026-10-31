@@ -8,6 +8,8 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { CategoriesPage } from "./categories/CategoriesPage";
 import { ExpensesPage } from "./expenses/ExpensesPage";
 import { HomeRedirect, HouseholdLayout, OnboardingPage } from "./households/HouseholdPages";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "./styles.css";
 
 const queryClient = new QueryClient({

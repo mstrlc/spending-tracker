@@ -2,8 +2,11 @@
  * Design rules (see design/ui-pass/README.md, pass 2):
  * - Black and white: neutral greys only; the accent is near-black (white in dark mode).
  *   Red is reserved for destructive actions and errors.
- * - Radii: controls 6px, surfaces 10px, badges and avatars fully round. Nothing else.
- * - Tabular numerals for amounts. Motion only for feedback: sheet, press, saved-row highlight.
+ * - Radii: controls and badges 6px, surfaces 10px, avatars round. Nothing else.
+ * - Spacing on a 4px grid. Weights 400 and 500, 600 only for the wordmark.
+ * - Geist for the interface; every amount in Geist Mono with tabular figures, like a ledger column.
+ * - The one rich moment is the month's category bar: black for the biggest category, grey steps for the rest.
+ * - Motion only for feedback: sheet, press, saved-row highlight.
  */
 
 :root {
@@ -25,6 +28,16 @@
   --danger-soft: #fdecea;
   --backdrop: rgb(0 0 0 / 0.28);
   --shadow-sheet: -16px 0 40px rgb(0 0 0 / 0.08);
+  /* Category bar: the biggest category leads in the accent, the rest step down toward the page. */
+  --chart-1: #111111;
+  --chart-2: #5c5c5c;
+  --chart-3: #8a8a8a;
+  --chart-4: #b2b2b2;
+  --chart-5: #c8c8c8;
+  --chart-6: #dcdcdc;
+
+  --font-sans: "Geist Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
 
   --radius-control: 6px;
   --radius-surface: 10px;
@@ -53,6 +66,12 @@
     --danger-soft: #3a1d1b;
     --backdrop: rgb(0 0 0 / 0.55);
     --shadow-sheet: -16px 0 40px rgb(0 0 0 / 0.5);
+    --chart-1: #f2f2f2;
+    --chart-2: #a8a8a8;
+    --chart-3: #7a7a7a;
+    --chart-4: #575757;
+    --chart-5: #3d3d3d;
+    --chart-6: #2c2c2c;
     color-scheme: dark;
   }
 }
@@ -72,7 +91,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 15px/1.5 var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -85,14 +104,13 @@ p {
 h1 {
   font-size: 28px;
   line-height: 1.2;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-weight: 500;
 }
 
 h2 {
   font-size: 18px;
   line-height: 1.3;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 a {
@@ -113,7 +131,7 @@ a {
 }
 
 .strong {
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .nowrap {
@@ -135,7 +153,7 @@ a {
 }
 
 .error {
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: var(--radius-control);
   background: var(--danger-soft);
   font-size: 14px;
@@ -161,8 +179,8 @@ button {
 input,
 select {
   width: 100%;
-  height: 38px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-control);
   background: var(--surface);
@@ -188,14 +206,14 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 38px;
-  padding: 0 14px;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-control);
   background: var(--accent);
   color: var(--accent-text);
-  font-weight: 550;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   transition:
@@ -208,12 +226,11 @@ kbd {
   place-items: center;
   min-width: 20px;
   height: 20px;
-  padding: 0 5px;
-  margin-left: 4px;
-  border-radius: var(--radius-control);
+  padding: 0 4px;
+  border-radius: 4px;
   /* Derived from the button text so it works on both the dark and the light primary button. */
   background: color-mix(in srgb, currentColor 18%, transparent);
-  font: 600 11px/1 system-ui, sans-serif;
+  font: 500 11px/1 var(--font-mono);
 }
 
 button:hover {
@@ -265,13 +282,13 @@ button.ghost.danger:focus-visible {
 }
 
 .sheet-footer button.ghost.danger {
-  height: 38px;
+  height: 36px;
   color: var(--danger);
 }
 
 .icon-button {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border-color: transparent;
   background: transparent;
@@ -287,13 +304,13 @@ button.ghost.danger:focus-visible {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
 .field-label {
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 500;
   color: var(--text-muted);
 }
 
@@ -306,13 +323,13 @@ button.ghost.danger:focus-visible {
 .badge {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border-strong);
   color: var(--text);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .badge-muted {
@@ -350,9 +367,8 @@ button.ghost.danger:focus-visible {
 }
 
 .wordmark {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .auth-footer {
@@ -376,7 +392,7 @@ button.ghost.danger:focus-visible {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
   padding: 16px 12px;
   border-right: 1px solid var(--border);
   background: var(--sidebar);
@@ -385,10 +401,10 @@ button.ghost.danger:focus-visible {
 .household-switcher {
   width: 100%;
   height: 40px;
-  padding: 0 8px;
+  padding: 0 10px;
   border-color: transparent;
   background-color: transparent;
-  font-weight: 650;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -425,15 +441,15 @@ button.ghost.danger:focus-visible {
 .side-nav a.active {
   background: var(--accent-soft);
   color: var(--text);
-  font-weight: 600;
 }
 
+/* The avatar's left edge lines up with the navigation icons. */
 .sidebar-user {
   margin-top: auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 0 0 6px;
+  padding: 12px 0 0 10px;
   border-top: 1px solid var(--border);
   font-size: 14px;
 }
@@ -460,13 +476,13 @@ button.ghost.danger:focus-visible {
   flex: none;
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-text);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .mobile-bar,
@@ -476,11 +492,11 @@ button.ghost.danger:focus-visible {
 
 .page {
   width: 100%;
-  max-width: 1080px;
-  padding: 36px 40px 64px;
+  max-width: 1280px;
+  padding: 32px 40px 64px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 .page-header {
@@ -541,9 +557,18 @@ button.ghost.danger:focus-visible {
   letter-spacing: 0;
 }
 
+/* The month at a glance: figures, then where the spending went. Extra space below separates it from the list. */
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 8px;
+}
+
 .summary {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
   gap: 12px 48px;
   margin: 0;
 }
@@ -556,20 +581,80 @@ button.ghost.danger:focus-visible {
 
 .summary dt {
   font-size: 13px;
-  font-weight: 550;
   color: var(--text-muted);
 }
 
 .summary dd {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .summary dd.summary-primary {
-  font-size: 28px;
-  line-height: 1.15;
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+.currency {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.summary-primary .currency {
+  margin-left: 8px;
+  font-size: 14px;
+}
+
+/* ---- Category bar: where the month's spending went ---- */
+
+.breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+
+.category-bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+}
+
+.category-bar span {
+  min-width: 2px;
+  border-radius: 2px;
+}
+
+.category-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.category-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-legend .swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.category-legend .share {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
 }
 
 /* ---- Tables ---- */
@@ -586,7 +671,7 @@ button.ghost.danger:focus-visible {
 
 .data-table th,
 .data-table td {
-  padding: 11px 16px;
+  padding: 12px 16px;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--border);
@@ -597,11 +682,10 @@ button.ghost.danger:focus-visible {
 }
 
 .data-table th {
-  padding-top: 10px;
-  padding-bottom: 10px;
-  background: var(--surface-sunken);
+  padding-top: 8px;
+  padding-bottom: 8px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -656,7 +740,9 @@ button.ghost.danger:focus-visible {
 }
 
 td.num {
-  font-weight: 550;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 21px;
 }
 
 .dimmed {
@@ -669,7 +755,7 @@ td.num {
   border: 0;
   background: none;
   color: var(--text);
-  font-weight: 550;
+  font-weight: 500;
   text-align: left;
   white-space: normal;
 }
@@ -711,7 +797,7 @@ td.num {
 
 .inline-form {
   display: inline-flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .inline-form input {
@@ -735,7 +821,7 @@ td.num {
 }
 
 .empty-title {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .empty button {
@@ -745,7 +831,7 @@ td.num {
 .skeleton-row {
   display: flex;
   gap: 24px;
-  padding: 15px 16px;
+  padding: 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -792,7 +878,7 @@ td.num {
   justify-content: space-between;
   gap: 12px;
   min-height: 48px;
-  padding: 6px 12px 6px 16px;
+  padding: 8px 12px 8px 16px;
   border-bottom: 1px solid var(--border);
   font-size: 14px;
 }
@@ -801,8 +887,9 @@ td.num {
   border-bottom: 0;
 }
 
-.category-row:not(.is-child) {
-  font-weight: 550;
+/* Subcategories read as children through the indent and a quieter color, not a bolder parent. */
+.category-row.is-child {
+  color: var(--text-muted);
 }
 
 .category-row.is-child {
@@ -912,18 +999,20 @@ dialog.sheet::backdrop {
 }
 
 .amount-input {
+  height: 44px;
+  font-family: var(--font-mono);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .confirmation {
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: var(--radius-control);
   background: var(--accent-soft);
   color: var(--text);
   font-size: 14px;
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .sheet-footer {
@@ -957,7 +1046,7 @@ dialog.sheet::backdrop {
     justify-content: space-between;
     gap: 8px;
     height: 52px;
-    padding: 0 8px 0 10px;
+    padding: 0 8px;
     border-bottom: 1px solid var(--border);
     background: var(--bg);
   }
@@ -987,7 +1076,7 @@ dialog.sheet::backdrop {
     height: 56px;
     color: var(--text-muted);
     font-size: 12px;
-    font-weight: 550;
+    font-weight: 500;
     text-decoration: none;
   }
 
@@ -1005,7 +1094,7 @@ dialog.sheet::backdrop {
 
 
   h1 {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .page-header-actions,
@@ -1028,7 +1117,12 @@ dialog.sheet::backdrop {
   }
 
   .summary dd.summary-primary {
-    font-size: 24px;
+    font-size: 28px;
+  }
+
+  /* Phones keep the top three categories; the rest is in the bar. */
+  .category-legend li:nth-child(n + 4) {
+    display: none;
   }
 
   .hide-narrow {

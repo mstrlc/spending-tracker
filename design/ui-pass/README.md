@@ -104,3 +104,27 @@ superseded: its source hashes predate pass 2, so the integrity check now reports
 
 Not verified in pass 2: signup and onboarding renders, the sheet's slide motion and the row highlight's
 fade over time (stills only; no screen recording), and reduced-motion behavior.
+
+---
+
+# UI pass 3 (2026-10-31): unslop polish and a ledger moment
+
+Done with the `unslop` skill (Damir Sokolovsky, CC BY 4.0). Audit verdict: light slop, no AI tells;
+the monochrome palette from pass 2 is kept as the brand.
+
+Direction: a shared household ledger; exact, domestic, unhurried; a kitchen-table ledger of receipts
+and figure columns. Moment: the month's category bar. Signature: every amount in a mono face.
+
+- **Spacing:** everything on a 4px grid. Controls 36 tall (amount input 44), icon buttons 32, table
+  cells 12/16, header 8/16; the avatar lines up with the navigation icons.
+- **Type:** Geist for the interface, Geist Mono for amounts (bundled with fontsource). Weights 400 and
+  500; 600 only for the wordmark and household name. No negative tracking.
+- **Category bar:** under Spent, one bar split by top-level category (subcategories roll up, investing
+  and net-negative categories left out, past five becomes Other), then a legend with shares. Black for
+  the largest, grey steps for the rest; phones show the top three in the legend.
+- **Details:** figures read `29,315.40 CZK` with a muted currency, table header lost its fill,
+  badges use the control radius, subcategories are muted instead of parents being bold, content cap
+  widened to 1280.
+
+Checked in renders at 1440 light and dark, 375 light (no horizontal scroll), the add sheet, categories
+and accounts. Not verified: signup and onboarding renders.

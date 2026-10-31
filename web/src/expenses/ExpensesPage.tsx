@@ -4,7 +4,7 @@ import { useAccounts, useCategories, useExpenses, useMembers } from "../api/hook
 import type { Category, Expense } from "../api/types";
 import { ChevronLeft, ChevronRight, Plus } from "../icons";
 import { currentMonth, formatDay, formatMonth, isMonth, monthRange, shiftMonth, todayIso } from "../lib/dates";
-import { formatAmount, formatMoney } from "../lib/money";
+import { formatAmount } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { ErrorText, PageHeader, Sheet, SkeletonRows } from "../ui";
 import { ExpenseForm } from "./ExpenseForm";
@@ -19,6 +19,56 @@ function totals(expenses: Expense[], categories: Category[]) {
     else spent += e.amountMinor;
   }
   return { spent, invested };
+}
+
+type Slice = { name: string; amountMinor: number };
+
+/**
+ * The month's spending by top-level category (subcategories roll up into their parent), largest first.
+ * Investing is left out, refunds net against their category, and anything past the fifth slice becomes "Other".
+ */
+export function spendingByCategory(expenses: Expense[], categories: Category[]): Slice[] {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const sums = new Map<string, number>();
+  for (const e of expenses) {
+    const category = e.categoryId ? byId.get(e.categoryId) : undefined;
+    if (category?.kind === "investment") continue;
+    const top = category?.parentId ? byId.get(category.parentId) : category;
+    const name = top?.name ?? "Uncategorized";
+    sums.set(name, (sums.get(name) ?? 0) + e.amountMinor);
+  }
+  const slices = [...sums]
+    .map(([name, amountMinor]) => ({ name, amountMinor }))
+    .filter((s) => s.amountMinor > 0)
+    .sort((a, b) => b.amountMinor - a.amountMinor);
+  if (slices.length <= 6) return slices;
+  const rest = slices.slice(5).reduce((sum, s) => sum + s.amountMinor, 0);
+  return [...slices.slice(0, 5), { name: "Other", amountMinor: rest }];
+}
+
+/** One bar split by category, then a legend with each share. Shades follow rank, so the biggest leads. */
+function CategoryBar({ slices }: { slices: Slice[] }) {
+  const total = slices.reduce((sum, s) => sum + s.amountMinor, 0);
+  if (total === 0) return null;
+  const percent = (s: Slice) => Math.round((s.amountMinor / total) * 100);
+  return (
+    <figure className="breakdown" aria-label="Spending by category">
+      <div className="category-bar" aria-hidden="true">
+        {slices.map((s, i) => (
+          <span key={s.name} style={{ flexGrow: s.amountMinor, background: `var(--chart-${i + 1})` }} />
+        ))}
+      </div>
+      <ul className="category-legend">
+        {slices.map((s, i) => (
+          <li key={s.name}>
+            <span className="swatch" style={{ background: `var(--chart-${i + 1})` }} />
+            {s.name}
+            <span className="share">{percent(s) < 1 ? "<1" : percent(s)}%</span>
+          </li>
+        ))}
+      </ul>
+    </figure>
+  );
 }
 
 type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; expense: Expense };
@@ -102,20 +152,29 @@ export function ExpensesPage() {
         </button>
       </PageHeader>
 
-      <dl className="summary">
-        <div>
-          <dt>Spent</dt>
-          <dd className="summary-primary">{formatMoney(spent, household.currency)}</dd>
-        </div>
-        <div>
-          <dt>Invested</dt>
-          <dd>{formatMoney(invested, household.currency)}</dd>
-        </div>
-        <div>
-          <dt>Expenses</dt>
-          <dd>{expenses.data ? rows.length : "–"}</dd>
-        </div>
-      </dl>
+      <div className="overview">
+        <dl className="summary">
+          <div>
+            <dt>Spent</dt>
+            <dd className="summary-primary">
+              {formatAmount(spent, household.currency)}
+              <span className="currency">{household.currency}</span>
+            </dd>
+          </div>
+          <div>
+            <dt>Invested</dt>
+            <dd>
+              {formatAmount(invested, household.currency)}
+              <span className="currency">{household.currency}</span>
+            </dd>
+          </div>
+          <div>
+            <dt>Expenses</dt>
+            <dd>{expenses.data ? rows.length : "–"}</dd>
+          </div>
+        </dl>
+        <CategoryBar slices={spendingByCategory(rows, categories)} />
+      </div>
 
       <section className="surface">
         <ErrorText error={expenses.error} />
