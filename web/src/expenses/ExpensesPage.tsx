@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useState } from "react";
 import { useAccounts, useCategories, useExpenses, useMembers } from "../api/hooks";
 import type { Category, Expense } from "../api/types";
-import { ChevronLeft, ChevronRight, Plus } from "../icons";
-import { currentMonth, formatDay, formatMonth, isMonth, monthRange, shiftMonth, todayIso } from "../lib/dates";
+import { Plus } from "../icons";
+import { currentMonth, formatDay, formatMonth, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
+import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
+import { rankSlices, ShareBar, type Slice } from "../shares";
 import { ErrorText, PageHeader, Sheet, SkeletonRows } from "../ui";
 import { ExpenseForm } from "./ExpenseForm";
 
 /** Splits a month's total into spending and investing (investment categories are not consumption). */
-function totals(expenses: Expense[], categories: Category[]) {
+export function expenseTotals(expenses: Expense[], categories: Category[]) {
   const investment = new Set(categories.filter((c) => c.kind === "investment").map((c) => c.id));
   let spent = 0;
   let invested = 0;
@@ -21,11 +22,9 @@ function totals(expenses: Expense[], categories: Category[]) {
   return { spent, invested };
 }
 
-type Slice = { name: string; amountMinor: number };
-
 /**
  * The month's spending by top-level category (subcategories roll up into their parent), largest first.
- * Investing is left out, refunds net against their category, and anything past the fifth slice becomes "Other".
+ * Investing is left out and refunds net against their category.
  */
 export function spendingByCategory(expenses: Expense[], categories: Category[]): Slice[] {
   const byId = new Map(categories.map((c) => [c.id, c]));
@@ -37,48 +36,14 @@ export function spendingByCategory(expenses: Expense[], categories: Category[]):
     const name = top?.name ?? "Uncategorized";
     sums.set(name, (sums.get(name) ?? 0) + e.amountMinor);
   }
-  const slices = [...sums]
-    .map(([name, amountMinor]) => ({ name, amountMinor }))
-    .filter((s) => s.amountMinor > 0)
-    .sort((a, b) => b.amountMinor - a.amountMinor);
-  if (slices.length <= 6) return slices;
-  const rest = slices.slice(5).reduce((sum, s) => sum + s.amountMinor, 0);
-  return [...slices.slice(0, 5), { name: "Other", amountMinor: rest }];
-}
-
-/** One bar split by category, then a legend with each share. Shades follow rank, so the biggest leads. */
-function CategoryBar({ slices }: { slices: Slice[] }) {
-  const total = slices.reduce((sum, s) => sum + s.amountMinor, 0);
-  if (total === 0) return null;
-  const percent = (s: Slice) => Math.round((s.amountMinor / total) * 100);
-  return (
-    <figure className="breakdown" aria-label="Spending by category">
-      <div className="category-bar" aria-hidden="true">
-        {slices.map((s, i) => (
-          <span key={s.name} style={{ flexGrow: s.amountMinor, background: `var(--chart-${i + 1})` }} />
-        ))}
-      </div>
-      <ul className="category-legend">
-        {slices.map((s, i) => (
-          <li key={s.name}>
-            <span className="swatch" style={{ background: `var(--chart-${i + 1})` }} />
-            {s.name}
-            <span className="share">{percent(s) < 1 ? "<1" : percent(s)}%</span>
-          </li>
-        ))}
-      </ul>
-    </figure>
-  );
+  return rankSlices(sums);
 }
 
 type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; expense: Expense };
 
 export function ExpensesPage() {
   const household = useHousehold();
-  const [params, setParams] = useSearchParams();
-  const monthParam = params.get("month");
-  const month = isMonth(monthParam) ? monthParam : currentMonth();
-  const { from, to } = monthRange(month);
+  const { month, from, to, goTo } = useMonthParam();
 
   const expenses = useExpenses(household.id, from, to);
   const categories = useCategories(household.id).data ?? [];
@@ -86,9 +51,8 @@ export function ExpensesPage() {
   const members = useMembers(household.id).data ?? [];
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
 
-  const goTo = (m: string) => setParams(m === currentMonth() ? {} : { month: m });
   const rows = expenses.data ?? [];
-  const { spent, invested } = totals(rows, categories);
+  const { spent, invested } = expenseTotals(rows, categories);
   const showPaidBy = members.length > 1;
   // New expenses default to today in the current month, otherwise to the first of the month being viewed.
   const defaultDate = month === currentMonth() ? todayIso() : from;
@@ -96,57 +60,11 @@ export function ExpensesPage() {
   // The row most recently added or saved, highlighted briefly so the change is easy to spot.
   const [flashId, setFlashId] = useState<string | null>(null);
 
-  // N adds an expense, ← / → change month. Ignored while typing, with modifiers, or with the sheet open.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
-      const target = e.target as HTMLElement;
-      if (target.closest("input, select, textarea, dialog[open]") || document.querySelector("dialog[open]")) return;
-      if (e.key === "n" || e.key === "N") {
-        e.preventDefault();
-        setEditor({ mode: "add" });
-      } else if (e.key === "ArrowLeft") {
-        goTo(shiftMonth(month, -1));
-      } else if (e.key === "ArrowRight") {
-        goTo(shiftMonth(month, 1));
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
+  useMonthShortcuts(month, goTo, openAdd);
 
   return (
     <>
-      <PageHeader
-        title={
-          <span className="month-title">
-            <span>{formatMonth(month)}</span>
-            <span className="month-nav">
-              <button
-                className="icon-button"
-                aria-label="Previous month"
-                title="Previous month (←)"
-                onClick={() => goTo(shiftMonth(month, -1))}
-              >
-                <ChevronLeft />
-              </button>
-              <button
-                className="icon-button"
-                aria-label="Next month"
-                title="Next month (→)"
-                onClick={() => goTo(shiftMonth(month, 1))}
-              >
-                <ChevronRight />
-              </button>
-            </span>
-            {month !== currentMonth() && (
-              <button className="ghost this-month" onClick={() => goTo(currentMonth())}>
-                This month
-              </button>
-            )}
-          </span>
-        }
-      >
+      <PageHeader title={<MonthTitle month={month} goTo={goTo} />}>
         <button onClick={openAdd} aria-keyshortcuts="N">
           <Plus /> Add expense <kbd>N</kbd>
         </button>
@@ -173,7 +91,7 @@ export function ExpensesPage() {
             <dd>{expenses.data ? rows.length : "–"}</dd>
           </div>
         </dl>
-        <CategoryBar slices={spendingByCategory(rows, categories)} />
+        <ShareBar label="Spending by category" slices={spendingByCategory(rows, categories)} />
       </div>
 
       <section className="surface">

@@ -16,3 +16,5 @@ export type CategoryInput = Schemas["CategoryInput"];
 export type CategoryKind = Schemas["CategoryKind"];
 export type Expense = Schemas["Expense"];
 export type ExpenseInput = Schemas["ExpenseInput"];
+export type Income = Schemas["Income"];
+export type IncomeInput = Schemas["IncomeInput"];

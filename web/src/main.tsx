@@ -7,6 +7,7 @@ import { LoginPage, SignupPage } from "./auth/AuthPages";
 import { RequireAuth } from "./auth/RequireAuth";
 import { CategoriesPage } from "./categories/CategoriesPage";
 import { ExpensesPage } from "./expenses/ExpensesPage";
+import { IncomePage } from "./income/IncomePage";
 import { HomeRedirect, HouseholdLayout, OnboardingPage } from "./households/HouseholdPages";
 import { InvitePage } from "./households/InvitePage";
 import { MembersPage } from "./households/MembersPage";
@@ -32,6 +33,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/h/:householdId" element={<HouseholdLayout />}>
               <Route index element={<Navigate to="expenses" replace />} />
               <Route path="expenses" element={<ExpensesPage />} />
+              <Route path="income" element={<IncomePage />} />
               <Route path="accounts" element={<AccountsPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="members" element={<MembersPage />} />

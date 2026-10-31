@@ -3,6 +3,8 @@ package dev.spendingtracker.server.expense
 import dev.spendingtracker.server.auth.userId
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.checkVersioned
+import dev.spendingtracker.server.common.dateParam
+import dev.spendingtracker.server.common.nonZeroAmount
 import dev.spendingtracker.server.common.optionalText
 import dev.spendingtracker.server.common.parseId
 import dev.spendingtracker.server.common.pathId
@@ -25,7 +27,6 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
-import io.ktor.server.routing.RoutingCall
 import io.ktor.server.routing.route
 import kotlinx.datetime.LocalDate
 import org.jetbrains.exposed.v1.core.Op
@@ -42,12 +43,9 @@ import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
-import kotlin.math.absoluteValue
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
-// Keeps sums of many expenses far from Long overflow (10^13 minor units = 100 billion in major units).
-private const val MAX_ABS_AMOUNT = 10_000_000_000_000L
 private const val LIST_LIMIT = 5_000
 
 /** Must be inside a HouseholdAccess scope. */
@@ -180,11 +178,9 @@ private data class ValidExpense(
 )
 
 private fun ExpenseInput.validated(): ValidExpense {
-    if (amountMinor == 0L) throw badRequest("invalid_amount", "Amount can't be zero", "amountMinor")
-    if (amountMinor.absoluteValue > MAX_ABS_AMOUNT) throw badRequest("invalid_amount", "Amount is too large", "amountMinor")
     return ValidExpense(
         date = date,
-        amountMinor = amountMinor,
+        amountMinor = nonZeroAmount(amountMinor),
         merchant = optionalText(merchant, "merchant", max = 200),
         categoryId = parseId(categoryId, "categoryId"),
         accountId = parseId(accountId, "accountId"),
@@ -219,11 +215,6 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[Expenses.paidByUserId] = input.paidByUserId
     this[Expenses.notes] = input.notes
 }
-
-private fun RoutingCall.dateParam(name: String): LocalDate? =
-    request.queryParameters[name]?.let {
-        runCatching { LocalDate.parse(it) }.getOrElse { throw badRequest("invalid_date", "$name must be YYYY-MM-DD", name) }
-    }
 
 private fun match(householdId: Uuid, id: Uuid) = (Expenses.id eq id) and (Expenses.householdId eq householdId)
 

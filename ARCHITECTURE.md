@@ -32,5 +32,7 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
 2. ~~**MVP slice**~~ (done 2026-10-31): sign up / log in, create household, accounts, expenses with categories.
    Not yet: audit log, undo after save/delete, email verification, password reset.
    - ~~**Household invites**~~ (done 2026-10-31): owners create an email-bound, single-use invite link (7 days); there's no outgoing email yet, so the owner shares the link. Members can leave, owners can remove members, the last owner can't be removed.
-3. **Next**: income, inbox (bank import), budget.
+   - ~~**Income**~~ (done 2026-10-31): dated income lines with a source (payer), account, recipient member (or shared) and notes; negative amounts are clawbacks. The Income page shows the month's total, spending and what was saved, plus a by-source breakdown.
+     Not yet: "import typical month", expected-income plan.
+3. **Next**: inbox (bank import), budget.
 4. **Later**: net worth, forecast, goals, wishlist, trips, MCP server, mobile apps, hosting.

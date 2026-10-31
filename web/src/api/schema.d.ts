@@ -229,7 +229,7 @@ export interface paths {
         get?: never;
         put: operations["updateAccount"];
         post?: never;
-        /** @description Fails with 409 account_in_use while expenses reference the account; close it instead. */
+        /** @description Fails with 409 account_in_use while expenses or income reference the account; close it instead. */
         delete: operations["deleteAccount"];
         options?: never;
         head?: never;
@@ -299,6 +299,39 @@ export interface paths {
         put: operations["updateExpense"];
         post?: never;
         delete: operations["deleteExpense"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/income": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Income newest first, filtered by inclusive date range, account and recipient. */
+        get: operations["listIncome"];
+        put?: never;
+        post: operations["createIncome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/income/{incomeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateIncome"];
+        post?: never;
+        delete: operations["deleteIncome"];
         options?: never;
         head?: never;
         patch?: never;
@@ -537,6 +570,54 @@ export interface components {
             accountId?: null | string;
             /** String */
             paidByUserId?: null | string;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
+        /** Income */
+        Income: {
+            /** String */
+            id: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            source: string;
+            /** String */
+            accountId: null | string;
+            /** String */
+            recipientUserId: null | string;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** IncomeInput */
+        IncomeInput: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            source?: string;
+            /** String */
+            accountId?: null | string;
+            /** String */
+            recipientUserId?: null | string;
             /** String */
             notes?: string;
             /**
@@ -1498,6 +1579,177 @@ export interface operations {
             path: {
                 householdId: string;
                 expenseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listIncome: {
+        parameters: {
+            query?: {
+                /** @description Inclusive start date, YYYY-MM-DD */
+                from?: string;
+                /** @description Inclusive end date, YYYY-MM-DD */
+                to?: string;
+                accountId?: string;
+                recipientUserId?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Income"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createIncome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["IncomeInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Income"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateIncome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                incomeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["IncomeInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Income"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteIncome: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                incomeId: string;
             };
             cookie?: never;
         };

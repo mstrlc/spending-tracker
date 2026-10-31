@@ -80,6 +80,23 @@ object Expenses : Table("expenses") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object Income : Table("income") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val date = date("date")
+    val amountMinor = long("amount_minor")
+    // Not `source`: that name is taken by Table.source.
+    val sourceName = text("source")
+    val accountId = uuid("account_id").nullable()
+    val recipientUserId = uuid("recipient_user_id").nullable()
+    val notes = text("notes")
+    val externalRef = text("external_ref").nullable()
+    val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
 object HouseholdInvites : Table("household_invites") {
     val id = uuid("id")
     val householdId = uuid("household_id")

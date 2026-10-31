@@ -51,6 +51,13 @@ export const Receipt = () => (
   </Icon>
 );
 
+export const Inbound = () => (
+  <Icon>
+    <path d="M12 3v11M7.5 9.5L12 14l4.5-4.5" />
+    <path d="M4 14v5h16v-5" />
+  </Icon>
+);
+
 export const Wallet = () => (
   <Icon>
     <rect x="3" y="6" width="18" height="13" rx="2" />

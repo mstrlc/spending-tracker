@@ -1,7 +1,25 @@
 package dev.spendingtracker.server.common
 
 import io.ktor.server.routing.RoutingCall
+import kotlinx.datetime.LocalDate
+import kotlin.math.absoluteValue
 import kotlin.uuid.Uuid
+
+// Keeps sums of many rows far from Long overflow (10^13 minor units = 100 billion in major units).
+private const val MAX_ABS_AMOUNT = 10_000_000_000_000L
+
+/** Checks a signed money amount: non-zero and within [MAX_ABS_AMOUNT]. */
+fun nonZeroAmount(amountMinor: Long, field: String = "amountMinor"): Long {
+    if (amountMinor == 0L) throw badRequest("invalid_amount", "Amount can't be zero", field)
+    if (amountMinor.absoluteValue > MAX_ABS_AMOUNT) throw badRequest("invalid_amount", "Amount is too large", field)
+    return amountMinor
+}
+
+/** Reads an optional YYYY-MM-DD query parameter. */
+fun RoutingCall.dateParam(name: String): LocalDate? =
+    request.queryParameters[name]?.let {
+        runCatching { LocalDate.parse(it) }.getOrElse { throw badRequest("invalid_date", "$name must be YYYY-MM-DD", name) }
+    }
 
 /** Trims [value] and checks it is non-blank and at most [max] characters. */
 fun requiredText(value: String, field: String, max: Int = 200): String {

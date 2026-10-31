@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import { ApiFailure, unwrap } from "./errors";
-import type { AccountInput, CategoryInput, ExpenseInput, Household, HouseholdRole } from "./types";
+import type { AccountInput, CategoryInput, ExpenseInput, Household, HouseholdRole, IncomeInput } from "./types";
 
 export const keys = {
   me: ["me"] as const,
@@ -14,6 +14,8 @@ export const keys = {
   categories: (id: string) => ["households", id, "categories"] as const,
   expenses: (id: string, from?: string, to?: string) =>
     from === undefined ? (["households", id, "expenses"] as const) : (["households", id, "expenses", from, to] as const),
+  income: (id: string, from?: string, to?: string) =>
+    from === undefined ? (["households", id, "income"] as const) : (["households", id, "income", from, to] as const),
 };
 
 // ---- Auth ----
@@ -292,5 +294,48 @@ export function useDeleteExpense(householdId: string) {
         }),
       ),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.expenses(householdId) }),
+  });
+}
+
+// ---- Income ----
+
+export function useIncome(householdId: string, from: string, to: string) {
+  return useQuery({
+    queryKey: keys.income(householdId, from, to),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/income", {
+          params: { path: { householdId }, query: { from, to } },
+        }),
+      ),
+  });
+}
+
+export function useSaveIncome(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: IncomeInput }) =>
+      id === undefined
+        ? unwrap(await api.POST("/api/households/{householdId}/income", { params: { path: { householdId } }, body: input }))
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/income/{incomeId}", {
+              params: { path: { householdId, incomeId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.income(householdId) }),
+  });
+}
+
+export function useDeleteIncome(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/income/{incomeId}", {
+          params: { path: { householdId, incomeId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.income(householdId) }),
   });
 }
