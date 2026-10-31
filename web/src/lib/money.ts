@@ -8,6 +8,14 @@ export function formatMoney(amountMinor: number, currency: string, locale?: stri
   return new Intl.NumberFormat(locale, { style: "currency", currency }).format(amountMinor / 10 ** digits);
 }
 
+/** Minor units as a plain number in the currency's precision, without a symbol (for tables headed by the currency). */
+export function formatAmount(amountMinor: number, currency: string, locale?: string): string {
+  const digits = fractionDigits(currency);
+  return new Intl.NumberFormat(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(
+    amountMinor / 10 ** digits,
+  );
+}
+
 /**
  * Parses user input like "129.90", "129,9", "-45" or "1 299,50" into minor units.
  * Returns null when the input isn't a number or has more decimals than the currency allows.

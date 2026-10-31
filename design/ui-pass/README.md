@@ -1,0 +1,106 @@
+# UI pass 1 (2026-10-31)
+
+Working notes for the first design pass over `web/`, done with the `ui-taste` skill.
+Captures in `before/`, `pass1-after/` and `pass2/` are local evidence, not product assets.
+
+## Limits
+
+- No image-generation tool and no Uizze reference connection in this session, so there is no mockup
+  target and no external screen research. The direction below comes from the brief, the existing UI
+  and common conventions of personal-finance and ledger apps. No 1:1 claim is made.
+
+## Deficits observed in the baseline (`before/`)
+
+1. **Competing emphasis.** The eight-field add form fills the top of the expenses page, pushing the
+   month's spending below the fold. The month total, the most important number, is a small
+   right-aligned line.
+2. **Row noise.** Every row repeats `Edit` and `Delete` links, ISO dates, a `CZK` prefix and a
+   "Paid by" value that is the same for a one-person household.
+3. **Flat hierarchy and weak chrome.** All text is about the same size; the top bar's nav is small
+   and "New household" is as loud as navigation.
+
+## Target
+
+- **Shell:** top bar with household name (switcher when there are several; "New household" lives in
+  the switcher), nav as tabs with an accent underline, user name and Log out at the right.
+- **Page header pattern** (all three pages): large title on the left, primary action on the right.
+- **Expenses:** title is the month with previous/next buttons; primary action "Add expense".
+  A summary row under the header: Spent (largest), Invested, number of expenses. One table surface:
+  day ("Thu 29 Oct"), merchant (notes beneath), category ("Parent › Child"), account, paid by
+  (only when the household has more than one member), amount without per-row currency, refunds
+  shown as `+` in the positive color. Clicking a row opens it for editing; delete moves into the editor.
+- **Editor:** right-side sheet (native `<dialog>`, so focus is trapped and Esc closes it); full width
+  on phones. Fields in one column, Save as primary, Delete as a quiet danger action when editing.
+  Matches the old app's side-sheet editor.
+- **Accounts / categories:** same header pattern; compact inline add form; row actions as quiet
+  buttons instead of colored link pairs.
+- **States:** skeleton rows while loading, composed empty state with the primary action, inline errors.
+
+## System rules
+
+- Neutrals: one warm grey family. **One accent:** deep green, for primary actions, active nav and focus.
+  Semantic colors: danger red; positive (refunds) uses the accent's green family.
+- **Radii:** controls 6px, surfaces 10px, badges fully round. Nothing else.
+- **Type:** system UI stack. 28 page title / 20 summary figure / 15 base / 14 table / 12-13 meta.
+  Tabular numerals for all amounts.
+- **Surfaces:** page background plus one white content surface per page; no nested cards; borders
+  over shadows, a soft shadow only on the sheet.
+- **Motion:** only the sheet moves: slide in 200ms `cubic-bezier(0.23, 1, 0.32, 1)`, out faster;
+  reduced motion gets a fade.
+- **Labels:** one phrasing per intent ("Add expense", "Add account", "Add category", "Save", "Delete").
+
+## Outcome
+
+Implemented as specified, with these adjustments found while inspecting renders:
+
+- Month arrows moved after the title (a leading chevron broke the left edge); "This month" appears when
+  viewing another month.
+- Accounts: dropped the Status column ("Active" on every row was noise); only closed accounts get a badge.
+- Row actions on accounts and categories fade in on hover or keyboard focus with a mouse; touch screens
+  always show them.
+- Narrow screens: date folds into the merchant line, Add expense goes full width, Spent gets its own row.
+- `scrollbar-gutter: stable` stops a sideways jump between short and long pages.
+- Bug found: the native dialog focused its Close button, so typing then Enter closed the sheet. The sheet
+  now focuses the field marked `data-autofocus` (Amount).
+
+Evidence: `visual-evidence.json` (10 checks, validated with the skill's `verify-visual-evidence.mjs`).
+
+Not verified: signup and onboarding renders (same panel as login, not captured), categories and accounts
+at phone width, and the sheet's slide motion (no screen recording available; reduced-motion CSS is in
+place but untested).
+
+---
+
+# UI pass 2 (2026-10-31): monochrome, sidebar
+
+User direction: "clean, not many colors, black and white mainly, left sidebar, delightful to use but practical."
+
+## Changes to the target
+
+- **Palette:** neutral greys only (no warm tint). The accent is near-black (white in dark mode): primary
+  buttons, active nav, focus rings. Red remains only for destructive actions and errors. Refunds keep
+  their `+` sign in the normal text color; no green.
+- **Shell:** left sidebar on desktop (≥ 900px): household switcher at the top, nav with icons, user and
+  Log out at the bottom. Narrow screens: slim top bar (household, Log out) and a bottom tab bar with
+  the three sections, within thumb reach.
+- **Delight, kept practical:**
+  - Shortcuts: `N` opens Add expense; `←`/`→` change month. Ignored while typing or with the sheet open.
+    Shown as small key hints on desktop.
+  - The row just added or saved gets a brief highlight that fades out (feedback).
+  - Buttons give press feedback (scale 0.97, 100ms).
+  - Numbers being read never animate; month changes are instant.
+
+## Pass 2 outcome
+
+Implemented as above. Adjustments found while inspecting renders:
+
+- The `N` key hint was invisible on the white primary button in dark mode; its background now derives
+  from the button's text color.
+- On phones, Accounts overflowed sideways and both add forms pushed the lists below the fold. The add
+  form now follows the list on phones, and the account owner folds under the name.
+
+Evidence: `pass2/visual-evidence.json` (10 checks, validated). `pass1-after/visual-evidence.json` is
+superseded: its source hashes predate pass 2, so the integrity check now reports it stale, as intended.
+
+Not verified in pass 2: signup and onboarding renders, the sheet's slide motion and the row highlight's
+fade over time (stills only; no screen recording), and reduced-motion behavior.

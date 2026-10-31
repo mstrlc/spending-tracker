@@ -25,6 +25,8 @@ export function LoginPage() {
 
   return (
     <main className="auth">
+      <div className="auth-panel">
+      <p className="wordmark">Spending Tracker</p>
       <h1>Log in</h1>
       <form onSubmit={submit} className="stack">
         <Field label="Email" name="email" error={login.error}>
@@ -40,13 +42,14 @@ export function LoginPage() {
           />
         </Field>
         <FormError error={login.error} fields={["email", "password"]} />
-        <button type="submit" disabled={login.isPending}>
+        <button type="submit" className="block" disabled={login.isPending}>
           {login.isPending ? "Logging in…" : "Log in"}
         </button>
       </form>
-      <p className="muted">
+      <p className="auth-footer">
         No account yet? <Link to="/signup">Sign up</Link>
       </p>
+      </div>
     </main>
   );
 }
@@ -68,6 +71,8 @@ export function SignupPage() {
 
   return (
     <main className="auth">
+      <div className="auth-panel">
+      <p className="wordmark">Spending Tracker</p>
       <h1>Create your account</h1>
       <form onSubmit={submit} className="stack">
         <Field label="Your name" name="displayName" error={signup.error}>
@@ -87,13 +92,14 @@ export function SignupPage() {
           />
         </Field>
         <FormError error={signup.error} fields={["email", "password", "displayName"]} />
-        <button type="submit" disabled={signup.isPending}>
+        <button type="submit" className="block" disabled={signup.isPending}>
           {signup.isPending ? "Creating account…" : "Sign up"}
         </button>
       </form>
-      <p className="muted">
+      <p className="auth-footer">
         Already have an account? <Link to="/login">Log in</Link>
       </p>
+      </div>
     </main>
   );
 }

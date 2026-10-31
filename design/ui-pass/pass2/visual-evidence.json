@@ -1,0 +1,306 @@
+{
+  "schemaVersion": "uizze.visual-evidence.v1",
+  "scope": "UI pass 2: monochrome palette, left sidebar, mobile bottom nav, shortcuts and saved-row feedback",
+  "platform": "web",
+  "sources": [
+    {
+      "path": "../../../web/src/styles.css",
+      "sha256": "930121233d8646fea9b520934f429be6d4835e92546c5c16cf97399b41d5c2f1"
+    },
+    {
+      "path": "../../../web/src/ui.tsx",
+      "sha256": "253c58699666363ada69ea77847c41da3a894b4df7a967e041844bd7a6228b78"
+    },
+    {
+      "path": "../../../web/src/icons.tsx",
+      "sha256": "ac0e8bc500fd583e2bda66e60bf2a372ac848ce49577682719d28f576e7ab738"
+    },
+    {
+      "path": "../../../web/src/InlineRename.tsx",
+      "sha256": "ac4c38c9747f2140ea0080395bfa0eff05d319935ff8e9719571a688323a9120"
+    },
+    {
+      "path": "../../../web/src/expenses/ExpensesPage.tsx",
+      "sha256": "567ca0c02ed65dc1fe25c18fb4d44e0578a4f8784ed8f1cef9573381f757420d"
+    },
+    {
+      "path": "../../../web/src/expenses/ExpenseForm.tsx",
+      "sha256": "77c88e70e3def23028f4cd0c4e567f4c13a47d2a63b018eea60fcd1f3806ffa9"
+    },
+    {
+      "path": "../../../web/src/accounts/AccountsPage.tsx",
+      "sha256": "04b712a9388e9e1f2baceb08465d8180ededaba5ec8151501c1095e17c509cd8"
+    },
+    {
+      "path": "../../../web/src/categories/CategoriesPage.tsx",
+      "sha256": "cc01e83b3e4780ac0069f25b08aeb15c4c179a925adcef1501db5d3701abfb7a"
+    },
+    {
+      "path": "../../../web/src/households/HouseholdPages.tsx",
+      "sha256": "cd53dfcf31fa0b66988cfcecb0b8a28875684560ac5dcff074d4c2168767f60d"
+    },
+    {
+      "path": "../../../web/src/auth/AuthPages.tsx",
+      "sha256": "2e1cdabc32ee437b41bcd935d339fc8a72a83e30dca00f178ae827cbe531c1df"
+    },
+    {
+      "path": "../../../web/src/lib/money.ts",
+      "sha256": "a35c6cf5fd434edc56b9ea161fa5cd93f6f5a187cd5f5fd1e73785cccf942b97"
+    },
+    {
+      "path": "../../../web/src/lib/dates.ts",
+      "sha256": "ecdf2c09093957b8701c7e75d7523c002d1fe7c86df9d78ec4103fee02468576"
+    }
+  ],
+  "comparison": "existing-system",
+  "requiredChecks": [
+    {
+      "id": "expenses-desktop",
+      "kind": "visual"
+    },
+    {
+      "id": "expenses-dark",
+      "kind": "visual"
+    },
+    {
+      "id": "shortcut-n-and-flash",
+      "kind": "interaction"
+    },
+    {
+      "id": "shortcut-arrow",
+      "kind": "interaction"
+    },
+    {
+      "id": "accounts-dark",
+      "kind": "visual"
+    },
+    {
+      "id": "categories-desktop",
+      "kind": "visual"
+    },
+    {
+      "id": "login",
+      "kind": "visual"
+    },
+    {
+      "id": "expenses-mobile",
+      "kind": "visual"
+    },
+    {
+      "id": "accounts-mobile",
+      "kind": "interaction"
+    },
+    {
+      "id": "categories-mobile-before-fix",
+      "kind": "interaction"
+    }
+  ],
+  "checks": [
+    {
+      "id": "expenses-desktop",
+      "status": "pass",
+      "state": "October 2026, 14 expenses, light",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Left sidebar with household, icon nav and user; monochrome content; black primary button with N hint; refund +200.00 in neutral text.",
+      "artifacts": [
+        {
+          "path": "expenses-1280.jpg",
+          "kind": "image",
+          "sha256": "e22085eb6108452be994af15825c1148b8860f5387bb98cd7b81f3337676b1de"
+        }
+      ]
+    },
+    {
+      "id": "expenses-dark",
+      "status": "pass",
+      "state": "Same, dark (pointer over the primary button)",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Inverted palette; white primary button with visible N hint; sidebar active state readable.",
+      "artifacts": [
+        {
+          "path": "expenses-1280-dark.jpg",
+          "kind": "image",
+          "sha256": "9166c3925bfa91fae2b50154e08fb55fe78e993723640cd1d246dea77801f316"
+        }
+      ]
+    },
+    {
+      "id": "shortcut-n-and-flash",
+      "status": "pass",
+      "state": "N opens Add expense; saving highlights the row",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "N opened the sheet with focus in Amount. After saving an edit the row flashes grey and fades; focus returns to the row. Captured before the key-hint background fix and the phone-only add-form reorder; neither changes this state.",
+      "artifacts": [
+        {
+          "path": "saved-row-flash-1280.jpg",
+          "kind": "image",
+          "sha256": "3a42502b9ded6270d3351a962109666795ad0582d8af37b5838d07d55b4dfd0a"
+        }
+      ],
+      "steps": [
+        "Click empty page area",
+        "Press N",
+        "Fill amount, save",
+        "Open the row, set merchant, press Enter"
+      ]
+    },
+    {
+      "id": "shortcut-arrow",
+      "status": "pass",
+      "state": "Left arrow from October",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Moves to September 2026 instantly; 'This month' appears. Captured before the key-hint background fix and the phone-only add-form reorder; neither changes this state.",
+      "artifacts": [
+        {
+          "path": "arrow-key-month-1280.jpg",
+          "kind": "image",
+          "sha256": "cc3bcd573f0ae6fbc675623605a74aeb23c25dd12390a146d20428c54e3900e0"
+        }
+      ],
+      "steps": [
+        "Press ArrowLeft with focus outside inputs"
+      ]
+    },
+    {
+      "id": "accounts-dark",
+      "status": "pass",
+      "state": "Accounts, dark",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Neutral table, Add account as the white primary. Captured before the key-hint background fix and the phone-only add-form reorder; neither changes this state.",
+      "artifacts": [
+        {
+          "path": "accounts-1280-dark.jpg",
+          "kind": "image",
+          "sha256": "3dfe6512ce8785379081096b000b4cab124db52fc028ff46f551d35c2bd9a854"
+        }
+      ]
+    },
+    {
+      "id": "categories-desktop",
+      "status": "pass",
+      "state": "Categories, light",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Desktop order unchanged: add form above the list; row actions hidden until hover.",
+      "artifacts": [
+        {
+          "path": "categories-1280.jpg",
+          "kind": "image",
+          "sha256": "8320f17d3e5e8459eef7699a56c1d0b954d22248e7305a874ab37e20b36e4250"
+        }
+      ]
+    },
+    {
+      "id": "login",
+      "status": "pass",
+      "state": "Logged out",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Monochrome panel, black primary button.",
+      "artifacts": [
+        {
+          "path": "login-1280.jpg",
+          "kind": "image",
+          "sha256": "af20e102d11bc37191b782f86b18db4602a3b351be384ac29cdaac3192ca228e"
+        }
+      ]
+    },
+    {
+      "id": "expenses-mobile",
+      "status": "pass",
+      "state": "Expenses at phone width",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 375,
+        "height": 812
+      },
+      "observed": "Sidebar hidden; slim top bar with household and log-out icon; bottom tab bar; no horizontal scroll (375).",
+      "artifacts": [
+        {
+          "path": "expenses-375.jpg",
+          "kind": "image",
+          "sha256": "d8bae5e0b7aca0dd4d3f91bb81fbebfa0411964c12f2e4402c9f5366b4eca874"
+        }
+      ]
+    },
+    {
+      "id": "accounts-mobile",
+      "status": "pass",
+      "state": "Accounts at phone width, after fix",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 375,
+        "height": 812
+      },
+      "observed": "List before the add form; owner folded under the name; table no longer overflows (scrollWidth equals clientWidth).",
+      "artifacts": [
+        {
+          "path": "accounts-375.jpg",
+          "kind": "image",
+          "sha256": "cb51279ff0fc9f784757311d2c10ef185db39fb6587025cb592aadbaba1be44c"
+        }
+      ],
+      "steps": [
+        "Tap Accounts in the bottom nav"
+      ]
+    },
+    {
+      "id": "categories-mobile-before-fix",
+      "status": "pass",
+      "state": "Categories at phone width, before the reorder",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 375,
+        "height": 812
+      },
+      "observed": "Shows the problem that led to moving add forms below lists on phones; touch shows row actions without hover.",
+      "artifacts": [
+        {
+          "path": "categories-375-form-first.jpg",
+          "kind": "image",
+          "sha256": "48bed4bd6777ea77dba62dd7131ecfd1bf0130b203b2127a4ff0eed77063f5bb"
+        }
+      ],
+      "steps": [
+        "Tap Categories in the bottom nav"
+      ]
+    }
+  ],
+  "unresolved": []
+}

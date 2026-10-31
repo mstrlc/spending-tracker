@@ -1,0 +1,318 @@
+{
+  "schemaVersion": "uizze.visual-evidence.v1",
+  "scope": "UI pass 1 over web/: shell, login/signup/onboarding, expenses (page + side-sheet editor), accounts, categories",
+  "platform": "web",
+  "sources": [
+    {
+      "path": "../../../web/src/styles.css",
+      "sha256": "98bc5b470fc310edb1b879156d98552deb22c53237abb992568d0f2cdf5d090a"
+    },
+    {
+      "path": "../../../web/src/ui.tsx",
+      "sha256": "253c58699666363ada69ea77847c41da3a894b4df7a967e041844bd7a6228b78"
+    },
+    {
+      "path": "../../../web/src/icons.tsx",
+      "sha256": "03cca01d01aa2ff4cd88b4e0ce8a600b6ef05733b9dc1d7a598daf7334d36c41"
+    },
+    {
+      "path": "../../../web/src/InlineRename.tsx",
+      "sha256": "ac4c38c9747f2140ea0080395bfa0eff05d319935ff8e9719571a688323a9120"
+    },
+    {
+      "path": "../../../web/src/expenses/ExpensesPage.tsx",
+      "sha256": "8c8f8cae5742ec4162fd1ddda9496b1a8e2b6ab8c40c638fbf9b77d80687550d"
+    },
+    {
+      "path": "../../../web/src/expenses/ExpenseForm.tsx",
+      "sha256": "3782f507cf7b47afb26d6ad09ca43e2ffd03a9cd686fe0677fa89d9867c485aa"
+    },
+    {
+      "path": "../../../web/src/accounts/AccountsPage.tsx",
+      "sha256": "c39dc1eb80043f3fba9eefda9246e31fdbc20f1fffd85cbce05df78dee41e9fa"
+    },
+    {
+      "path": "../../../web/src/categories/CategoriesPage.tsx",
+      "sha256": "ddf7f05bdd45f0163e7e03482b1281f52edb9347ff808d81bcecf4b46fdbfa35"
+    },
+    {
+      "path": "../../../web/src/households/HouseholdPages.tsx",
+      "sha256": "8ed4a327f89c8acdf1b99f14a2854ed958fdece4f7520cd16ca7cd5f22eeb686"
+    },
+    {
+      "path": "../../../web/src/auth/AuthPages.tsx",
+      "sha256": "2e1cdabc32ee437b41bcd935d339fc8a72a83e30dca00f178ae827cbe531c1df"
+    },
+    {
+      "path": "../../../web/src/lib/money.ts",
+      "sha256": "a35c6cf5fd434edc56b9ea161fa5cd93f6f5a187cd5f5fd1e73785cccf942b97"
+    },
+    {
+      "path": "../../../web/src/lib/dates.ts",
+      "sha256": "ecdf2c09093957b8701c7e75d7523c002d1fe7c86df9d78ec4103fee02468576"
+    }
+  ],
+  "comparison": "existing-system",
+  "requiredChecks": [
+    {
+      "id": "expenses-desktop",
+      "kind": "visual"
+    },
+    {
+      "id": "expenses-dark",
+      "kind": "visual"
+    },
+    {
+      "id": "add-invalid-recover",
+      "kind": "interaction"
+    },
+    {
+      "id": "edit-sheet",
+      "kind": "interaction"
+    },
+    {
+      "id": "empty-month",
+      "kind": "visual"
+    },
+    {
+      "id": "accounts",
+      "kind": "interaction"
+    },
+    {
+      "id": "categories-hover",
+      "kind": "interaction"
+    },
+    {
+      "id": "login",
+      "kind": "visual"
+    },
+    {
+      "id": "expenses-mobile",
+      "kind": "visual"
+    },
+    {
+      "id": "add-sheet-mobile",
+      "kind": "visual"
+    }
+  ],
+  "checks": [
+    {
+      "id": "expenses-desktop",
+      "status": "pass",
+      "state": "October 2026 with 13 expenses incl. a refund and an investment",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Month title, summary and table share the left edge; Spent reads first; refund shows +200.00 in the positive color; no per-row action noise.",
+      "artifacts": [
+        {
+          "path": "expenses-1280.jpg",
+          "kind": "image",
+          "sha256": "e9df841579b361b797097e918bf494194bffeac0ec5ff7181a4e1a22748a6178"
+        },
+        {
+          "path": "expenses-header-1280.png",
+          "kind": "image",
+          "sha256": "2e8f62f6c501b03bb6d987367bfabbae26796ac2ed1ed4bcb16d7c6d449f83df"
+        }
+      ]
+    },
+    {
+      "id": "expenses-dark",
+      "status": "pass",
+      "state": "Same data, prefers-color-scheme: dark",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Hierarchy preserved; muted text readable; accent remains the only hue besides semantic positive.",
+      "artifacts": [
+        {
+          "path": "expenses-1280-dark.jpg",
+          "kind": "image",
+          "sha256": "ba52609ba6947b91967fee1bd15f7ebb7d0d54c10a830938b9bbf63e40f1adfc"
+        }
+      ]
+    },
+    {
+      "id": "add-invalid-recover",
+      "status": "pass",
+      "state": "Add sheet: invalid amount, then corrected and submitted",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Focus opens in Amount; 'abc' shows a specific inline error and red border; after correcting to 189,50 the error clears, the expense is added, a confirmation shows, totals behind the sheet update and focus returns to Amount. Captured before the last CSS edits (scrollbar gutter, narrow-screen rules, row-action hover), none of which change this state at 1280px.",
+      "artifacts": [
+        {
+          "path": "add-invalid-1280.jpg",
+          "kind": "image",
+          "sha256": "dea2a9091cb63cd6aee8977326aaf28e108bc72800c13e9a800b6d057edd38be"
+        },
+        {
+          "path": "add-recovered-1280.jpg",
+          "kind": "image",
+          "sha256": "05fcb8ee807f9b59a426e6e96caa372b982337b5d322b71ca2bf59b09a5f2da3"
+        }
+      ],
+      "steps": [
+        "Click Add expense",
+        "Type abc, press Enter",
+        "Replace with 189,50, type merchant, press Enter"
+      ]
+    },
+    {
+      "id": "edit-sheet",
+      "status": "pass",
+      "state": "Edit sheet for an existing row",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Row click opens the sheet with the row's values; Delete is a separate quiet danger action; Esc closes. Captured before the last CSS edits (scrollbar gutter, narrow-screen rules, row-action hover), none of which change this state at 1280px.",
+      "artifacts": [
+        {
+          "path": "edit-1280.jpg",
+          "kind": "image",
+          "sha256": "9514341d03c386474f2579c473b158d51acdf58d51af3affa1eee8c24e3d9fc5"
+        }
+      ],
+      "steps": [
+        "Press Esc",
+        "Click the Bageterie Boulevard row"
+      ]
+    },
+    {
+      "id": "empty-month",
+      "status": "pass",
+      "state": "December 2026, no expenses",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Composed empty state with the primary action; 'This month' shortcut visible; no sideways shift from scrollbar changes.",
+      "artifacts": [
+        {
+          "path": "empty-month-1280.jpg",
+          "kind": "image",
+          "sha256": "9c9e121114d840d0ddc128e0c4d410bbfd085346ca1a32a5cb00bed3bae66c13"
+        }
+      ]
+    },
+    {
+      "id": "accounts",
+      "status": "pass",
+      "state": "Accounts with one closed account",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Rows middle-aligned; Status column removed; closed account dimmed with a Closed badge; reopened afterwards to restore demo data.",
+      "artifacts": [
+        {
+          "path": "accounts-1280.jpg",
+          "kind": "image",
+          "sha256": "f053549bbbf2162a75f8ec2ca261b6cdf76e9213ec0e20c000bbb14ec3297c27"
+        }
+      ],
+      "steps": [
+        "Click Close on ČSOB card",
+        "Click Reopen"
+      ]
+    },
+    {
+      "id": "categories-hover",
+      "status": "pass",
+      "state": "Categories, pointer over Groceries",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Actions hidden until hover; hovering shows them on that row only; keyboard focus on a row action also reveals that row (checked via focus, opacity 1 vs 0).",
+      "artifacts": [
+        {
+          "path": "categories-hover-1280.jpg",
+          "kind": "image",
+          "sha256": "0594c9335f2acc73c786b70a721472892a6c02a4ff1b4c066e1bd7b67aecf54d"
+        }
+      ],
+      "steps": [
+        "Hover the Groceries row",
+        "Focus a row action with script and read computed opacity"
+      ]
+    },
+    {
+      "id": "login",
+      "status": "pass",
+      "state": "Logged out, /login",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 1280,
+        "height": 800
+      },
+      "observed": "Centered panel, wordmark in accent, full-width primary action, footer link separated.",
+      "artifacts": [
+        {
+          "path": "login-1280.jpg",
+          "kind": "image",
+          "sha256": "4eb4e727b13c6bc3c61d87e883363f6279d8963b046d8cffbfaf244e615be893"
+        }
+      ]
+    },
+    {
+      "id": "expenses-mobile",
+      "status": "pass",
+      "state": "October 2026 at phone width",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 375,
+        "height": 812
+      },
+      "observed": "No horizontal scroll (scrollWidth 375); one-line title; full-width Add expense; date folded into the merchant meta line; Spent on its own row.",
+      "artifacts": [
+        {
+          "path": "expenses-375.jpg",
+          "kind": "image",
+          "sha256": "7f346f502c402c0e144cb1acdf1bd4005d7185aac5badc43fc1e90099bf5f4ed"
+        }
+      ]
+    },
+    {
+      "id": "add-sheet-mobile",
+      "status": "pass",
+      "state": "Add sheet at phone width",
+      "environment": {
+        "kind": "browser",
+        "name": "Chromium (Claude desktop browser pane)",
+        "width": 375,
+        "height": 812
+      },
+      "observed": "Sheet fills the width; actions pinned at the bottom.",
+      "artifacts": [
+        {
+          "path": "add-sheet-375.jpg",
+          "kind": "image",
+          "sha256": "50386999444ce56b14f5459c75cf13dbce6230693737d935bb381a08e2b47aa0"
+        }
+      ]
+    }
+  ],
+  "unresolved": []
+}

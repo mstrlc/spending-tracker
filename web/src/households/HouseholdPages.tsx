@@ -2,6 +2,7 @@ import { createContext, useContext, useState, type FormEvent } from "react";
 import { Link, Navigate, NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useCreateHousehold, useHouseholds, useLogout, useMe } from "../api/hooks";
 import type { Household } from "../api/types";
+import { LogOut, Receipt, Tag, Wallet } from "../icons";
 import { ErrorText, Field, FormError, Loading } from "../ui";
 
 const CURRENCIES = ["CZK", "EUR", "USD", "GBP", "PLN", "CHF", "SEK", "NOK", "DKK", "HUF"];
@@ -26,9 +27,11 @@ export function HomeRedirect() {
 
 export function OnboardingPage() {
   const create = useCreateHousehold();
+  const households = useHouseholds();
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("CZK");
+  const hasHouseholds = (households.data?.length ?? 0) > 0;
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -37,27 +40,43 @@ export function OnboardingPage() {
 
   return (
     <main className="auth">
-      <h1>Set up a household</h1>
-      <p className="muted">A household holds the accounts and expenses you track, alone or with others.</p>
-      <form onSubmit={submit} className="stack">
-        <Field label="Household name" name="name" error={create.error}>
-          <input required placeholder="Home" value={name} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <Field label="Currency" name="currency" error={create.error}>
-          <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            {CURRENCIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </Field>
-        <FormError error={create.error} fields={["name", "currency"]} />
-        <button type="submit" disabled={create.isPending}>
-          Create household
-        </button>
-      </form>
+      <div className="auth-panel">
+        <p className="wordmark">Spending Tracker</p>
+        <h1>{hasHouseholds ? "New household" : "Set up your household"}</h1>
+        <p className="muted">A household holds the accounts and expenses you track, alone or with others.</p>
+        <form onSubmit={submit} className="stack">
+          <Field label="Household name" name="name" error={create.error}>
+            <input required placeholder="Home" value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label="Currency" name="currency" error={create.error}>
+            <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              {CURRENCIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </Field>
+          <FormError error={create.error} fields={["name", "currency"]} />
+          <button type="submit" className="block" disabled={create.isPending}>
+            Create household
+          </button>
+        </form>
+        {hasHouseholds && (
+          <p className="auth-footer">
+            <Link to="/">Back to your household</Link>
+          </p>
+        )}
+      </div>
     </main>
   );
 }
+
+const NEW_HOUSEHOLD = "__new";
+
+const SECTIONS = [
+  { to: "expenses", label: "Expenses", icon: <Receipt /> },
+  { to: "accounts", label: "Accounts", icon: <Wallet /> },
+  { to: "categories", label: "Categories", icon: <Tag /> },
+];
 
 export function HouseholdLayout() {
   const { householdId } = useParams();
@@ -71,44 +90,71 @@ export function HouseholdLayout() {
   const household = households.data.find((h) => h.id === householdId);
   if (!household) return households.isFetching ? <Loading /> : <Navigate to="/" replace />;
 
+  const switcher = (
+    <select
+      className="household-switcher"
+      aria-label="Household"
+      value={household.id}
+      onChange={(e) => navigate(e.target.value === NEW_HOUSEHOLD ? "/onboarding" : `/h/${e.target.value}/expenses`)}
+    >
+      {households.data.map((h) => (
+        <option key={h.id} value={h.id}>
+          {h.name}
+        </option>
+      ))}
+      <option value={NEW_HOUSEHOLD}>New household…</option>
+    </select>
+  );
+  const logOut = () => logout.mutate(undefined, { onSuccess: () => navigate("/login") });
+  const name = me.data?.displayName ?? "";
+
   return (
     <HouseholdContext.Provider value={household}>
-      <header className="topbar">
-        <div className="topbar-left">
-          {households.data.length > 1 ? (
-            <select
-              aria-label="Household"
-              value={household.id}
-              onChange={(e) => navigate(`/h/${e.target.value}/expenses`)}
-            >
-              {households.data.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <strong>{household.name}</strong>
-          )}
-          <nav>
-            <NavLink to="expenses">Expenses</NavLink>
-            <NavLink to="accounts">Accounts</NavLink>
-            <NavLink to="categories">Categories</NavLink>
+      <div className="app">
+        <aside className="sidebar">
+          {switcher}
+          <nav className="side-nav" aria-label="Sections">
+            {SECTIONS.map((s) => (
+              <NavLink key={s.to} to={s.to}>
+                {s.icon}
+                {s.label}
+              </NavLink>
+            ))}
           </nav>
-        </div>
-        <div className="topbar-right">
-          <Link to="/onboarding" className="muted">
-            New household
-          </Link>
-          <span className="muted">{me.data?.displayName}</span>
-          <button className="link" onClick={() => logout.mutate(undefined, { onSuccess: () => navigate("/login") })}>
-            Log out
+          <div className="sidebar-user">
+            <span className="avatar" aria-hidden="true">
+              {name.slice(0, 1).toUpperCase()}
+            </span>
+            <span className="sidebar-user-name">
+              <span>{name}</span>
+              <span className="muted small">{me.data?.email}</span>
+            </span>
+            <button className="icon-button" aria-label="Log out" title="Log out" onClick={logOut}>
+              <LogOut />
+            </button>
+          </div>
+        </aside>
+
+        <header className="mobile-bar">
+          {switcher}
+          <button className="icon-button" aria-label="Log out" onClick={logOut}>
+            <LogOut />
           </button>
-        </div>
-      </header>
-      <main className="page">
-        <Outlet />
-      </main>
+        </header>
+
+        <main className="page">
+          <Outlet />
+        </main>
+
+        <nav className="bottom-nav" aria-label="Sections">
+          {SECTIONS.map((s) => (
+            <NavLink key={s.to} to={s.to}>
+              {s.icon}
+              <span>{s.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+      </div>
     </HouseholdContext.Provider>
   );
 }

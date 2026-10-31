@@ -3,7 +3,7 @@ import { useCategories, useDeleteCategory, useSaveCategory } from "../api/hooks"
 import type { Category, CategoryInput, CategoryKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
-import { ErrorText, Field, FormError, Loading } from "../ui";
+import { ErrorText, Field, FormError, PageHeader, SkeletonRows } from "../ui";
 import { categoryTree } from "./tree";
 
 export function CategoriesPage() {
@@ -14,6 +14,7 @@ export function CategoriesPage() {
   const [name, setName] = useState("");
   const [parentId, setParentId] = useState("");
   const [kind, setKind] = useState<CategoryKind>("consumption");
+  const [renaming, setRenaming] = useState<string | null>(null);
 
   const tree = categoryTree(categories.data ?? []);
 
@@ -37,18 +38,26 @@ export function CategoriesPage() {
     });
 
   const row = (category: Category, isChild: boolean) => (
-    <li key={category.id} className={category.archived ? "category muted" : "category"}>
-      <span>
-        <InlineRename name={category.name} onSave={(newName) => update(category, { name: newName })} />
-        {!isChild && category.kind === "investment" && <span className="badge">investment</span>}
-        {category.archived && <span className="badge">archived</span>}
+    <li key={category.id} className={["category-row", isChild && "is-child", category.archived && "dimmed"].filter(Boolean).join(" ")}>
+      <span className="category-name">
+        <InlineRename
+          name={category.name}
+          editing={renaming === category.id}
+          onSave={(newName) => update(category, { name: newName })}
+          onDone={() => setRenaming(null)}
+        />
+        {!isChild && category.kind === "investment" && <span className="badge">Investing</span>}
+        {category.archived && <span className="badge badge-muted">Archived</span>}
       </span>
       <span className="row-actions">
-        <button className="link" onClick={() => update(category, { archived: !category.archived })}>
+        <button className="ghost" onClick={() => setRenaming(category.id)}>
+          Rename
+        </button>
+        <button className="ghost" onClick={() => update(category, { archived: !category.archived })}>
           {category.archived ? "Unarchive" : "Archive"}
         </button>
         <button
-          className="link danger"
+          className="ghost danger"
           onClick={() => window.confirm(`Delete ${category.name}?`) && remove.mutate({ id: category.id, version: category.version })}
         >
           Delete
@@ -59,10 +68,15 @@ export function CategoriesPage() {
 
   return (
     <>
-      <section className="card">
-        <h2>Add category</h2>
-        <form onSubmit={add} className="row-form">
-          <Field label="Name" name="name" error={save.error}>
+      <PageHeader title="Categories" />
+      <p className="page-intro muted">
+        Investing categories hold money moved into investments: counted as invested, not spent. Archive a category to
+        hide it from new expenses while keeping its history.
+      </p>
+
+      <div className="add-block">
+        <form onSubmit={add} className="toolbar-form" aria-label="Add category">
+          <Field label="Category name" name="name" error={save.error}>
             <input required value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label="Under" name="parentId" error={save.error}>
@@ -84,30 +98,18 @@ export function CategoriesPage() {
             </Field>
           )}
           <button type="submit" disabled={save.isPending}>
-            Add
+            Add category
           </button>
         </form>
         <FormError error={save.error} fields={["name", "parentId", "kind"]} />
-      </section>
+      </div>
 
-      <section className="card">
-        <h2>Categories</h2>
-        <p className="muted small">
-          Investing categories are money moved into investments: counted as invested, not spent. Archive a category to
-          hide it from new expenses while keeping its history.
-        </p>
+      <section className="surface">
         <ErrorText error={remove.error} />
-        {categories.isPending && <Loading />}
         <ErrorText error={categories.error} />
-        <ul className="category-tree">
-          {tree.map((parent) => (
-            <li key={parent.id}>
-              <ul>
-                {row(parent, false)}
-                {parent.children.length > 0 && <ul className="children">{parent.children.map((c) => row(c, true))}</ul>}
-              </ul>
-            </li>
-          ))}
+        {categories.isPending && <SkeletonRows />}
+        <ul className="category-list">
+          {tree.map((parent) => [row(parent, false), ...parent.children.map((c) => row(c, true))])}
         </ul>
       </section>
     </>

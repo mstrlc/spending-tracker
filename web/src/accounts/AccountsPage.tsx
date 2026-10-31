@@ -3,7 +3,7 @@ import { useAccounts, useDeleteAccount, useMembers, useSaveAccount } from "../ap
 import type { Account, AccountInput } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
-import { ErrorText, Field, FormError, Loading } from "../ui";
+import { ErrorText, Field, FormError, PageHeader, SkeletonRows } from "../ui";
 
 export function AccountsPage() {
   const household = useHousehold();
@@ -13,6 +13,7 @@ export function AccountsPage() {
   const remove = useDeleteAccount(household.id);
   const [name, setName] = useState("");
   const [ownerUserId, setOwnerUserId] = useState("");
+  const [renaming, setRenaming] = useState<string | null>(null);
 
   function add(e: FormEvent) {
     e.preventDefault();
@@ -27,10 +28,12 @@ export function AccountsPage() {
 
   return (
     <>
-      <section className="card">
-        <h2>Add account</h2>
-        <form onSubmit={add} className="row-form">
-          <Field label="Name" name="name" error={save.error}>
+      <PageHeader title="Accounts" />
+      <p className="page-intro muted">The bank accounts and cards you pay from. Close an account to keep its history but hide it from new expenses.</p>
+
+      <div className="add-block">
+        <form onSubmit={add} className="toolbar-form" aria-label="Add account">
+          <Field label="Account name" name="name" error={save.error}>
             <input required placeholder="e.g. Revolut" value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label="Owner" name="ownerUserId" error={save.error}>
@@ -44,51 +47,71 @@ export function AccountsPage() {
             </select>
           </Field>
           <button type="submit" disabled={save.isPending}>
-            Add
+            Add account
           </button>
         </form>
         <FormError error={save.error} fields={["name", "ownerUserId"]} />
-      </section>
+      </div>
 
-      <section className="card">
-        <h2>Accounts</h2>
+      <section className="surface">
         <ErrorText error={remove.error} />
-        {accounts.isPending && <Loading />}
         <ErrorText error={accounts.error} />
-        {accounts.data?.length === 0 && <p className="muted">No accounts yet. Add the bank accounts and cards you pay from.</p>}
+        {accounts.isPending && <SkeletonRows rows={3} />}
+        {accounts.data?.length === 0 && (
+          <div className="empty">
+            <p className="empty-title">No accounts yet</p>
+            <p className="muted">Add the accounts and cards you pay from to see where money goes.</p>
+          </div>
+        )}
         {accounts.data && accounts.data.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Owner</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.data.map((a) => (
-                <tr key={a.id} className={a.status === "closed" ? "muted" : undefined}>
-                  <td>
-                    <InlineRename name={a.name} onSave={(newName) => update(a, { name: newName })} />
-                  </td>
-                  <td>{members.find((m) => m.userId === a.ownerUserId)?.displayName ?? "Shared"}</td>
-                  <td>{a.status === "active" ? "Active" : "Closed"}</td>
-                  <td className="row-actions">
-                    <button className="link" onClick={() => update(a, { status: a.status === "active" ? "closed" : "active" })}>
-                      {a.status === "active" ? "Close" : "Reopen"}
-                    </button>
-                    <button
-                      className="link danger"
-                      onClick={() => window.confirm(`Delete ${a.name}?`) && remove.mutate({ id: a.id, version: a.version })}
-                    >
-                      Delete
-                    </button>
-                  </td>
+          <div className="table-wrap">
+            <table className="data-table align-middle">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th className="hide-narrow">Owner</th>
+                  <th className="actions-col">
+                    <span className="visually-hidden">Actions</span>
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {accounts.data.map((a) => (
+                  <tr key={a.id} className={a.status === "closed" ? "dimmed" : undefined}>
+                    <td className="strong">
+                      <span className="cell-with-badge">
+                        <InlineRename
+                          name={a.name}
+                          editing={renaming === a.id}
+                          onSave={(newName) => update(a, { name: newName })}
+                          onDone={() => setRenaming(null)}
+                        />
+                        {a.status === "closed" && <span className="badge badge-muted">Closed</span>}
+                      </span>
+                      <div className="muted small show-narrow">
+                        {members.find((m) => m.userId === a.ownerUserId)?.displayName ?? "Shared"}
+                      </div>
+                    </td>
+                    <td className="muted hide-narrow">{members.find((m) => m.userId === a.ownerUserId)?.displayName ?? "Shared"}</td>
+                    <td className="row-actions">
+                      <button className="ghost" onClick={() => setRenaming(a.id)}>
+                        Rename
+                      </button>
+                      <button className="ghost" onClick={() => update(a, { status: a.status === "active" ? "closed" : "active" })}>
+                        {a.status === "active" ? "Close" : "Reopen"}
+                      </button>
+                      <button
+                        className="ghost danger"
+                        onClick={() => window.confirm(`Delete ${a.name}?`) && remove.mutate({ id: a.id, version: a.version })}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </>

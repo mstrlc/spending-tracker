@@ -30,3 +30,9 @@ export function todayIso(today = new Date()): string {
 export function isMonth(value: string | null): value is Month {
   return value !== null && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 }
+
+/** "Thu 29 Oct" style label for an ISO date, in the user's locale. */
+export function formatDay(iso: string, locale?: string): string {
+  const [year, m, d] = iso.split("-").map(Number);
+  return new Date(year, m - 1, d).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
+}

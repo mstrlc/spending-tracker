@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
-import { useAccounts, useCategories, useDeleteExpense, useExpenses, useMembers } from "../api/hooks";
+import { useAccounts, useCategories, useExpenses, useMembers } from "../api/hooks";
 import type { Category, Expense } from "../api/types";
-import { categoryLabel } from "../categories/tree";
-import { currentMonth, formatMonth, isMonth, monthRange, shiftMonth } from "../lib/dates";
-import { formatMoney } from "../lib/money";
+import { ChevronLeft, ChevronRight, Plus } from "../icons";
+import { currentMonth, formatDay, formatMonth, isMonth, monthRange, shiftMonth, todayIso } from "../lib/dates";
+import { formatAmount, formatMoney } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
-import { ErrorText, Loading } from "../ui";
+import { ErrorText, PageHeader, Sheet, SkeletonRows } from "../ui";
 import { ExpenseForm } from "./ExpenseForm";
 
 /** Splits a month's total into spending and investing (investment categories are not consumption). */
@@ -21,6 +21,8 @@ function totals(expenses: Expense[], categories: Category[]) {
   return { spent, invested };
 }
 
+type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; expense: Expense };
+
 export function ExpensesPage() {
   const household = useHousehold();
   const [params, setParams] = useSearchParams();
@@ -32,95 +34,184 @@ export function ExpensesPage() {
   const categories = useCategories(household.id).data ?? [];
   const accounts = useAccounts(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
-  const remove = useDeleteExpense(household.id);
-  const [editing, setEditing] = useState<Expense | null>(null);
+  const [editor, setEditor] = useState<Editor>({ mode: "closed" });
 
-  const money = (minor: number) => formatMoney(minor, household.currency);
   const goTo = (m: string) => setParams(m === currentMonth() ? {} : { month: m });
-  const { spent, invested } = totals(expenses.data ?? [], categories);
+  const rows = expenses.data ?? [];
+  const { spent, invested } = totals(rows, categories);
+  const showPaidBy = members.length > 1;
+  // New expenses default to today in the current month, otherwise to the first of the month being viewed.
+  const defaultDate = month === currentMonth() ? todayIso() : from;
+  const openAdd = () => setEditor({ mode: "add" });
+  // The row most recently added or saved, highlighted briefly so the change is easy to spot.
+  const [flashId, setFlashId] = useState<string | null>(null);
 
-  function confirmDelete(expense: Expense) {
-    const label = expense.merchant || "this expense";
-    if (window.confirm(`Delete ${label} (${money(expense.amountMinor)})?`)) {
-      remove.mutate({ id: expense.id, version: expense.version });
-      if (editing?.id === expense.id) setEditing(null);
+  // N adds an expense, ← / → change month. Ignored while typing, with modifiers, or with the sheet open.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("input, select, textarea, dialog[open]") || document.querySelector("dialog[open]")) return;
+      if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        setEditor({ mode: "add" });
+      } else if (e.key === "ArrowLeft") {
+        goTo(shiftMonth(month, -1));
+      } else if (e.key === "ArrowRight") {
+        goTo(shiftMonth(month, 1));
+      }
     }
-  }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   return (
     <>
-      <section className="card">
-        <h2>{editing ? "Edit expense" : "Add expense"}</h2>
-        {/* key: remount with fresh state when switching between rows */}
-        <ExpenseForm key={editing?.id ?? "new"} expense={editing ?? undefined} onDone={() => setEditing(null)} />
-      </section>
-
-      <section className="card">
-        <div className="month-bar">
-          <button className="secondary" aria-label="Previous month" onClick={() => goTo(shiftMonth(month, -1))}>
-            ‹
-          </button>
-          <h2>{formatMonth(month)}</h2>
-          <button className="secondary" aria-label="Next month" onClick={() => goTo(shiftMonth(month, 1))}>
-            ›
-          </button>
-          <div className="totals">
-            <span>
-              Spent <strong>{money(spent)}</strong>
+      <PageHeader
+        title={
+          <span className="month-title">
+            <span>{formatMonth(month)}</span>
+            <span className="month-nav">
+              <button
+                className="icon-button"
+                aria-label="Previous month"
+                title="Previous month (←)"
+                onClick={() => goTo(shiftMonth(month, -1))}
+              >
+                <ChevronLeft />
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Next month"
+                title="Next month (→)"
+                onClick={() => goTo(shiftMonth(month, 1))}
+              >
+                <ChevronRight />
+              </button>
             </span>
-            {invested !== 0 && (
-              <span>
-                Invested <strong>{money(invested)}</strong>
-              </span>
+            {month !== currentMonth() && (
+              <button className="ghost this-month" onClick={() => goTo(currentMonth())}>
+                This month
+              </button>
             )}
-          </div>
-        </div>
+          </span>
+        }
+      >
+        <button onClick={openAdd} aria-keyshortcuts="N">
+          <Plus /> Add expense <kbd>N</kbd>
+        </button>
+      </PageHeader>
 
-        <ErrorText error={remove.error} />
-        {expenses.isPending && <Loading />}
+      <dl className="summary">
+        <div>
+          <dt>Spent</dt>
+          <dd className="summary-primary">{formatMoney(spent, household.currency)}</dd>
+        </div>
+        <div>
+          <dt>Invested</dt>
+          <dd>{formatMoney(invested, household.currency)}</dd>
+        </div>
+        <div>
+          <dt>Expenses</dt>
+          <dd>{expenses.data ? rows.length : "–"}</dd>
+        </div>
+      </dl>
+
+      <section className="surface">
         <ErrorText error={expenses.error} />
-        {expenses.data?.length === 0 && <p className="muted">No expenses in {formatMonth(month)} yet.</p>}
-        {expenses.data && expenses.data.length > 0 && (
+        {expenses.isPending && <SkeletonRows />}
+        {expenses.data && rows.length === 0 && (
+          <div className="empty">
+            <p className="empty-title">No expenses in {formatMonth(month)}</p>
+            <p className="muted">Add an expense, or pick another month above.</p>
+            <button onClick={openAdd}>
+              <Plus /> Add expense
+            </button>
+          </div>
+        )}
+        {rows.length > 0 && (
           <div className="table-wrap">
-            <table>
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th className="hide-narrow">Day</th>
                   <th>Merchant</th>
-                  <th>Category</th>
-                  <th>Account</th>
-                  <th>Paid by</th>
-                  <th className="num">Amount</th>
-                  <th />
+                  <th className="hide-narrow">Category</th>
+                  <th className="hide-narrow">Account</th>
+                  {showPaidBy && <th className="hide-narrow">Paid by</th>}
+                  <th className="num">Amount ({household.currency})</th>
                 </tr>
               </thead>
               <tbody>
-                {expenses.data.map((e) => (
-                  <tr key={e.id} className={editing?.id === e.id ? "selected" : undefined}>
-                    <td>{e.date}</td>
-                    <td>
-                      {e.merchant || <span className="muted">—</span>}
-                      {e.notes && <div className="muted small">{e.notes}</div>}
-                    </td>
-                    <td>{categoryLabel(categories, e.categoryId) || <span className="muted">Uncategorized</span>}</td>
-                    <td>{accounts.find((a) => a.id === e.accountId)?.name ?? ""}</td>
-                    <td>{members.find((m) => m.userId === e.paidByUserId)?.displayName ?? "Shared"}</td>
-                    <td className={e.amountMinor < 0 ? "num refund" : "num"}>{money(e.amountMinor)}</td>
-                    <td className="row-actions">
-                      <button className="link" onClick={() => setEditing(e)}>
-                        Edit
-                      </button>
-                      <button className="link danger" onClick={() => confirmDelete(e)}>
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((e) => {
+                  const category = categories.find((c) => c.id === e.categoryId);
+                  const parent = category?.parentId ? categories.find((c) => c.id === category.parentId) : undefined;
+                  return (
+                    <tr
+                      key={e.id}
+                      className={e.id === flashId ? "clickable flash" : "clickable"}
+                      onClick={() => setEditor({ mode: "edit", expense: e })}
+                      onAnimationEnd={() => setFlashId(null)}
+                    >
+                      <td className="nowrap muted hide-narrow">{formatDay(e.date)}</td>
+                      <td>
+                        {/* The button makes the row reachable by keyboard; the row click is a larger mouse target. */}
+                        <button
+                          className="row-link"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditor({ mode: "edit", expense: e });
+                          }}
+                        >
+                          {e.merchant || "Untitled expense"}
+                        </button>
+                        {e.notes && <div className="muted small">{e.notes}</div>}
+                        <div className="muted small show-narrow">
+                          {formatDay(e.date)} · {category?.name ?? "Uncategorized"}
+                        </div>
+                      </td>
+                      <td className="hide-narrow">
+                        {category ? (
+                          <>
+                            {parent && <span className="muted">{parent.name} › </span>}
+                            {category.name}
+                          </>
+                        ) : (
+                          <span className="muted">Uncategorized</span>
+                        )}
+                      </td>
+                      <td className="hide-narrow muted">{accounts.find((a) => a.id === e.accountId)?.name ?? ""}</td>
+                      {showPaidBy && (
+                        <td className="hide-narrow muted">
+                          {members.find((m) => m.userId === e.paidByUserId)?.displayName ?? "Shared"}
+                        </td>
+                      )}
+                      <td className="num">
+                        {e.amountMinor < 0 ? "+" : ""}
+                        {formatAmount(Math.abs(e.amountMinor), household.currency)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </section>
+
+      <Sheet
+        open={editor.mode !== "closed"}
+        onClose={() => setEditor({ mode: "closed" })}
+        title={editor.mode === "edit" ? "Edit expense" : "Add expense"}
+      >
+        <ExpenseForm
+          key={editor.mode === "edit" ? editor.expense.id : "new"}
+          expense={editor.mode === "edit" ? editor.expense : undefined}
+          defaultDate={defaultDate}
+          onSaved={(saved) => setFlashId(saved.id)}
+          onDone={() => setEditor({ mode: "closed" })}
+        />
+      </Sheet>
     </>
   );
 }
