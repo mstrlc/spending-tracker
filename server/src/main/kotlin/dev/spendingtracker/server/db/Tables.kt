@@ -110,3 +110,17 @@ object HouseholdInvites : Table("household_invites") {
     val acceptedBy = uuid("accepted_by").nullable()
     override val primaryKey = PrimaryKey(id)
 }
+
+/** Written only by the audit triggers (V5); [before] and [after] are jsonb, read here as their JSON text. */
+object AuditLog : Table("audit_log") {
+    val id = long("id")
+    val householdId = uuid("household_id")
+    val at = timestamp("at")
+    val actorUserId = uuid("actor_user_id").nullable()
+    val entity = text("entity")
+    val entityId = uuid("entity_id")
+    val action = text("action")
+    val before = text("before").nullable()
+    val after = text("after").nullable()
+    override val primaryKey = PrimaryKey(id)
+}

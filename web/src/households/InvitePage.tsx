@@ -76,7 +76,7 @@ export function InvitePage() {
           <button
             className="block"
             disabled={accept.isPending}
-            onClick={() => accept.mutate(undefined, { onSuccess: (h) => navigate(`/h/${h.id}/expenses`, { replace: true }) })}
+            onClick={() => accept.mutate(undefined, { onSuccess: (h) => navigate(`/h/${h.id}/overview`, { replace: true }) })}
           >
             {accept.isPending ? "Joining…" : `Join ${invite.householdName}`}
           </button>

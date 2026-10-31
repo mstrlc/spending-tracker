@@ -85,3 +85,18 @@ export const LogOut = () => (
     <path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11" />
   </Icon>
 );
+
+export const Gauge = () => (
+  <Icon>
+    <path d="M4 18a8 8 0 1 1 16 0" />
+    <path d="M12 18l4-6" />
+  </Icon>
+);
+
+export const History = () => (
+  <Icon>
+    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M12 7v5l3 2" />
+  </Icon>
+);

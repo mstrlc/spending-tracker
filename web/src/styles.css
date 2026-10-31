@@ -1083,6 +1083,188 @@ dialog.sheet::backdrop {
   flex: 1;
 }
 
+/* ---- Overview ---- */
+
+.overview-note {
+  max-width: 80ch;
+  margin-top: -8px;
+}
+
+.mono,
+.card-list .num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card {
+  padding: 16px 20px;
+}
+
+.card-wide {
+  grid-column: 1 / -1;
+}
+
+.card-title {
+  font-size: 15px;
+  margin: 0;
+}
+
+.card-subtitle {
+  margin: 4px 0 0;
+}
+
+.card-empty {
+  margin: 12px 0 0;
+}
+
+.card-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.card-list li:last-child {
+  border-bottom: 0;
+}
+
+.card-list .num {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.block {
+  display: block;
+}
+
+.flow-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 0;
+}
+
+.flow-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.flow-month {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+}
+
+.flow-month:hover {
+  background: var(--surface-sunken);
+}
+
+.flow-month span {
+  width: min(14px, 40%);
+  border-radius: 4px 4px 0 0;
+}
+
+.flow-axis {
+  display: flex;
+  gap: 8px;
+  margin-top: -4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.flow-axis span {
+  flex: 1;
+  text-align: center;
+}
+
+/* ---- Activity ---- */
+
+.activity-day + .activity-day {
+  border-top: 1px solid var(--border);
+}
+
+.activity-day-title {
+  margin: 0;
+  padding: 12px 16px 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.activity-list {
+  margin: 0;
+  padding: 0 0 8px;
+  list-style: none;
+}
+
+.activity-row {
+  display: flex;
+  gap: 16px;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+.activity-row p {
+  margin: 0;
+}
+
+.activity-time {
+  flex: none;
+  width: 44px;
+  padding-top: 1px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.activity-body {
+  min-width: 0;
+}
+
+.activity-changes {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.activity-changes del {
+  color: var(--text-muted);
+}
+
+.activity-row.is-delete .activity-changes {
+  color: var(--text-muted);
+}
+
+.activity-more {
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+}
+
 /* ---- Narrow screens ---- */
 
 @media (max-width: 900px) {
@@ -1119,7 +1301,10 @@ dialog.sheet::backdrop {
     z-index: 10;
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: 1fr;
+    /* Seven sections don't fit a phone's width: the strip scrolls sideways instead of squeezing labels. */
+    grid-auto-columns: minmax(72px, 1fr);
+    overflow-x: auto;
+    scrollbar-width: none;
     padding-bottom: env(safe-area-inset-bottom);
     border-top: 1px solid var(--border);
     background: var(--bg);
@@ -1185,6 +1370,14 @@ dialog.sheet::backdrop {
 
   .hide-narrow {
     display: none;
+  }
+
+  .card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card {
+    padding: 16px;
   }
 
   .show-narrow {

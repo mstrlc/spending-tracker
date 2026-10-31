@@ -24,13 +24,17 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
 - Routes under `/api/households/{householdId}` go through the `HouseholdAccess` plugin: non-members get 404.
 - Editable rows carry `version`; updates send it in the body, deletes as `?version=`. A stale version is a 409 `version_conflict`.
 - Rows still referenced can't be deleted (409 `*_in_use`); close accounts and archive categories instead.
+- Every insert, update and delete of household data lands in `audit_log` (before/after JSON, actor) via Postgres triggers, so routes don't record anything themselves. The actor comes from `app.actor_id`, which `dbQuery` sets from the request's session user; new household tables need an `audit` trigger in their migration.
 - API request/response models live in `shared` (`dev.spendingtracker.shared.api`) so mobile clients can reuse them.
 
 ## Roadmap
 
 1. ~~**Scaffold**~~ (done 2026-10-31): git repo, Gradle multi-module, Docker Compose Postgres, Ktor health endpoint, Vite app, OpenAPI type generation wired end to end.
 2. ~~**MVP slice**~~ (done 2026-10-31): sign up / log in, create household, accounts, expenses with categories.
-   Not yet: audit log, undo after save/delete, email verification, password reset.
+   Not yet: undo after save/delete, email verification, password reset.
+   - ~~**Audit log**~~ (done 2026-10-31): trigger-written log of every create, edit and delete across households, members, invites, accounts, categories, expenses and income; the Activity page lists it by day with field-level before → after.
+   - ~~**Overview**~~ (done 2026-10-31): the new landing page. The month's spending, income, saved and invested with month-end pace; a typical month (last 6 complete months, expensive outliers trimmed); 12 months of income vs. spending; unusual spending by category against the prior year; subscription radar; top merchants and income sources. Computed server-side (`/overview`) so mobile apps get the same numbers.
+     Not yet: import freshness, net worth, runway and milestones (need net worth and bank import), LLM export.
    - ~~**Household invites**~~ (done 2026-10-31): owners create an email-bound, single-use invite link (7 days); there's no outgoing email yet, so the owner shares the link. Members can leave, owners can remove members, the last owner can't be removed.
    - ~~**Income**~~ (done 2026-10-31): dated income lines with a source (payer), account, recipient member (or shared) and notes; negative amounts are clawbacks. The Income page shows the month's total, spending and what was saved, plus a by-source breakdown.
      Not yet: "import typical month", expected-income plan.

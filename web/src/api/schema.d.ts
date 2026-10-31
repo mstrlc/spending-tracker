@@ -337,6 +337,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The household's audit log, newest first: every create, update and delete, and who made it. Narrow it to one record with entity and entityId. */
+        get: operations["listActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Cash flow, typical month, spending anomalies, subscriptions and top lists for one month. */
+        get: operations["getOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -625,6 +659,190 @@ export interface components {
              * Format: int32
              */
             version?: null | number;
+        };
+        /**
+         * ActivityEntity
+         * @enum {string}
+         */
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income";
+        /** ActivityEntry */
+        ActivityEntry: {
+            /**
+             * Long
+             * Format: int64
+             */
+            id: number;
+            /** String */
+            at: string;
+            /** String */
+            actorUserId: null | string;
+            /** String */
+            actorName: null | string;
+            entity: components["schemas"]["ActivityEntity"];
+            /** String */
+            entityId: string;
+            action: components["schemas"]["ActivityAction"];
+            /** String */
+            label: string;
+            /** ArrayList<FieldChange> */
+            changes: components["schemas"]["FieldChange"][];
+        };
+        /**
+         * ActivityAction
+         * @enum {string}
+         */
+        ActivityAction: "create" | "update" | "delete";
+        /** FieldChange */
+        FieldChange: {
+            /** String */
+            field: string;
+            /** String */
+            before: null | string;
+            /** String */
+            after: null | string;
+        };
+        /** ActivityPage */
+        ActivityPage: {
+            /** ArrayList<ActivityEntry> */
+            entries: components["schemas"]["ActivityEntry"][];
+            /**
+             * Long
+             * Format: int64
+             */
+            nextBefore: null | number;
+        };
+        /** MonthFlow */
+        MonthFlow: {
+            /** String */
+            month: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            incomeMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            spendingMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            investedMinor: number;
+        };
+        /** TypicalMonth */
+        TypicalMonth: {
+            /**
+             * Long
+             * Format: int64
+             */
+            incomeMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            spendingMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            investedMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            monthCount: number;
+            /** ArrayList<String> */
+            outlierMonths: string[];
+        };
+        /** CategoryAnomaly */
+        CategoryAnomaly: {
+            /** String */
+            categoryId: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            spentMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            baselineMinor: number;
+            /**
+             * Double
+             * Format: double
+             */
+            ratio: number;
+        };
+        /** Subscription */
+        Subscription: {
+            /** String */
+            merchant: string;
+            /** String */
+            categoryId: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            monthlyMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            monthsSeen: number;
+        };
+        /** CategoryTotal */
+        CategoryTotal: {
+            /** String */
+            categoryId: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+        };
+        /** NamedTotal */
+        NamedTotal: {
+            /** String */
+            name: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+        };
+        /** Overview */
+        Overview: {
+            /** String */
+            month: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            daysElapsed: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            daysInMonth: number;
+            thisMonth: components["schemas"]["MonthFlow"];
+            typicalMonth: null | components["schemas"]["TypicalMonth"];
+            /** ArrayList<MonthFlow> */
+            history: components["schemas"]["MonthFlow"][];
+            /** String */
+            anomalyMonth: string;
+            /** ArrayList<CategoryAnomaly> */
+            anomalies: components["schemas"]["CategoryAnomaly"][];
+            /** ArrayList<Subscription> */
+            subscriptions: components["schemas"]["Subscription"][];
+            /** ArrayList<CategoryTotal> */
+            topCategories: components["schemas"]["CategoryTotal"][];
+            /** ArrayList<NamedTotal> */
+            topMerchants: components["schemas"]["NamedTotal"][];
+            /** ArrayList<NamedTotal> */
+            topSources: components["schemas"]["NamedTotal"][];
         };
     };
     responses: never;
@@ -1776,6 +1994,90 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiError"];
                 };
+            };
+        };
+    };
+    listActivity: {
+        parameters: {
+            query?: {
+                /** @description Only entries older than this id (nextBefore of the previous page) */
+                before?: number;
+                /** @description Page size, 1–200 (default 50) */
+                limit?: number;
+                entity?: components["schemas"]["ActivityEntity"];
+                entityId?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getOverview: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM; defaults to the month of today */
+                month?: string;
+                /** @description The caller's date, YYYY-MM-DD, so a month in progress is measured in their time zone; defaults to the server's */
+                today?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Overview"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

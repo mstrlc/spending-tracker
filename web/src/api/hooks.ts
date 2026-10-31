@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import { ApiFailure, unwrap } from "./errors";
-import type { AccountInput, CategoryInput, ExpenseInput, Household, HouseholdRole, IncomeInput } from "./types";
+import type { AccountInput, ActivityEntity, CategoryInput, ExpenseInput, Household, HouseholdRole, IncomeInput } from "./types";
 
 export const keys = {
   me: ["me"] as const,
@@ -16,6 +16,8 @@ export const keys = {
     from === undefined ? (["households", id, "expenses"] as const) : (["households", id, "expenses", from, to] as const),
   income: (id: string, from?: string, to?: string) =>
     from === undefined ? (["households", id, "income"] as const) : (["households", id, "income", from, to] as const),
+  activity: (id: string, entity?: ActivityEntity) => ["households", id, "activity", entity ?? "all"] as const,
+  overview: (id: string, month: string) => ["households", id, "overview", month] as const,
 };
 
 // ---- Auth ----
@@ -337,5 +339,35 @@ export function useDeleteIncome(householdId: string) {
         }),
       ),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.income(householdId) }),
+  });
+}
+
+// ---- Activity and overview ----
+// Both are read-only views over everything else, so mutations don't invalidate them; they refetch on every visit.
+
+/** The household's audit log, newest first, a page at a time. */
+export function useActivity(householdId: string, entity?: ActivityEntity) {
+  return useInfiniteQuery({
+    queryKey: keys.activity(householdId, entity),
+    queryFn: async ({ pageParam }) =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/activity", {
+          params: { path: { householdId }, query: { entity, before: pageParam } },
+        }),
+      ),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (page) => page.nextBefore ?? undefined,
+  });
+}
+
+export function useOverview(householdId: string, month: string, today: string) {
+  return useQuery({
+    queryKey: keys.overview(householdId, month),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/overview", {
+          params: { path: { householdId }, query: { month, today } },
+        }),
+      ),
   });
 }

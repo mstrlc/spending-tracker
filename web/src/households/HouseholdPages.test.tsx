@@ -29,7 +29,7 @@ test("creating a household opens it, even though the cached household list was e
       <Route path="/" element={<HomeRedirect />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/h/:householdId" element={<HouseholdLayout />}>
-        <Route path="expenses" element={<p>Expenses page</p>} />
+        <Route path="overview" element={<p>Overview page</p>} />
       </Route>
     </Routes>,
     "/",
@@ -38,6 +38,6 @@ test("creating a household opens it, even though the cached household list was e
   fireEvent.change(await screen.findByLabelText("Household name"), { target: { value: "Home" } });
   fireEvent.click(screen.getByRole("button", { name: "Create household" }));
 
-  expect(await screen.findByText("Expenses page")).toBeTruthy();
+  expect(await screen.findByText("Overview page")).toBeTruthy();
   expect(screen.queryByText("Set up a household")).toBeNull();
 });

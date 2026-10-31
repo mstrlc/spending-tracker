@@ -15,7 +15,7 @@ function renderInvite() {
   renderWithProviders(
     <Routes>
       <Route path="/invite/:token" element={<InvitePage />} />
-      <Route path="/h/:householdId/expenses" element={<p>Expenses page</p>} />
+      <Route path="/h/:householdId/overview" element={<p>Overview page</p>} />
     </Routes>,
     "/invite/tok",
   );
@@ -43,7 +43,7 @@ test("the invited user joins and lands in the household", async () => {
 
   fireEvent.click(await screen.findByRole("button", { name: "Join Home" }));
 
-  expect(await screen.findByText("Expenses page")).toBeTruthy();
+  expect(await screen.findByText("Overview page")).toBeTruthy();
 });
 
 test("someone logged in with another address is told to switch accounts", async () => {

@@ -1,6 +1,7 @@
 package dev.spendingtracker.server.household
 
 import dev.spendingtracker.server.account.accountRoutes
+import dev.spendingtracker.server.activity.activityRoutes
 import dev.spendingtracker.server.auth.userId
 import dev.spendingtracker.server.category.categoryRoutes
 import dev.spendingtracker.server.category.seedDefaultCategories
@@ -15,6 +16,7 @@ import dev.spendingtracker.server.db.Users
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.expense.expenseRoutes
 import dev.spendingtracker.server.income.incomeRoutes
+import dev.spendingtracker.server.overview.overviewRoutes
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.CreateHouseholdRequest
 import dev.spendingtracker.shared.api.Household
@@ -154,6 +156,8 @@ fun Route.householdRoutes() = route("/households") {
         categoryRoutes()
         expenseRoutes()
         incomeRoutes()
+        activityRoutes()
+        overviewRoutes()
     }
 }
 

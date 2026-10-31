@@ -2,9 +2,11 @@ package dev.spendingtracker.server
 
 import dev.spendingtracker.server.auth.AUTH_RATE_LIMIT
 import dev.spendingtracker.server.auth.SESSION_AUTH
+import dev.spendingtracker.server.auth.UserPrincipal
 import dev.spendingtracker.server.auth.authRoutes
 import dev.spendingtracker.server.auth.sessionCookie
 import dev.spendingtracker.server.common.apiErrors
+import dev.spendingtracker.server.db.AuditActor
 import dev.spendingtracker.server.db.connectDatabase
 import dev.spendingtracker.server.household.householdRoutes
 import dev.spendingtracker.server.household.inviteLinkRoutes
@@ -16,9 +18,11 @@ import io.github.smiley4.schemakenerator.swagger.data.RefType
 import io.github.smiley4.schemakenerator.swagger.data.TitleType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.principal
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.calllogging.CallLogging
@@ -29,6 +33,7 @@ import io.ktor.server.plugins.ratelimit.RateLimitRouteSelector
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import javax.sql.DataSource
 import kotlin.time.Duration.Companion.minutes
@@ -71,6 +76,10 @@ fun Application.module(dataSource: DataSource, secureCookies: Boolean = false) {
 
     routing {
         route("/api") {
+            intercept(ApplicationCallPipeline.Call) {
+                val call = context
+                withContext(AuditActor { call.principal<UserPrincipal>()?.userId }) { proceed() }
+            }
             route("/openapi.json") { openApi() }
             route("/docs") { swaggerUI("/api/openapi.json") }
             healthRoutes(dataSource)

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type FormEvent } from "react";
 import { Link, Navigate, NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useCreateHousehold, useHouseholds, useLogout, useMe } from "../api/hooks";
 import type { Household } from "../api/types";
-import { Inbound, LogOut, Receipt, Tag, Users, Wallet } from "../icons";
+import { Gauge, History, Inbound, LogOut, Receipt, Tag, Users, Wallet } from "../icons";
 import { ErrorText, Field, FormError, Loading } from "../ui";
 
 const CURRENCIES = ["CZK", "EUR", "USD", "GBP", "PLN", "CHF", "SEK", "NOK", "DKK", "HUF"];
@@ -22,7 +22,7 @@ export function HomeRedirect() {
   if (households.isPending) return <Loading />;
   if (households.isError) return <ErrorText error={households.error} />;
   const first = households.data[0];
-  return <Navigate to={first ? `/h/${first.id}/expenses` : "/onboarding"} replace />;
+  return <Navigate to={first ? `/h/${first.id}/overview` : "/onboarding"} replace />;
 }
 
 export function OnboardingPage() {
@@ -35,7 +35,7 @@ export function OnboardingPage() {
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    create.mutate({ name, currency }, { onSuccess: (h) => navigate(`/h/${h.id}/expenses`, { replace: true }) });
+    create.mutate({ name, currency }, { onSuccess: (h) => navigate(`/h/${h.id}/overview`, { replace: true }) });
   }
 
   return (
@@ -73,11 +73,13 @@ export function OnboardingPage() {
 const NEW_HOUSEHOLD = "__new";
 
 const SECTIONS = [
+  { to: "overview", label: "Overview", icon: <Gauge /> },
   { to: "expenses", label: "Expenses", icon: <Receipt /> },
   { to: "income", label: "Income", icon: <Inbound /> },
   { to: "accounts", label: "Accounts", icon: <Wallet /> },
   { to: "categories", label: "Categories", icon: <Tag /> },
   { to: "members", label: "Members", icon: <Users /> },
+  { to: "activity", label: "Activity", icon: <History /> },
 ];
 
 export function HouseholdLayout() {
@@ -97,7 +99,7 @@ export function HouseholdLayout() {
       className="household-switcher"
       aria-label="Household"
       value={household.id}
-      onChange={(e) => navigate(e.target.value === NEW_HOUSEHOLD ? "/onboarding" : `/h/${e.target.value}/expenses`)}
+      onChange={(e) => navigate(e.target.value === NEW_HOUSEHOLD ? "/onboarding" : `/h/${e.target.value}/overview`)}
     >
       {households.data.map((h) => (
         <option key={h.id} value={h.id}>
