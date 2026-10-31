@@ -1,0 +1,26 @@
+# new-spending-tracker: architecture and plan
+
+A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scratch. The old app is a reference for domain rules only (see `FUNCTIONALITY_MAP.md`); its code is not ported.
+
+## Decisions (2026-10-31)
+
+| Area | Decision |
+|---|---|
+| Environment | Everything runs locally for now; no hosting yet |
+| Backend | Kotlin, Ktor |
+| Shared code | KMP `shared` module for server + future mobile apps (not used by web) |
+| Database | Postgres 17 via Docker Compose, Flyway migrations, Exposed |
+| Tenancy | *Household* is the tenant; users join one or more households via invites; every domain row carries `household_id` |
+| Auth | Own email + password (argon2), server-side sessions in httpOnly cookies; OAuth / magic link later |
+| API contract | Ktor publishes OpenAPI; web generates TS types + client with `openapi-typescript` |
+| Web frontend | TypeScript 6 (TS 7 lacks the JS API openapi-typescript needs), React, Vite, TanStack Query, React Router, pnpm |
+| Money | Integer minor units + currency code (household default currency) |
+| Repo layout | Monorepo: `server/`, `shared/`, `web/`; Gradle Kotlin DSL |
+| Tests | Ktor `testApplication` + Testcontainers Postgres; Vitest for web |
+
+## Roadmap
+
+1. ~~**Scaffold**~~ (done 2026-10-31): git repo, Gradle multi-module, Docker Compose Postgres, Ktor health endpoint, Vite app, OpenAPI type generation wired end to end.
+2. **MVP slice**: sign up / log in, create household, accounts, expenses with categories.
+3. **Next**: income, inbox (bank import), budget.
+4. **Later**: net worth, forecast, goals, wishlist, trips, MCP server, mobile apps, hosting.
