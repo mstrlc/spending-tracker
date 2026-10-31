@@ -19,6 +19,9 @@ pnpm --dir web install
 pnpm --dir web dev                 # web on http://localhost:5173, proxies /api to the server
 ```
 
+Local demo account (created by hand during development, lives only in your local database):
+`demo@example.test` / `demo-password-123`. Or sign up with any email at http://localhost:5173/signup.
+
 After changing API endpoints, with the server running:
 
 ```bash

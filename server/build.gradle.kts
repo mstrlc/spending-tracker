@@ -15,6 +15,7 @@ kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)
         freeCompilerArgs.add("-Xjdk-release=21")
+        optIn.add("kotlin.uuid.ExperimentalUuidApi")
     }
 }
 
@@ -30,6 +31,8 @@ dependencies {
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.status.pages)
+    implementation(libs.ktor.server.rate.limit)
+    implementation(libs.ktor.server.auth)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.ktor.openapi)
     implementation(libs.ktor.swagger.ui)
@@ -38,6 +41,8 @@ dependencies {
 
     implementation(libs.exposed.core)
     implementation(libs.exposed.jdbc)
+    implementation(libs.exposed.kotlin.datetime)
+    implementation(libs.argon2)
     implementation(libs.flyway.core)
     implementation(libs.flyway.postgresql)
     implementation(libs.postgresql)

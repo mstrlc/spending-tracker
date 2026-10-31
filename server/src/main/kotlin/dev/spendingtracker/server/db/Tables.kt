@@ -1,0 +1,81 @@
+package dev.spendingtracker.server.db
+
+import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.datetime.CurrentTimestamp
+import org.jetbrains.exposed.v1.datetime.date
+import org.jetbrains.exposed.v1.datetime.timestamp
+
+// Exposed mappings of the Flyway schema (db/migration). Flyway owns the DDL; these only describe it.
+
+object Users : Table("users") {
+    val id = uuid("id")
+    val email = text("email")
+    val passwordHash = text("password_hash")
+    val displayName = text("display_name")
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Sessions : Table("sessions") {
+    val tokenHash = binary("token_hash")
+    val userId = uuid("user_id")
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    val expiresAt = timestamp("expires_at")
+    override val primaryKey = PrimaryKey(tokenHash)
+}
+
+object Households : Table("households") {
+    val id = uuid("id")
+    val name = text("name")
+    val currency = text("currency")
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object HouseholdMembers : Table("household_members") {
+    val householdId = uuid("household_id")
+    val userId = uuid("user_id")
+    val role = text("role")
+    override val primaryKey = PrimaryKey(householdId, userId)
+}
+
+object Accounts : Table("accounts") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val name = text("name")
+    val ownerUserId = uuid("owner_user_id").nullable()
+    val status = text("status")
+    val version = integer("version")
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Categories : Table("categories") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val parentId = uuid("parent_id").nullable()
+    val name = text("name")
+    val kind = text("kind")
+    val archived = bool("archived")
+    val sortOrder = integer("sort_order")
+    val version = integer("version")
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Expenses : Table("expenses") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val date = date("date")
+    val amountMinor = long("amount_minor")
+    val merchant = text("merchant")
+    val categoryId = uuid("category_id").nullable()
+    val accountId = uuid("account_id").nullable()
+    val paidByUserId = uuid("paid_by_user_id").nullable()
+    val notes = text("notes")
+    val externalRef = text("external_ref").nullable()
+    val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}

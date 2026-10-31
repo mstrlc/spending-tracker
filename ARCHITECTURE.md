@@ -18,9 +18,18 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
 | Repo layout | Monorepo: `server/`, `shared/`, `web/`; Gradle Kotlin DSL |
 | Tests | Ktor `testApplication` + Testcontainers Postgres; Vitest for web |
 
+## Conventions
+
+- Every domain row has `household_id`; cross-row references are composite `(household_id, id)` foreign keys.
+- Routes under `/api/households/{householdId}` go through the `HouseholdAccess` plugin: non-members get 404.
+- Editable rows carry `version`; updates send it in the body, deletes as `?version=`. A stale version is a 409 `version_conflict`.
+- Rows still referenced can't be deleted (409 `*_in_use`); close accounts and archive categories instead.
+- API request/response models live in `shared` (`dev.spendingtracker.shared.api`) so mobile clients can reuse them.
+
 ## Roadmap
 
 1. ~~**Scaffold**~~ (done 2026-10-31): git repo, Gradle multi-module, Docker Compose Postgres, Ktor health endpoint, Vite app, OpenAPI type generation wired end to end.
-2. **MVP slice**: sign up / log in, create household, accounts, expenses with categories.
+2. ~~**MVP slice**~~ (done 2026-10-31): sign up / log in, create household, accounts, expenses with categories.
+   Not yet: inviting members to a household, audit log, undo after save/delete, email verification, password reset.
 3. **Next**: income, inbox (bank import), budget.
 4. **Later**: net worth, forecast, goals, wishlist, trips, MCP server, mobile apps, hosting.

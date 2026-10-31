@@ -3,6 +3,8 @@ package dev.spendingtracker.server
 data class Config(
     val port: Int,
     val db: DbConfig,
+    /** Marks the session cookie Secure. Off for local http; on anywhere served over https. */
+    val secureCookies: Boolean,
 ) {
     companion object {
         fun fromEnv(env: Map<String, String> = System.getenv()) = Config(
@@ -12,6 +14,7 @@ data class Config(
                 user = env["DB_USER"] ?: "spending_tracker",
                 password = env["DB_PASSWORD"] ?: "spending_tracker",
             ),
+            secureCookies = env["SECURE_COOKIES"]?.toBoolean() ?: false,
         )
     }
 }
