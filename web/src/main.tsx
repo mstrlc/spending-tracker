@@ -8,6 +8,8 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { CategoriesPage } from "./categories/CategoriesPage";
 import { ExpensesPage } from "./expenses/ExpensesPage";
 import { HomeRedirect, HouseholdLayout, OnboardingPage } from "./households/HouseholdPages";
+import { InvitePage } from "./households/InvitePage";
+import { MembersPage } from "./households/MembersPage";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "./styles.css";
@@ -23,6 +25,7 @@ createRoot(document.getElementById("root")!).render(
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/invite/:token" element={<InvitePage />} />
           <Route element={<RequireAuth />}>
             <Route index element={<HomeRedirect />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
@@ -31,6 +34,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="expenses" element={<ExpensesPage />} />
               <Route path="accounts" element={<AccountsPage />} />
               <Route path="categories" element={<CategoriesPage />} />
+              <Route path="members" element={<MembersPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

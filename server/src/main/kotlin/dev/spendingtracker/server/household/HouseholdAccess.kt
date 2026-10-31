@@ -1,6 +1,7 @@
 package dev.spendingtracker.server.household
 
 import dev.spendingtracker.server.auth.UserPrincipal
+import dev.spendingtracker.server.common.forbidden
 import dev.spendingtracker.server.common.notFound
 import dev.spendingtracker.server.db.HouseholdMembers
 import dev.spendingtracker.server.db.Households
@@ -47,3 +48,10 @@ val HouseholdAccess = createRouteScopedPlugin("HouseholdAccess") {
 }
 
 fun roleFrom(value: String) = if (value == "owner") HouseholdRole.OWNER else HouseholdRole.MEMBER
+
+/** Only owners may manage membership; other members get 403. */
+fun ApplicationCall.requireOwner() {
+    if (household.role != HouseholdRole.OWNER) throw forbidden("owner_only", "Only household owners can do this")
+}
+
+fun HouseholdRole.dbValue() = if (this == HouseholdRole.OWNER) "owner" else "member"

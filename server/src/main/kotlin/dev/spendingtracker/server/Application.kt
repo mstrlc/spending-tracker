@@ -7,6 +7,7 @@ import dev.spendingtracker.server.auth.sessionCookie
 import dev.spendingtracker.server.common.apiErrors
 import dev.spendingtracker.server.db.connectDatabase
 import dev.spendingtracker.server.household.householdRoutes
+import dev.spendingtracker.server.household.inviteLinkRoutes
 import io.github.smiley4.ktoropenapi.OpenApi
 import io.github.smiley4.ktoropenapi.config.SchemaGenerator
 import io.github.smiley4.ktoropenapi.openApi
@@ -74,6 +75,7 @@ fun Application.module(dataSource: DataSource, secureCookies: Boolean = false) {
             route("/docs") { swaggerUI("/api/openapi.json") }
             healthRoutes(dataSource)
             authRoutes(secureCookies)
+            inviteLinkRoutes()
             authenticate(SESSION_AUTH) {
                 householdRoutes()
             }

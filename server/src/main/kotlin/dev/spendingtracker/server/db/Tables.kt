@@ -79,3 +79,17 @@ object Expenses : Table("expenses") {
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
 }
+
+object HouseholdInvites : Table("household_invites") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val tokenHash = binary("token_hash")
+    val email = text("email")
+    val role = text("role")
+    val invitedBy = uuid("invited_by").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    val expiresAt = timestamp("expires_at")
+    val acceptedAt = timestamp("accepted_at").nullable()
+    val acceptedBy = uuid("accepted_by").nullable()
+    override val primaryKey = PrimaryKey(id)
+}

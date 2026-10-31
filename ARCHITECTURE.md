@@ -30,6 +30,7 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
 
 1. ~~**Scaffold**~~ (done 2026-10-31): git repo, Gradle multi-module, Docker Compose Postgres, Ktor health endpoint, Vite app, OpenAPI type generation wired end to end.
 2. ~~**MVP slice**~~ (done 2026-10-31): sign up / log in, create household, accounts, expenses with categories.
-   Not yet: inviting members to a household, audit log, undo after save/delete, email verification, password reset.
+   Not yet: audit log, undo after save/delete, email verification, password reset.
+   - ~~**Household invites**~~ (done 2026-10-31): owners create an email-bound, single-use invite link (7 days); there's no outgoing email yet, so the owner shares the link. Members can leave, owners can remove members, the last owner can't be removed.
 3. **Next**: income, inbox (bank import), budget.
 4. **Later**: net worth, forecast, goals, wishlist, trips, MCP server, mobile apps, hosting.

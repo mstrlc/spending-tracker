@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import { ApiFailure, unwrap } from "./errors";
-import type { AccountInput, CategoryInput, ExpenseInput, Household } from "./types";
+import type { AccountInput, CategoryInput, ExpenseInput, Household, HouseholdRole } from "./types";
 
 export const keys = {
   me: ["me"] as const,
   households: ["households"] as const,
   household: (id: string) => ["households", id] as const,
   members: (id: string) => ["households", id, "members"] as const,
+  invites: (id: string) => ["households", id, "invites"] as const,
+  invitePreview: (token: string) => ["invite", token] as const,
   accounts: (id: string) => ["households", id, "accounts"] as const,
   categories: (id: string) => ["households", id, "categories"] as const,
   expenses: (id: string, from?: string, to?: string) =>
@@ -97,6 +99,78 @@ export function useMembers(householdId: string) {
     queryKey: keys.members(householdId),
     queryFn: async () =>
       unwrap(await api.GET("/api/households/{householdId}/members", { params: { path: { householdId } } })),
+  });
+}
+
+/** Removes a member; with leaving, the current user leaves and the household drops out of their list. */
+export function useRemoveMember(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId }: { userId: string; leaving: boolean }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/members/{userId}", {
+          params: { path: { householdId, userId } },
+        }),
+      ),
+    onSuccess: (_, { leaving }) => {
+      if (!leaving) return qc.invalidateQueries({ queryKey: keys.members(householdId) });
+      qc.setQueryData<Household[]>(keys.households, (old) => old?.filter((h) => h.id !== householdId));
+      qc.removeQueries({ queryKey: keys.household(householdId) });
+    },
+  });
+}
+
+// ---- Invites ----
+
+export function useInvites(householdId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.invites(householdId),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/households/{householdId}/invites", { params: { path: { householdId } } })),
+    enabled,
+  });
+}
+
+export function useCreateInvite(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { email: string; role: HouseholdRole }) =>
+      unwrap(await api.POST("/api/households/{householdId}/invites", { params: { path: { householdId } }, body })),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.invites(householdId) }),
+  });
+}
+
+export function useRevokeInvite(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (inviteId: string) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/invites/{inviteId}", {
+          params: { path: { householdId, inviteId } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.invites(householdId) }),
+  });
+}
+
+/** What an invite link points at. Works without a session. */
+export function useInvitePreview(token: string) {
+  return useQuery({
+    queryKey: keys.invitePreview(token),
+    queryFn: async () => unwrap(await api.GET("/api/invites/{token}", { params: { path: { token } } })),
+    retry: false,
+  });
+}
+
+export function useAcceptInvite(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => unwrap(await api.POST("/api/invites/{token}/accept", { params: { path: { token } } })),
+    onSuccess: (household) => {
+      // As with creating a household: the caller navigates straight to it, so the list must contain it now.
+      qc.setQueryData<Household[]>(keys.households, (old) => [...(old ?? []).filter((h) => h.id !== household.id), household]);
+      return qc.invalidateQueries({ queryKey: keys.households });
+    },
   });
 }
 

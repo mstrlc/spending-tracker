@@ -172,7 +172,8 @@ a {
 
 input,
 select,
-button {
+button,
+.button {
   font: inherit;
 }
 
@@ -202,7 +203,8 @@ input[aria-invalid="true"] {
   border-color: var(--danger);
 }
 
-button {
+button,
+.button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -233,12 +235,14 @@ kbd {
   font: 500 11px/1 var(--font-mono);
 }
 
-button:hover {
+button:hover,
+.button:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }
 
-button:active:not(:disabled) {
+button:active:not(:disabled),
+.button:active {
   transform: scale(0.97);
 }
 
@@ -247,17 +251,25 @@ button:disabled {
   cursor: default;
 }
 
-button.block {
+/* A link that navigates but looks like a button. */
+.button {
+  text-decoration: none;
+}
+
+button.block,
+.button.block {
   width: 100%;
 }
 
-button.secondary {
+button.secondary,
+.button.secondary {
   background: var(--surface);
   color: var(--text);
   border-color: var(--border-strong);
 }
 
-button.secondary:hover {
+button.secondary:hover,
+.button.secondary:hover {
   background: var(--surface-sunken);
 }
 
@@ -858,6 +870,37 @@ td.num {
 
 .toolbar-form .field {
   width: 220px;
+}
+
+/* ---- Members ---- */
+
+.section-title {
+  padding: 16px 16px 4px;
+  font-size: 16px;
+}
+
+.invite-link {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 640px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.invite-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.invite-link-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
 }
 
 /* ---- Categories ---- */

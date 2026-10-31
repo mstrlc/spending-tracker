@@ -5,6 +5,9 @@ import dev.spendingtracker.server.auth.userId
 import dev.spendingtracker.server.category.categoryRoutes
 import dev.spendingtracker.server.category.seedDefaultCategories
 import dev.spendingtracker.server.common.badRequest
+import dev.spendingtracker.server.common.conflict
+import dev.spendingtracker.server.common.notFound
+import dev.spendingtracker.server.common.pathId
 import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.db.HouseholdMembers
 import dev.spendingtracker.server.db.Households
@@ -16,6 +19,7 @@ import dev.spendingtracker.shared.api.CreateHouseholdRequest
 import dev.spendingtracker.shared.api.Household
 import dev.spendingtracker.shared.api.HouseholdRole
 import dev.spendingtracker.shared.api.Member
+import io.github.smiley4.ktoropenapi.delete
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
 import io.github.smiley4.ktoropenapi.route
@@ -28,6 +32,7 @@ import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import java.util.Currency
@@ -114,6 +119,36 @@ fun Route.householdRoutes() = route("/households") {
             call.respond(members)
         }
 
+        delete("/members/{userId}", {
+            operationId = "removeMember"
+            description = "Owners can remove anyone; members can remove only themselves (leave). " +
+                "The last owner can't be removed. Their accounts and expenses become shared."
+            request { pathParameter<String>("userId") }
+            response {
+                code(HttpStatusCode.NoContent) {}
+                code(HttpStatusCode.Forbidden) { body<ApiError>() }
+                code(HttpStatusCode.NotFound) { body<ApiError>() }
+                code(HttpStatusCode.Conflict) { body<ApiError>() }
+            }
+        }) {
+            val target = call.pathId("userId", "Member")
+            if (target != call.userId) call.requireOwner()
+            val householdId = call.household.id
+            dbQuery {
+                val members = HouseholdMembers.selectAll().where { HouseholdMembers.householdId eq householdId }.toList()
+                val targetRow = members.find { it[HouseholdMembers.userId] == target } ?: throw notFound("Member")
+                val owners = members.count { it[HouseholdMembers.role] == "owner" }
+                if (targetRow[HouseholdMembers.role] == "owner" && owners == 1) {
+                    throw conflict("last_owner", "A household needs at least one owner")
+                }
+                HouseholdMembers.deleteWhere {
+                    (HouseholdMembers.householdId eq householdId) and (userId eq target)
+                }
+            }
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        householdInviteRoutes()
         accountRoutes()
         categoryRoutes()
         expenseRoutes()

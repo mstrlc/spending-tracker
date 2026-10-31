@@ -3,9 +3,16 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { useLogin, useMe, useSignup } from "../api/hooks";
 import { Field, FormError } from "../ui";
 
+/** Router state the auth pages accept: where to go afterwards, and an email to prefill (from an invite). */
+type AuthState = { from?: string; email?: string } | null;
+
+function useAuthState(): AuthState {
+  return useLocation().state as AuthState;
+}
+
 function useAfterAuth() {
   const navigate = useNavigate();
-  const from = (useLocation().state as { from?: string } | null)?.from;
+  const from = useAuthState()?.from;
   return () => navigate(from ?? "/", { replace: true });
 }
 
@@ -13,10 +20,11 @@ export function LoginPage() {
   const me = useMe();
   const login = useLogin();
   const done = useAfterAuth();
-  const [email, setEmail] = useState("");
+  const state = useAuthState();
+  const [email, setEmail] = useState(state?.email ?? "");
   const [password, setPassword] = useState("");
 
-  if (me.data) return <Navigate to="/" replace />;
+  if (me.data) return <Navigate to={state?.from ?? "/"} replace />;
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -47,7 +55,9 @@ export function LoginPage() {
         </button>
       </form>
       <p className="auth-footer">
-        No account yet? <Link to="/signup">Sign up</Link>
+        No account yet? <Link to="/signup" state={state}>
+          Sign up
+        </Link>
       </p>
       </div>
     </main>
@@ -58,11 +68,12 @@ export function SignupPage() {
   const me = useMe();
   const signup = useSignup();
   const done = useAfterAuth();
+  const state = useAuthState();
   const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(state?.email ?? "");
   const [password, setPassword] = useState("");
 
-  if (me.data) return <Navigate to="/" replace />;
+  if (me.data) return <Navigate to={state?.from ?? "/"} replace />;
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -97,7 +108,9 @@ export function SignupPage() {
         </button>
       </form>
       <p className="auth-footer">
-        Already have an account? <Link to="/login">Log in</Link>
+        Already have an account? <Link to="/login" state={state}>
+          Log in
+        </Link>
       </p>
       </div>
     </main>

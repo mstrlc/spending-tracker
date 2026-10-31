@@ -111,7 +111,7 @@ fun Route.authRoutes(secureCookies: Boolean) = route("/auth") {
     }
 }
 
-private fun normalizeEmail(raw: String): String {
+internal fun normalizeEmail(raw: String): String {
     val email = raw.trim().lowercase()
     // Deliberately loose: real validation is a confirmation email (not built yet).
     if (email.length > 254 || !Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(email)) {

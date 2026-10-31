@@ -65,6 +65,14 @@ export const Tag = () => (
   </Icon>
 );
 
+export const Users = () => (
+  <Icon>
+    <circle cx="9" cy="8" r="3.25" />
+    <path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5" />
+    <path d="M15.5 4.9a3.25 3.25 0 010 6.2M17.5 14.4c1.9.6 3.1 2.2 3.5 4.6" />
+  </Icon>
+);
+
 export const LogOut = () => (
   <Icon>
     <path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11" />

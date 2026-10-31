@@ -10,44 +10,36 @@ import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
-import java.security.MessageDigest
-import java.security.SecureRandom
-import java.util.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-/**
- * Server-side sessions. The client holds a random token; the database stores only its SHA-256,
- * so a leaked database can't be used to log in.
- */
+/** Server-side sessions, keyed by a [Tokens] token held in a cookie. */
 object SessionStore {
     val LIFETIME = 30.days
     // Sessions used within this long of expiring are extended by a full lifetime.
     private val RENEW_WITHIN = 15.days
 
-    private val random = SecureRandom()
-
     data class Session(val userId: Uuid, val expiresAt: Instant)
 
     suspend fun create(userId: Uuid): String {
-        val token = ByteArray(32).also(random::nextBytes)
+        val (token, hash) = Tokens.generate()
         val now = Clock.System.now()
         dbQuery {
             Sessions.deleteWhere { (Sessions.userId eq userId) and (Sessions.expiresAt lessEq now) }
             Sessions.insert {
-                it[tokenHash] = sha256(token)
+                it[tokenHash] = hash
                 it[Sessions.userId] = userId
                 it[expiresAt] = now + LIFETIME
             }
         }
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(token)
+        return token
     }
 
     /** Returns the live session for [token], extending it when it is close to expiry. */
     suspend fun find(token: String): Session? {
-        val hash = decode(token)?.let(::sha256) ?: return null
+        val hash = Tokens.hash(token) ?: return null
         val now = Clock.System.now()
         return dbQuery {
             val row = Sessions.selectAll()
@@ -64,11 +56,7 @@ object SessionStore {
     }
 
     suspend fun delete(token: String) {
-        val hash = decode(token)?.let(::sha256) ?: return
+        val hash = Tokens.hash(token) ?: return
         dbQuery { Sessions.deleteWhere { tokenHash eq hash } }
     }
-
-    private fun decode(token: String): ByteArray? = runCatching { Base64.getUrlDecoder().decode(token) }.getOrNull()
-
-    private fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
 }

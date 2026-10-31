@@ -37,3 +37,5 @@ fun StatusPagesConfig.apiErrors() {
         call.respond(HttpStatusCode.InternalServerError, ApiError("internal_error"))
     }
 }
+
+fun forbidden(code: String, message: String? = null) = ApiException(HttpStatusCode.Forbidden, code, message)
