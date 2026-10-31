@@ -16,7 +16,18 @@ export function useMonthParam() {
 export function MonthTitle({ month, goTo }: { month: Month; goTo: (m: Month) => void }) {
   return (
     <span className="month-title">
-      <span>{formatMonth(month)}</span>
+      {/* Every month of the year sits in the same grid cell, all but this one hidden, so the title is as wide
+          as the longest name and the arrows stay put while paging through months. */}
+      <span className="month-name">
+        {Array.from({ length: 12 }, (_, i) => {
+          const m = `${month.slice(0, 4)}-${String(i + 1).padStart(2, "0")}`;
+          return (
+            <span key={m} aria-hidden={m !== month} className={m === month ? undefined : "month-name-sizer"}>
+              {formatMonth(m)}
+            </span>
+          );
+        })}
+      </span>
       <span className="month-nav">
         <button
           className="icon-button"

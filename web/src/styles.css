@@ -549,6 +549,20 @@ button.ghost.danger:focus-visible {
   white-space: nowrap;
 }
 
+.month-name {
+  display: inline-grid;
+  /* Equal-width digits, so the year changing doesn't nudge the arrows either. */
+  font-variant-numeric: tabular-nums;
+}
+
+.month-name > span {
+  grid-area: 1 / 1;
+}
+
+.month-name-sizer {
+  visibility: hidden;
+}
+
 .month-nav {
   display: inline-flex;
   border: 1px solid var(--border-strong);
