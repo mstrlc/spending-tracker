@@ -22,6 +22,17 @@ pnpm --dir web dev                 # web on http://localhost:5173, proxies /api 
 Local demo account (created by hand during development, lives only in your local database):
 `demo@example.test` / `demo-password-123`. Or sign up with any email at http://localhost:5173/signup.
 
+### Production build, all in Docker
+
+Only Docker needed. Builds the API and the web app and serves both on one origin through Caddy, against the same database as dev:
+
+```bash
+docker compose --profile app up -d --build --wait   # app on http://localhost:8000
+docker compose --profile app down                   # stop it (data stays in the pgdata volume)
+```
+
+Rerun the first command after pulling or changing code to rebuild.
+
 After changing API endpoints, with the server running:
 
 ```bash

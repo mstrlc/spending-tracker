@@ -15,5 +15,33 @@ services:
       timeout: 3s
       retries: 15
 
+  # The full app, production-built. Only started with --profile app; dev runs the API and web outside Docker.
+  api:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/spending_tracker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8080'"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  web:
+    profiles: [app]
+    build: web
+    ports:
+      - "8000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:

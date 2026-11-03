@@ -1,0 +1,9 @@
+.git
+.gradle
+.kotlin
+**/build
+**/node_modules
+web/dist
+design
+.claude
+.agents
