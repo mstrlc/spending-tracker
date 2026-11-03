@@ -100,3 +100,10 @@ export const History = () => (
     <path d="M12 7v5l3 2" />
   </Icon>
 );
+
+export const TrendUp = () => (
+  <Icon>
+    <path d="M3 17l6-6 4 4 8-8" />
+    <path d="M15 7h6v6" />
+  </Icon>
+);

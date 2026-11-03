@@ -4,7 +4,9 @@ import kotlinx.serialization.Serializable
 
 /**
  * The household at a glance for one month (YYYY-MM). Amounts are minor units of the household currency.
- * Spending is consumption only; investing is counted separately, as money set aside rather than spent.
+ * Spending is consumption only; investing is counted separately, as money set aside rather than spent:
+ * invested is what went into investment holdings (contributions less withdrawals), and expenses in investment
+ * categories, being the same money leaving an account, count as neither.
  */
 @Serializable
 data class Overview(

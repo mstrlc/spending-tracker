@@ -15,6 +15,13 @@ fun nonZeroAmount(amountMinor: Long, field: String = "amountMinor"): Long {
     return amountMinor
 }
 
+/** Checks an unsigned money amount, such as a value: zero or more, within [MAX_ABS_AMOUNT]. */
+fun nonNegativeAmount(amountMinor: Long, field: String): Long {
+    if (amountMinor < 0) throw badRequest("invalid_amount", "Amount can't be negative", field)
+    if (amountMinor > MAX_ABS_AMOUNT) throw badRequest("invalid_amount", "Amount is too large", field)
+    return amountMinor
+}
+
 /** Reads an optional YYYY-MM-DD query parameter. */
 fun RoutingCall.dateParam(name: String): LocalDate? =
     request.queryParameters[name]?.let {
