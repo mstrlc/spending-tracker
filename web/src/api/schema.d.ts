@@ -229,7 +229,7 @@ export interface paths {
         get?: never;
         put: operations["updateAccount"];
         post?: never;
-        /** @description Fails with 409 account_in_use while expenses or income reference the account; close it instead. */
+        /** @description Fails with 409 account_in_use while expenses, income or investment contributions reference the account; close it instead. */
         delete: operations["deleteAccount"];
         options?: never;
         head?: never;
@@ -337,6 +337,157 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/investments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Holdings by name, each with what was put in, what it's worth and the gain as of today. */
+        get: operations["listInvestments"];
+        put?: never;
+        post: operations["createInvestment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/investments/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What the holdings (or one of them) had put in and were worth at the end of each month since the first contribution, then today. */
+        get: operations["getInvestmentHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/investments/{investmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateInvestment"];
+        post?: never;
+        /** @description Deletes the holding with its contributions and valuations. */
+        delete: operations["deleteInvestment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/investments/{investmentId}/contributions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The holding's contributions, newest first. */
+        get: operations["listContributions"];
+        put?: never;
+        post: operations["createContribution"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/investments/{investmentId}/contributions/{contributionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateContribution"];
+        post?: never;
+        delete: operations["deleteContribution"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/investments/{investmentId}/valuations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The holding's valuations, newest first. */
+        get: operations["listValuations"];
+        put?: never;
+        /** @description Fails with 409 valuation_exists when the holding already has a valuation on that day. */
+        post: operations["createValuation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/investments/{investmentId}/valuations/{valuationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateValuation"];
+        post?: never;
+        delete: operations["deleteValuation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/investments/{investmentId}/fees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The holding's fees, newest first. */
+        get: operations["listFees"];
+        put?: never;
+        post: operations["createFee"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/investments/{investmentId}/fees/{feeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateFee"];
+        post?: never;
+        delete: operations["deleteFee"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/activity": {
         parameters: {
             query?: never;
@@ -363,6 +514,23 @@ export interface paths {
         };
         /** @description Cash flow, typical month, spending anomalies, subscriptions and top lists for one month. */
         get: operations["getOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/securities/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Stocks, ETFs and funds matching a name, ticker or ISIN, for a holding to follow. */
+        get: operations["searchSecurities"];
         put?: never;
         post?: never;
         delete?: never;
@@ -660,11 +828,248 @@ export interface components {
              */
             version?: null | number;
         };
+        /** Investment */
+        Investment: {
+            /** String */
+            id: string;
+            /** String */
+            name: string;
+            kind: components["schemas"]["InvestmentKind"];
+            /** String */
+            ownerUserId: null | string;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+            security: null | components["schemas"]["SecurityQuote"];
+            /**
+             * Double
+             * Format: double
+             */
+            shares: null | number;
+            /** Boolean */
+            marketValued: boolean;
+            /**
+             * Long
+             * Format: int64
+             */
+            contributedMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            valueMinor: number;
+            /** LocalDate */
+            valuedOn: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            gainMinor: number;
+            /** LocalDate */
+            firstContributedOn: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            feesMinor: number;
+        };
+        /**
+         * InvestmentKind
+         * @enum {string}
+         */
+        InvestmentKind: "fund" | "stock" | "bond" | "crypto" | "other";
+        /** SecurityQuote */
+        SecurityQuote: {
+            /** String */
+            symbol: string;
+            /** String */
+            name: string;
+            /** String */
+            exchange: string;
+            /** String */
+            currency: string;
+            /**
+             * Double
+             * Format: double
+             */
+            close: null | number;
+            /** LocalDate */
+            closeOn: null | string;
+        };
+        /** HistoryPoint */
+        HistoryPoint: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            contributedMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            valueMinor: number;
+        };
+        /** InvestmentHistory */
+        InvestmentHistory: {
+            /** ArrayList<HistoryPoint> */
+            points: components["schemas"]["HistoryPoint"][];
+        };
+        /** InvestmentInput */
+        InvestmentInput: {
+            /** String */
+            name: string;
+            kind?: components["schemas"]["InvestmentKind"];
+            /** String */
+            ownerUserId?: null | string;
+            /** String */
+            notes?: string;
+            /** String */
+            symbol?: null | string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
+        /** Contribution */
+        Contribution: {
+            /** String */
+            id: string;
+            /** String */
+            investmentId: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /**
+             * Double
+             * Format: double
+             */
+            quantity: null | number;
+            /** String */
+            accountId: null | string;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** ContributionInput */
+        ContributionInput: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /**
+             * Double
+             * Format: double
+             */
+            quantity?: null | number;
+            /** String */
+            accountId?: null | string;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
+        /** Valuation */
+        Valuation: {
+            /** String */
+            id: string;
+            /** String */
+            investmentId: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            valueMinor: number;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** ValuationInput */
+        ValuationInput: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            valueMinor: number;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
+        /** Fee */
+        Fee: {
+            /** String */
+            id: string;
+            /** String */
+            investmentId: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** FeeInput */
+        FeeInput: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
         /**
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "investment" | "investment_contribution" | "investment_valuation" | "investment_fee";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -843,6 +1248,17 @@ export interface components {
             topMerchants: components["schemas"]["NamedTotal"][];
             /** ArrayList<NamedTotal> */
             topSources: components["schemas"]["NamedTotal"][];
+        };
+        /** SecurityMatch */
+        SecurityMatch: {
+            /** String */
+            symbol: string;
+            /** String */
+            name: string;
+            /** String */
+            exchange: string;
+            /** String */
+            type: string;
         };
     };
     responses: never;
@@ -1997,6 +2413,695 @@ export interface operations {
             };
         };
     };
+    listInvestments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Investment"][];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createInvestment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InvestmentInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Investment"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getInvestmentHistory: {
+        parameters: {
+            query?: {
+                /** @description Only this holding */
+                investmentId?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestmentHistory"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateInvestment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InvestmentInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Investment"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteInvestment: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listContributions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contribution"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createContribution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ContributionInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contribution"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateContribution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+                contributionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ContributionInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contribution"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteContribution: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+                contributionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listValuations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Valuation"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createValuation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ValuationInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Valuation"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateValuation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+                valuationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ValuationInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Valuation"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteValuation: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+                valuationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listFees: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fee"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createFee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["FeeInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fee"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateFee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+                feeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["FeeInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fee"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFee: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+                feeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listActivity: {
         parameters: {
             query?: {
@@ -2078,6 +3183,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    searchSecurities: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityMatch"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
             };
         };
     };

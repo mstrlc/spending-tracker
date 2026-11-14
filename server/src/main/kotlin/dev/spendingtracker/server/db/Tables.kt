@@ -97,6 +97,91 @@ object Income : Table("income") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object Investments : Table("investments") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val name = text("name")
+    val kind = text("kind")
+    val ownerUserId = uuid("owner_user_id").nullable()
+    val notes = text("notes")
+    val symbol = text("symbol").nullable()
+    val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object InvestmentContributions : Table("investment_contributions") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val investmentId = uuid("investment_id")
+    val date = date("date")
+    val amountMinor = long("amount_minor")
+    val quantity = decimal("quantity", 30, 10).nullable()
+    val accountId = uuid("account_id").nullable()
+    val notes = text("notes")
+    val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object InvestmentValuations : Table("investment_valuations") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val investmentId = uuid("investment_id")
+    val date = date("date")
+    val valueMinor = long("value_minor")
+    val notes = text("notes")
+    val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object InvestmentFees : Table("investment_fees") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val investmentId = uuid("investment_id")
+    val date = date("date")
+    val amountMinor = long("amount_minor")
+    val notes = text("notes")
+    val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+// Market data (V7): shared by every household.
+
+object Securities : Table("securities") {
+    val symbol = text("symbol")
+    val name = text("name")
+    val exchange = text("exchange")
+    val currency = text("currency")
+    override val primaryKey = PrimaryKey(symbol)
+}
+
+object SecurityPrices : Table("security_prices") {
+    val symbol = text("symbol")
+    val date = date("date")
+    val close = decimal("close", 30, 10)
+    override val primaryKey = PrimaryKey(symbol, date)
+}
+
+object FxRates : Table("fx_rates") {
+    val currency = text("currency")
+    val date = date("date")
+    val czk = decimal("czk", 30, 10)
+    override val primaryKey = PrimaryKey(currency, date)
+}
+
+object MarketFetches : Table("market_fetches") {
+    val key = text("key")
+    val fetchedAt = timestamp("fetched_at")
+    override val primaryKey = PrimaryKey(key)
+}
+
 object HouseholdInvites : Table("household_invites") {
     val id = uuid("id")
     val householdId = uuid("household_id")

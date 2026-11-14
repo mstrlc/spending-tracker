@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ApiFailure, errorMessage } from "./api/errors";
 import { Close } from "./icons";
 
@@ -72,8 +73,11 @@ export function FormError({ error, fields }: { error: unknown; fields: string[] 
   return <ErrorText error={error} />;
 }
 
+/** Where the layout puts an open Sheet: a column beside the page that pushes it narrower. */
+export const SheetSlot = createContext<HTMLElement | null>(null);
+
 /**
- * A side sheet on a native modal <dialog>: focus stays inside, Esc and the backdrop close it.
+ * A side panel in the layout's sheet column, beside the page rather than over it. Esc and Close close it.
  * Children mount only while open, so forms start fresh each time; mark the field to focus with data-autofocus.
  */
 export function Sheet({
@@ -87,31 +91,31 @@ export function Sheet({
   title: string;
   children: ReactNode;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
+  const slot = useContext(SheetSlot);
+  const ref = useRef<HTMLElement>(null);
   const titleId = useId();
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) {
-      dialog.showModal();
-      // showModal focuses the first control (Close); move to the field the content marks instead.
-      dialog.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const panel = ref.current;
+    (panel?.querySelector<HTMLElement>("[data-autofocus]") ?? panel?.querySelector<HTMLElement>("button"))?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !e.defaultPrevented) closeRef.current();
     }
-    if (!open && dialog.open) dialog.close();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      // Hand focus back to what opened the sheet, unless the person has since moved on to something else.
+      if (panel?.contains(document.activeElement) || document.activeElement === document.body) opener?.focus();
+    };
   }, [open]);
 
-  return (
-    <dialog
-      ref={ref}
-      className="sheet"
-      aria-labelledby={titleId}
-      onClose={onClose}
-      onClick={(e) => {
-        // A click on the <dialog> itself (not its content) landed on the backdrop.
-        if (e.target === ref.current) onClose();
-      }}
-    >
+  if (!open || !slot) return null;
+  return createPortal(
+    <aside ref={ref} className="sheet" aria-labelledby={titleId}>
       <div className="sheet-body">
         <div className="sheet-header">
           <h2 id={titleId}>{title}</h2>
@@ -119,8 +123,9 @@ export function Sheet({
             <Close />
           </button>
         </div>
-        {open && children}
+        {children}
       </div>
-    </dialog>
+    </aside>,
+    slot,
   );
 }

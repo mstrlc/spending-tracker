@@ -5,8 +5,10 @@ import dev.spendingtracker.server.common.dateParam
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Income
+import dev.spendingtracker.server.db.InvestmentContributions
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
+import dev.spendingtracker.server.investment.Dated
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.Overview
 import io.github.smiley4.ktoropenapi.get
@@ -52,7 +54,7 @@ fun Route.overviewRoutes() = route("/overview") {
         // The longest look back: anomalies of the month before, against the 12 months before that.
         val windowStart = month.shift(-BASELINE_MONTHS - 1)
 
-        val (spends, earnings, firstMonth) = dbQuery {
+        val (flows, firstMonth) = dbQuery {
             val categories = Categories.selectAll().where { Categories.householdId eq householdId }.associateBy { it[Categories.id] }
             val spends = Expenses.selectAll()
                 .where { (Expenses.householdId eq householdId) and (Expenses.date.between(windowStart.firstDay, month.lastDay)) }
@@ -72,14 +74,23 @@ fun Route.overviewRoutes() = route("/overview") {
                 .where { (Income.householdId eq householdId) and (Income.date.between(windowStart.firstDay, month.lastDay)) }
                 .orderBy(Income.date to SortOrder.DESC)
                 .map { Earning(it[Income.date], it[Income.amountMinor], it[Income.sourceName]) }
+            val contributions = InvestmentContributions.selectAll()
+                .where {
+                    (InvestmentContributions.householdId eq householdId) and
+                        (InvestmentContributions.date.between(windowStart.firstDay, month.lastDay))
+                }
+                .map { Dated(it[InvestmentContributions.date], it[InvestmentContributions.amountMinor]) }
             // Where the ledger starts: months before it are unknown, not empty.
             val firstExpense = Expenses.select(Expenses.date.min()).where { Expenses.householdId eq householdId }.single()[Expenses.date.min()]
             val firstIncome = Income.select(Income.date.min()).where { Income.householdId eq householdId }.single()[Income.date.min()]
-            Triple(spends, earnings, listOfNotNull(firstExpense, firstIncome).minOrNull()?.yearMonth)
+            val firstContribution = InvestmentContributions.select(InvestmentContributions.date.min())
+                .where { InvestmentContributions.householdId eq householdId }.single()[InvestmentContributions.date.min()]
+            Flows(spends, earnings, contributions) to listOfNotNull(firstExpense, firstIncome, firstContribution).minOrNull()?.yearMonth
         }
+        val (spends, earnings, contributions) = flows
 
         val start = maxOf(firstMonth ?: month, month.shift(-(BASELINE_MONTHS - 1)))
-        val history = monthsBetween(minOf(start, month), month).map { monthFlow(it, spends, earnings) }
+        val history = monthsBetween(minOf(start, month), month).map { monthFlow(it, spends, earnings, contributions) }
         val complete = history.dropLast(1).takeLast(TYPICAL_WINDOW)
         val anomalyMonth = anomalyMonth(month, today)
         val overview = Overview(
@@ -99,3 +110,5 @@ fun Route.overviewRoutes() = route("/overview") {
         call.respond(overview)
     }
 }
+
+private data class Flows(val spends: List<Spend>, val earnings: List<Earning>, val contributions: List<Dated>)

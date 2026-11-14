@@ -2,6 +2,7 @@ package dev.spendingtracker.server
 
 import com.zaxxer.hikari.HikariDataSource
 import dev.spendingtracker.server.db.connectDatabase
+import dev.spendingtracker.server.market.MarketData
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.CreateHouseholdRequest
 import dev.spendingtracker.shared.api.Household
@@ -33,14 +34,14 @@ object TestDatabase {
     }
 
     fun reset() {
-        dataSource.connection.use { it.createStatement().execute("TRUNCATE users, households CASCADE") }
+        dataSource.connection.use { it.createStatement().execute("TRUNCATE users, households, securities, fx_rates, market_fetches CASCADE") }
     }
 }
 
-/** Runs [block] against a fresh app and empty database. */
-fun apiTest(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
+/** Runs [block] against a fresh app and empty database, with [market] standing in for the market-data providers. */
+fun apiTest(market: MarketData = FakeMarketData(), block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
     TestDatabase.reset()
-    application { module(TestDatabase.dataSource) }
+    application { module(TestDatabase.dataSource, marketData = market) }
     block()
 }
 

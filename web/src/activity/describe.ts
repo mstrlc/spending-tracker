@@ -13,12 +13,17 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   category: "category",
   expense: "expense",
   income: "income",
+  investment: "investment",
+  investment_contribution: "contribution to",
+  investment_valuation: "value of",
+  investment_fee: "fee on",
 };
 
 const LABELS: Record<string, string> = {
   name: "Name",
   date: "Date",
   amountMinor: "Amount",
+  valueMinor: "Worth",
   merchant: "Merchant",
   source: "Source",
   email: "Email",
@@ -47,7 +52,12 @@ export const fieldLabel = (field: string) => LABELS[field] ?? field;
  */
 export function describeAction(entry: ActivityEntry): [string, string, string] {
   const who = entry.actorName ?? "Someone";
-  const name = entry.label || `untitled ${NOUNS[entry.entity]}`;
+  // Contributions and values are labelled by their holding, which may be gone since.
+  const name =
+    entry.label ||
+    (entry.entity === "investment_contribution" || entry.entity === "investment_valuation" || entry.entity === "investment_fee"
+      ? "a deleted investment"
+      : `untitled ${NOUNS[entry.entity]}`);
   if (entry.entity === "member") {
     const self = entry.actorUserId !== null && entry.actorUserId === entry.entityId;
     if (entry.action === "create") return self ? ["", name, "joined"] : [`${who} added`, name, ""];
@@ -65,6 +75,7 @@ export function describeAction(entry: ActivityEntry): [string, string, string] {
 export function formatValue(field: string, value: string | null, lookups: Lookups): string {
   switch (field) {
     case "amountMinor":
+    case "valueMinor":
       return value === null ? "–" : formatMoney(Number(value), lookups.currency);
     case "categoryId":
     case "parentId":
@@ -86,7 +97,10 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
     case "archived":
       return value === "true" ? "Yes" : "No";
     case "kind":
-      return value === "investment" ? "Investing" : "Spending";
+      // Category kinds; investment kinds (fund, stock, …) read as they are.
+      if (value === "investment") return "Investing";
+      if (value === "consumption") return "Spending";
+      return value === null ? "–" : value.charAt(0).toUpperCase() + value.slice(1);
     default:
       return value === null || value === "" ? "–" : value;
   }

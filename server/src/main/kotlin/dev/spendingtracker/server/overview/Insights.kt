@@ -1,5 +1,6 @@
 package dev.spendingtracker.server.overview
 
+import dev.spendingtracker.server.investment.Dated
 import dev.spendingtracker.shared.api.CategoryAnomaly
 import dev.spendingtracker.shared.api.CategoryTotal
 import dev.spendingtracker.shared.api.MonthFlow
@@ -18,7 +19,10 @@ import kotlin.uuid.Uuid
 
 // Pure calculations behind the overview, kept apart from the database so the rules can be tested directly.
 
-/** An expense reduced to what the overview needs: its top-level category and whether that counts as investing. */
+/**
+ * An expense reduced to what the overview needs: its top-level category and whether that is an investment category.
+ * Those are transfers into investments, not spending; what was invested is read from investment contributions instead.
+ */
 data class Spend(val date: LocalDate, val amountMinor: Long, val merchant: String, val topCategoryId: Uuid?, val investment: Boolean)
 
 data class Earning(val date: LocalDate, val amountMinor: Long, val source: String)
@@ -50,13 +54,13 @@ fun daysElapsed(month: YearMonth, today: LocalDate): Int = when {
     else -> today.day
 }
 
-fun monthFlow(month: YearMonth, spends: List<Spend>, earnings: List<Earning>): MonthFlow {
+fun monthFlow(month: YearMonth, spends: List<Spend>, earnings: List<Earning>, contributions: List<Dated>): MonthFlow {
     val monthSpends = spends.filter { it.date.yearMonth == month }
     return MonthFlow(
         month = month.toString(),
         incomeMinor = earnings.filter { it.date.yearMonth == month }.sumOf { it.amountMinor },
         spendingMinor = monthSpends.filterNot { it.investment }.sumOf { it.amountMinor },
-        investedMinor = monthSpends.filter { it.investment }.sumOf { it.amountMinor },
+        investedMinor = contributions.filter { it.date.yearMonth == month }.sumOf { it.amountMinor },
     )
 }
 

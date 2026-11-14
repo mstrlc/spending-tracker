@@ -10,6 +10,11 @@ import dev.spendingtracker.server.db.AuditActor
 import dev.spendingtracker.server.db.connectDatabase
 import dev.spendingtracker.server.household.householdRoutes
 import dev.spendingtracker.server.household.inviteLinkRoutes
+import dev.spendingtracker.server.market.LiveMarketData
+import dev.spendingtracker.server.market.Market
+import dev.spendingtracker.server.market.MarketData
+import dev.spendingtracker.server.market.market
+import dev.spendingtracker.server.market.securityRoutes
 import io.github.smiley4.ktoropenapi.OpenApi
 import io.github.smiley4.ktoropenapi.config.SchemaGenerator
 import io.github.smiley4.ktoropenapi.openApi
@@ -46,7 +51,8 @@ fun main() {
 
 val apiJson = Json { ignoreUnknownKeys = true }
 
-fun Application.module(dataSource: DataSource, secureCookies: Boolean = false) {
+fun Application.module(dataSource: DataSource, secureCookies: Boolean = false, marketData: MarketData = LiveMarketData()) {
+    market = Market(marketData)
     install(CallLogging)
     install(ContentNegotiation) { json(apiJson) }
     install(StatusPages) { apiErrors() }
@@ -87,6 +93,7 @@ fun Application.module(dataSource: DataSource, secureCookies: Boolean = false) {
             inviteLinkRoutes()
             authenticate(SESSION_AUTH) {
                 householdRoutes()
+                securityRoutes()
             }
         }
     }

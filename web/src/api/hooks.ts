@@ -1,7 +1,19 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import { ApiFailure, unwrap } from "./errors";
-import type { AccountInput, ActivityEntity, CategoryInput, ExpenseInput, Household, HouseholdRole, IncomeInput } from "./types";
+import type {
+  AccountInput,
+  ActivityEntity,
+  CategoryInput,
+  ContributionInput,
+  FeeInput,
+  ExpenseInput,
+  Household,
+  HouseholdRole,
+  IncomeInput,
+  InvestmentInput,
+  ValuationInput,
+} from "./types";
 
 export const keys = {
   me: ["me"] as const,
@@ -16,6 +28,12 @@ export const keys = {
     from === undefined ? (["households", id, "expenses"] as const) : (["households", id, "expenses", from, to] as const),
   income: (id: string, from?: string, to?: string) =>
     from === undefined ? (["households", id, "income"] as const) : (["households", id, "income", from, to] as const),
+  investments: (id: string) => ["households", id, "investments"] as const,
+  contributions: (id: string, investmentId: string) => ["households", id, "investments", investmentId, "contributions"] as const,
+  valuations: (id: string, investmentId: string) => ["households", id, "investments", investmentId, "valuations"] as const,
+  fees: (id: string, investmentId: string) => ["households", id, "investments", investmentId, "fees"] as const,
+  investmentHistory: (id: string, investmentId?: string) => ["households", id, "investments", "history", investmentId ?? "all"] as const,
+  securitySearch: (query: string) => ["securities", query] as const,
   activity: (id: string, entity?: ActivityEntity) => ["households", id, "activity", entity ?? "all"] as const,
   overview: (id: string, month: string) => ["households", id, "overview", month] as const,
 };
@@ -339,6 +357,207 @@ export function useDeleteIncome(householdId: string) {
         }),
       ),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.income(householdId) }),
+  });
+}
+
+// ---- Investments ----
+// Contributions and valuations change a holding's figures, so saving one refetches the holdings too.
+
+export function useInvestments(householdId: string) {
+  return useQuery({
+    queryKey: keys.investments(householdId),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/households/{householdId}/investments", { params: { path: { householdId } } })),
+  });
+}
+
+export function useSaveInvestment(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: InvestmentInput }) =>
+      id === undefined
+        ? unwrap(await api.POST("/api/households/{householdId}/investments", { params: { path: { householdId } }, body: input }))
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/investments/{investmentId}", {
+              params: { path: { householdId, investmentId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.investments(householdId) }),
+  });
+}
+
+export function useDeleteInvestment(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/investments/{investmentId}", {
+          params: { path: { householdId, investmentId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.investments(householdId) }),
+  });
+}
+
+/** Put in and worth at each month end, then today: all holdings, or only [investmentId]. */
+export function useInvestmentHistory(householdId: string, investmentId?: string) {
+  return useQuery({
+    queryKey: keys.investmentHistory(householdId, investmentId),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/investments/history", {
+          params: { path: { householdId }, query: { investmentId } },
+        }),
+      ),
+  });
+}
+
+/** Securities matching [query]; idle until it has two characters. */
+export function useSecuritySearch(query: string) {
+  return useQuery({
+    queryKey: keys.securitySearch(query),
+    queryFn: async () => unwrap(await api.GET("/api/securities/search", { params: { query: { q: query } } })),
+    enabled: query.length >= 2,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useContributions(householdId: string, investmentId: string) {
+  return useQuery({
+    queryKey: keys.contributions(householdId, investmentId),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/investments/{investmentId}/contributions", {
+          params: { path: { householdId, investmentId } },
+        }),
+      ),
+  });
+}
+
+export function useSaveContribution(householdId: string, investmentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: ContributionInput }) =>
+      id === undefined
+        ? unwrap(
+            await api.POST("/api/households/{householdId}/investments/{investmentId}/contributions", {
+              params: { path: { householdId, investmentId } },
+              body: input,
+            }),
+          )
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/investments/{investmentId}/contributions/{contributionId}", {
+              params: { path: { householdId, investmentId, contributionId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.investments(householdId) }),
+  });
+}
+
+export function useDeleteContribution(householdId: string, investmentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/investments/{investmentId}/contributions/{contributionId}", {
+          params: { path: { householdId, investmentId, contributionId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.investments(householdId) }),
+  });
+}
+
+export function useValuations(householdId: string, investmentId: string) {
+  return useQuery({
+    queryKey: keys.valuations(householdId, investmentId),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/investments/{investmentId}/valuations", {
+          params: { path: { householdId, investmentId } },
+        }),
+      ),
+  });
+}
+
+export function useSaveValuation(householdId: string, investmentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: ValuationInput }) =>
+      id === undefined
+        ? unwrap(
+            await api.POST("/api/households/{householdId}/investments/{investmentId}/valuations", {
+              params: { path: { householdId, investmentId } },
+              body: input,
+            }),
+          )
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/investments/{investmentId}/valuations/{valuationId}", {
+              params: { path: { householdId, investmentId, valuationId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.investments(householdId) }),
+  });
+}
+
+export function useDeleteValuation(householdId: string, investmentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/investments/{investmentId}/valuations/{valuationId}", {
+          params: { path: { householdId, investmentId, valuationId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.investments(householdId) }),
+  });
+}
+
+export function useFees(householdId: string, investmentId: string) {
+  return useQuery({
+    queryKey: keys.fees(householdId, investmentId),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/investments/{investmentId}/fees", {
+          params: { path: { householdId, investmentId } },
+        }),
+      ),
+  });
+}
+
+export function useSaveFee(householdId: string, investmentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: FeeInput }) =>
+      id === undefined
+        ? unwrap(
+            await api.POST("/api/households/{householdId}/investments/{investmentId}/fees", {
+              params: { path: { householdId, investmentId } },
+              body: input,
+            }),
+          )
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/investments/{investmentId}/fees/{feeId}", {
+              params: { path: { householdId, investmentId, feeId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.investments(householdId) }),
+  });
+}
+
+export function useDeleteFee(householdId: string, investmentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/investments/{investmentId}/fees/{feeId}", {
+          params: { path: { householdId, investmentId, feeId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.investments(householdId) }),
   });
 }
 

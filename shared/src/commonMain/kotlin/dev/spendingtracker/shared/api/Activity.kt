@@ -13,6 +13,10 @@ enum class ActivityEntity {
     @SerialName("category") CATEGORY,
     @SerialName("expense") EXPENSE,
     @SerialName("income") INCOME,
+    @SerialName("investment") INVESTMENT,
+    @SerialName("investment_contribution") INVESTMENT_CONTRIBUTION,
+    @SerialName("investment_valuation") INVESTMENT_VALUATION,
+    @SerialName("investment_fee") INVESTMENT_FEE,
 }
 
 @Serializable
