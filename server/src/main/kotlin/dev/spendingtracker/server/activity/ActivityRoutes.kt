@@ -72,7 +72,12 @@ fun Route.activityRoutes() = route("/activity") {
         val page = dbQuery {
             var filter: Op<Boolean> = AuditLog.householdId eq householdId
             if (before != null) filter = filter and (AuditLog.id less before)
-            if (entity != null) filter = filter and (AuditLog.entity eq entity.dbValue())
+            filter = filter and if (entity != null) {
+                AuditLog.entity eq entity.dbValue()
+            } else {
+                // Rows written by a newer build (a kind this one doesn't know yet) are left out rather than failing the page.
+                AuditLog.entity inList ActivityEntity.entries.map { it.dbValue() }
+            }
             if (entityId != null) filter = filter and (AuditLog.entityId eq entityId)
             // One extra row tells whether there is another page.
             val rows = AuditLog.selectAll().where(filter).orderBy(AuditLog.id to SortOrder.DESC).limit(limit + 1).toList()
