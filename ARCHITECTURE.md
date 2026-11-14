@@ -27,6 +27,70 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
 - Every insert, update and delete of household data lands in `audit_log` (before/after JSON, actor) via Postgres triggers, so routes don't record anything themselves. The actor comes from `app.actor_id`, which `dbQuery` sets from the request's session user; new household tables need an `audit` trigger in their migration.
 - API request/response models live in `shared` (`dev.spendingtracker.shared.api`) so mobile clients can reuse them.
 
+## Data model decisions (2026-11-14)
+
+Settled after reviewing the old app's live data (exported to the gitignored `data/legacy/`, see its README). Most aren't built yet; the roadmap picks them up.
+
+### People, ownership and debts
+
+- **Members don't need a login.** A household member can exist without a user account and claim it later through an invite.
+- **No person means joint**, everywhere a row can belong to someone: expenses, income, accounts, assets. There is no "unknown".
+- **Who paid and whose it is are separate.** The account says whose money left; the expense says whose spending it is. A joint 10k IKEA purchase on one person's credit card is one joint 10k expense, never two halves.
+- **Joint or personal is filled in** from the account (joint account → joint, personal account → that person), overridden by category or merchant rules (groceries always joint), and editable per expense.
+- **Debts between members come from mismatches:**
+  - a joint expense paid from a personal account makes the others owe their share to the payer (can be switched off per expense);
+  - a personal expense paid from a joint account makes that person owe the others their share of the pot.
+- **Split ratio** comes from rules with a valid-from date: a household default (usually by income), per-category overrides (groceries moved to 50/50), and a per-expense override.
+- **Repayments** are transfers between members marked as settlements. Debts and settlements add up to one running balance between members; a settlement isn't matched to particular expenses. Settlements are neither income nor spending.
+- **Top-ups of a joint account** don't create or settle debts, but each member's contributions to joint accounts are shown, since that's easy to lose track of.
+- **No privacy inside a household**: every member sees everything.
+
+### Accounts, bank feeds and transfers
+
+- **Accounts have a kind**: bank, credit card, cash, other. They can carry an IBAN.
+- **A bank feed is not an account.** One account can have several feeds (Revolut Joint has CZK, EUR, HUF and DKK pockets), so feeds link many-to-one to accounts.
+- **Feed sources sit behind one interface**: GoCardless Bank Account Data and statement-file upload to start, others later.
+- **Bank rows keep** the bank's raw JSON, the booking and transaction dates, the native amount and currency, and what was decided about each: expense, income, transfer, settlement, duplicate or skipped, with links to what it became. Several bank rows can point at one expense.
+- **Transfers are first-class**: a transfer pairs an outgoing and an incoming row, or one row and an account that isn't read. Paying off a credit card is a transfer; the card's purchases are the expenses, and what's owed on the card is a liability in net worth.
+- **Inbox auto-filing**: the app files anything above a confidence threshold, whether from a person's rule or its own guess (transfer pairs, duplicates). Every automatic decision is stored as automatic, so it can be reviewed, counted and undone apart from human ones. The threshold starts strict: the old app's automatic pairings were wrong often enough to matter.
+- **One rules table** maps bank rows (counterparty, IBAN, text) to an outcome: merchant, category, person, income source, or transfer/skip. It replaces the old app's separate merchant aliases and income payers.
+
+### Spending
+
+- **Merchants are records** with a name, a default category and the bank texts that map to them, so top merchants and subscriptions don't split on spelling.
+- **Split lines**: an expense can have lines with their own category and amount that add up to its total. E-shop orders can fill them in later.
+- **Refunds attach to the original expense**, so it shows net in its own category and month.
+- **Foreign currency**: an expense can store the original amount and currency next to the household-currency amount everything adds up in.
+- **Trips**: a trips table, and an expense can belong to a trip (including a single lump sum booked for the whole trip).
+- **Business**: business money counts in the household, but business items are tagged so they can be shown or hidden.
+- **Recurring payments** are detected from history. Confirming one makes it a known recurring item with an expected amount and day, and the app flags when it changes or is missed.
+
+### Income
+
+- **Gross lines and deductions**: income is recorded gross; health and social insurance advances (ZPMV, OSSZ) are deductions, so earned, deducted and net are all visible. Neither counts as spending.
+- **Two dates**: the month it was earned (what reports use) and the date it arrived (what links it to the bank row). A salary paid on 2 November counts for October.
+- **Costs netted against an invoice** (the old "(odpočet z faktury)") are expenses paid out of that income, with no bank account; the income stays gross.
+- Income can be joint.
+
+### Assets and net worth
+
+- **Investments become assets** with a kind: market (priced from closing prices), savings, building savings or pension, receivable, vehicle. They share contributions and valuations.
+
+### Reporting and planning
+
+- **Saved = income − spending.** Money put into assets is part of saved; Invested shows how much of it went there.
+- **The Overview** covers the whole household by default, filterable to joint or one person.
+- **Budgets** are per category per month, separately for each person and for joint.
+- **The forecast** projects coming months from confirmed recurring items and declared expected income.
+- **Goals and the wishlist** are out for now.
+
+### Importing the old app
+
+- **Only expenses and income** already logged, keeping subcategories and trips; members, accounts and categories are created as needed (Sam as a member without login). Bank rows, rules, budgets and net-worth snapshots come later, on demand.
+- **The old app's automatic pairings are hints, not facts**: anything it decided as `bank-sync` (all transfer links, internal-transfer and duplicate skips) isn't imported as a decision; it can serve as a test set for the new matcher.
+- **Old income** is already gross, so it imports as is (earned month = its month).
+- **The old Investments expenses** become contributions to assets (investment funds and a building-savings scheme), one per owner.
+
 ## Roadmap
 
 1. ~~**Scaffold**~~ (done 2026-10-31): git repo, Gradle multi-module, Docker Compose Postgres, Ktor health endpoint, Vite app, OpenAPI type generation wired end to end.
@@ -38,5 +102,5 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
    - ~~**Household invites**~~ (done 2026-10-31): owners create an email-bound, single-use invite link (7 days); there's no outgoing email yet, so the owner shares the link. Members can leave, owners can remove members, the last owner can't be removed.
    - ~~**Income**~~ (done 2026-10-31): dated income lines with a source (payer), account, recipient member (or shared) and notes; negative amounts are clawbacks. The Income page shows the month's total, spending and what was saved, plus a by-source breakdown.
      Not yet: "import typical month", expected-income plan.
-3. **Next**: inbox (bank import), budget.
-4. **Later**: net worth, forecast, goals, wishlist, trips, MCP server, mobile apps, hosting.
+3. **Next**: the data model changes above (members without login, debts and split ratios, account kinds, assets, merchants, split lines, trips, income deductions), the old-app import, inbox (bank import), budget.
+4. **Later**: net worth, forecast, MCP server, mobile apps, hosting, goals, wishlist.

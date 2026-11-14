@@ -17,3 +17,6 @@ web/dist/
 # Local env
 .env
 .env.local
+
+# Real household data exported from ../household-spending-tracker (never commit)
+/data/legacy/
