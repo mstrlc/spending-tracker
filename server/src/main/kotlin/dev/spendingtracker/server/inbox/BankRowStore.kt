@@ -76,6 +76,7 @@ fun storeRows(
     rows: List<ParsedRow>,
     context: HintContext,
     hints: Map<String, String> = emptyMap(),
+    importId: Uuid? = null,
 ): StoredCounts {
     val existing = BankRows
         .select(BankRows.externalId, BankRows.bookingDate, BankRows.amountMinor, BankRows.currency, BankRows.counterpartyIban, BankRows.text)
@@ -130,6 +131,7 @@ fun storeRows(
         this[BankRows.code] = row.code
         this[BankRows.hint] = hints[row.externalId] ?: hintFor(row, shape, context)
         this[BankRows.raw] = row.raw.toString()
+        this[BankRows.importId] = importId
     }
     return StoredCounts(fresh.size, rows.size - fresh.size - before, before, fresh.map { it.externalId }.toSet())
 }

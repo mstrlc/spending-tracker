@@ -24,6 +24,7 @@ enum class ActivityEntity {
     @SerialName("split_share") SPLIT_SHARE,
     @SerialName("settlement") SETTLEMENT,
     @SerialName("bank_row") BANK_ROW,
+    @SerialName("import") IMPORT,
 }
 
 @Serializable

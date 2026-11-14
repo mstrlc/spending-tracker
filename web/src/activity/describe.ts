@@ -31,6 +31,7 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   split_share: "share of",
   settlement: "settlement",
   bank_row: "bank row",
+  import: "import",
 };
 
 const LABELS: Record<string, string> = {
@@ -73,6 +74,9 @@ const LABELS: Record<string, string> = {
   monthOffset: "For the month",
   expiresAt: "Expires",
   acceptedAt: "Accepted",
+  undoneAt: "Undone",
+  undoneBy: "Undone by",
+  counts: "Counts",
 };
 
 export const fieldLabel = (field: string) => LABELS[field] ?? field;

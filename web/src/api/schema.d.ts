@@ -693,6 +693,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Lists the household's import batches, newest first. Owners only. */
+        get: operations["listImports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/imports/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Undoes an import as a whole in one transaction: removes leaf records it created, then unused containers, keeping anything still referenced or any member with a login. With dryRun=true it reports what it would do and saves nothing. Owners only. */
+        post: operations["undoImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/bank-feeds": {
         parameters: {
             query?: never;
@@ -2257,6 +2291,49 @@ export interface components {
             created: components["schemas"]["ImportCounts"];
             existing: components["schemas"]["ImportCounts"];
         };
+        /** ImportSummary */
+        ImportSummary: {
+            /** String */
+            id: string;
+            /** String */
+            createdAt: string;
+            /** String */
+            createdByName: null | string;
+            counts: components["schemas"]["ImportCounts"];
+            /** String */
+            undoneAt: null | string;
+            /** String */
+            undoneByName: null | string;
+        };
+        /** KeptImportItem */
+        KeptImportItem: {
+            /** String */
+            kind: string;
+            /** String */
+            name: string;
+            /** String */
+            reason: string;
+        };
+        /** ImportUndoResult */
+        ImportUndoResult: {
+            /** Boolean */
+            dryRun: boolean;
+            deleted: components["schemas"]["ImportCounts"];
+            edited: components["schemas"]["ImportCounts"];
+            kept: components["schemas"]["ImportCounts"];
+            /** ArrayList<KeptImportItem> */
+            keptItems: components["schemas"]["KeptImportItem"][];
+            /**
+             * Int
+             * Format: int32
+             */
+            unlinkedBankRows: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            unlinkedRefunds: number;
+        };
         /** BankFeed */
         BankFeed: {
             /** String */
@@ -2879,7 +2956,7 @@ export interface components {
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement" | "bank_row";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement" | "bank_row" | "import";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -5886,6 +5963,98 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listImports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportSummary"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    undoImport: {
+        parameters: {
+            query?: {
+                dryRun?: boolean;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportUndoResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
             };
         };
     };

@@ -6,10 +6,12 @@ import dev.spendingtracker.server.common.ApiException
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.nonZeroAmount
 import dev.spendingtracker.server.common.optionalText
+import dev.spendingtracker.server.common.pathId
 import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.BankFeeds
 import dev.spendingtracker.server.db.BankRows
+import dev.spendingtracker.server.db.Imports
 import dev.spendingtracker.server.inbox.FeedShape
 import dev.spendingtracker.server.inbox.dbValue
 import dev.spendingtracker.server.inbox.feedShape
@@ -38,6 +40,9 @@ import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.HouseholdImport
 import dev.spendingtracker.shared.api.ImportCounts
 import dev.spendingtracker.shared.api.ImportResult
+import dev.spendingtracker.shared.api.ImportSummary
+import dev.spendingtracker.shared.api.ImportUndoResult
+import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
@@ -46,6 +51,7 @@ import io.ktor.server.routing.Route
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.YearMonth
 import kotlinx.datetime.yearMonth
+import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
@@ -88,28 +94,56 @@ fun Route.importRoutes() {
         }
         call.respond(result)
     }
-}
 
-private class Tally {
-    var members = 0
-    var accounts = 0
-    var categories = 0
-    var trips = 0
-    var merchants = 0
-    var expenses = 0
-    var income = 0
-    var assets = 0
-    var contributions = 0
-    var bankFeeds = 0
-    var bankRows = 0
+    get("/imports", {
+        operationId = "listImports"
+        description = "Lists the household's import batches, newest first. Owners only."
+        response {
+            code(HttpStatusCode.OK) { body<List<ImportSummary>>() }
+            code(HttpStatusCode.Forbidden) { body<ApiError>() }
+        }
+    }) {
+        call.requireOwner()
+        val householdId = call.household.id
+        val list = dbQuery { listImports(householdId) }
+        call.respond(list)
+    }
 
-    fun counts() = ImportCounts(members, accounts, categories, trips, merchants, expenses, income, assets, contributions, bankFeeds, bankRows)
+    post("/imports/{id}/undo", {
+        operationId = "undoImport"
+        description = "Undoes an import as a whole in one transaction: removes leaf records it created, then unused containers, " +
+            "keeping anything still referenced or any member with a login. With dryRun=true it reports what it would do and saves nothing. Owners only."
+        request {
+            pathParameter<String>("id")
+            queryParameter<Boolean>("dryRun")
+        }
+        response {
+            code(HttpStatusCode.OK) { body<ImportUndoResult>() }
+            code(HttpStatusCode.BadRequest) { body<ApiError>() }
+            code(HttpStatusCode.Forbidden) { body<ApiError>() }
+            code(HttpStatusCode.NotFound) { body<ApiError>() }
+            code(HttpStatusCode.Conflict) { body<ApiError>() }
+        }
+    }) {
+        call.requireOwner()
+        val importId = call.pathId("id", "Import")
+        val dryRun = call.request.queryParameters["dryRun"] == "true"
+        val householdId = call.household.id
+        val userId = call.userId
+        val result = dbQuery {
+            val out = undoImport(householdId, importId, userId, dryRun)
+            if (dryRun) rollback()
+            out
+        }
+        call.respond(result)
+    }
 }
 
 private fun key(name: String) = name.trim().lowercase()
 
 /** Runs one import inside a transaction. Every error names the entry it's about, e.g. `expenses[3].account`. */
 private class Importer(private val householdId: Uuid, private val householdCurrency: String, private val userId: Uuid) {
+    private val importId = Uuid.random()
     private val created = Tally()
     private val matched = Tally()
 
@@ -148,6 +182,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 it[status] = if (account.status == AccountStatus.ACTIVE) "active" else "closed"
                 it[kind] = account.kind.dbValue
                 it[Accounts.iban] = iban
+                it[Accounts.importId] = this@Importer.importId
                 it[version] = 1
             }
             accounts[key(name)] = id
@@ -176,6 +211,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 it[Categories.kind] = kind
                 it[archived] = false
                 it[sortOrder] = 0
+                it[Categories.importId] = this@Importer.importId
                 it[version] = 1
             }
             categories[categoryKey] = id
@@ -199,6 +235,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 it[startDate] = trip.startDate
                 it[endDate] = trip.endDate
                 it[notes] = optionalText(trip.notes, "$path.notes")
+                it[Trips.importId] = this@Importer.importId
                 it[createdBy] = userId
             }
             trips[key(name)] = id
@@ -208,7 +245,14 @@ private class Importer(private val householdId: Uuid, private val householdCurre
         importIncome(input)
         importAssets(input)
         importBank(input)
-        return created.counts() to matched.counts()
+        val createdCounts = created.counts()
+        Imports.insert {
+            it[id] = importId
+            it[Imports.householdId] = this@Importer.householdId
+            it[createdBy] = userId
+            it[counts] = Json.encodeToString(ImportCounts.serializer(), createdCounts)
+        }
+        return createdCounts to matched.counts()
     }
 
     private fun loadExisting() {
@@ -249,6 +293,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
             it[HouseholdMembers.householdId] = this@Importer.householdId
             it[HouseholdMembers.userId] = id
             it[role] = "member"
+            it[HouseholdMembers.importId] = this@Importer.importId
         }
         members[key(name)] = id
         created.members++
@@ -311,7 +356,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
         for ((path, categoryId, expense) in rows) {
             val merchant = optionalText(expense.merchant, "$path.merchant", max = 200)
             if (merchant.isNotEmpty() && knownMerchants.add(key(merchant))) created.merchants++
-            val merchantId = resolveMerchant(householdId, merchant, usualCategory[key(merchant)], userId)
+            val merchantId = resolveMerchant(householdId, merchant, usualCategory[key(merchant)], userId, importId)
             val originalCurrency = expense.originalCurrency?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
             if ((expense.originalAmountMinor == null) != (originalCurrency == null)) {
                 throw badRequest("original_incomplete", "Give both the original amount and its currency, or neither", "$path.originalCurrency")
@@ -334,6 +379,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 it[Expenses.originalCurrency] = originalCurrency
                 it[createsDebt] = expense.createsDebt
                 it[externalRef] = expense.externalRef.trim()
+                it[Expenses.importId] = this@Importer.importId
                 it[version] = 1
                 it[createdBy] = userId
             }
@@ -367,6 +413,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 it[notes] = optionalText(line.notes, "$path.notes")
                 it[kind] = line.kind.dbValue
                 it[externalRef] = ref
+                it[Income.importId] = this@Importer.importId
                 it[version] = 1
                 it[createdBy] = userId
             }
@@ -386,6 +433,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                     it[kind] = asset.kind.name.lowercase()
                     it[ownerUserId] = person(asset.owner, "$path.owner")
                     it[notes] = optionalText(asset.notes, "$path.notes")
+                    it[Assets.importId] = this@Importer.importId
                     it[version] = 1
                     it[createdBy] = userId
                 }
@@ -411,6 +459,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                     it[amountMinor] = amount
                     it[accountId] = account(contribution.account, "$entry.account")
                     it[notes] = optionalText(contribution.notes, "$entry.notes")
+                    it[AssetContributions.importId] = this@Importer.importId
                     it[version] = 1
                     it[createdBy] = userId
                 }
@@ -451,6 +500,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 it[BankFeeds.iban] = iban
                 it[BankFeeds.currency] = currency
                 it[importFrom] = feed.importFrom
+                it[BankFeeds.importId] = this@Importer.importId
                 it[createdBy] = userId
             }
             feeds[key(name)] = Feed(id, feedShape(feed.institution.dbValue, accountId), currency, feed.importFrom)
@@ -482,7 +532,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 Triple(parsedRow, decision, row.hint.trim())
             }
             val hints = parsed.filter { it.third.isNotEmpty() }.associate { it.first.externalId to it.third }
-            val counts = storeRows(householdId, feed.id, feed.shape, feed.importFrom, parsed.map { it.first }, context, hints)
+            val counts = storeRows(householdId, feed.id, feed.shape, feed.importFrom, parsed.map { it.first }, context, hints, importId)
             created.bankRows += counts.added
             matched.bankRows += counts.existing
             // Decisions apply to rows added just now: an earlier import's rows keep what was decided since.

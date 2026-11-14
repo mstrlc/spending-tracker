@@ -43,6 +43,7 @@ private const val MAX_LIMIT = 200
 private val HIDDEN_FIELDS = setOf(
     "id", "household_id", "user_id", "version", "created_at", "updated_at", "joined_at",
     "created_by", "external_ref", "invited_by", "accepted_by", "asset_id", "rule_id", "expense_id",
+    "import_id",
 )
 
 /** Must be inside a HouseholdAccess scope. */
@@ -179,6 +180,7 @@ private fun ResultRow.toEntry(
         ActivityEntity.BANK_ROW -> current.text("text")?.takeIf { it.isNotBlank() }
             ?: current.text("counterparty_name")?.takeIf { it.isNotBlank() }
             ?: current.text("message")?.takeIf { it.isNotBlank() }
+        ActivityEntity.IMPORT -> "household data"
         ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET,
         ActivityEntity.TRIP, ActivityEntity.MERCHANT -> current.text("name")
     }

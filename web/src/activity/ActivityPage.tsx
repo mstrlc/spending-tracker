@@ -27,6 +27,7 @@ const FILTERS: { value: ActivityEntity | ""; label: string }[] = [
   { value: "category", label: "Categories" },
   { value: "member", label: "Members" },
   { value: "invite", label: "Invites" },
+  { value: "import", label: "Imports" },
 ];
 
 /** Entries grouped under their local calendar day, keeping the newest-first order. */
