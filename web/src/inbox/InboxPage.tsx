@@ -186,6 +186,8 @@ export function InboxPage() {
           )
         )}
         {list.length > 0 && (
+          // Columns give way by the table's own width, which the sidebar and the side panel narrow, not the window's.
+          <div className="@container">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -198,10 +200,10 @@ export function InboxPage() {
                     />
                   </TableHead>
                 )}
-                <TableHead className="max-md:hidden">Day</TableHead>
+                <TableHead className="@max-xl:hidden">Day</TableHead>
                 <TableHead>Bank row</TableHead>
-                <TableHead className="max-lg:hidden">{tab === "pending" ? "Suggestion" : "Became"}</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="@max-3xl:hidden">{tab === "pending" ? "Suggestion" : "Became"}</TableHead>
+                <TableHead className="text-right @max-sm:hidden">Amount</TableHead>
                 <TableHead className="w-12">
                   <span className="sr-only">Actions</span>
                 </TableHead>
@@ -215,6 +217,47 @@ export function InboxPage() {
                 const best = s?.transferCandidates[0];
                 const otherAccount =
                   accountName(best?.accountId ?? s?.transferAccountId ?? "") || "another account";
+                // What the row probably is (or became), in its own column on a wide table, under the row on a narrow one.
+                const became = (
+                  <>
+                    {tab === "pending" && s && (
+                      <>
+                        <div>
+                          {isTransfer
+                            ? `Transfer ${row.amountMinor < 0 ? "to" : "from"} ${otherAccount}`
+                            : isExpense
+                              ? s.merchant || "Expense"
+                              : s.incomeSource || "Income"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {isTransfer
+                            ? "Not spending or income"
+                            : isExpense
+                            ? [categoryName(s.categoryId) ?? "Uncategorized", members.length > 1 && memberName(s.paidByUserId)]
+                                .filter(Boolean)
+                                .join(" · ")
+                            : "Income"}
+                        </div>
+                      </>
+                    )}
+                    {tab === "decided" && (
+                      <>
+                        <div>
+                          {row.outcome === "expense"
+                            ? "Expense"
+                            : row.outcome === "income"
+                              ? "Income"
+                              : row.outcome === "transfer"
+                                ? "Transfer"
+                                : row.outcome === "settlement"
+                                  ? "Settlement"
+                                  : `Skipped: ${row.skipReason}`}
+                        </div>
+                        {row.decidedAuto && <div className="text-xs text-muted-foreground">Filed automatically</div>}
+                      </>
+                    )}
+                  </>
+                );
                 return (
                   <TableRow key={row.id} data-state={selected.has(row.id) ? "selected" : undefined}>
                     {tab === "pending" && (
@@ -226,16 +269,20 @@ export function InboxPage() {
                         />
                       </TableCell>
                     )}
-                    <TableCell className="align-top text-muted-foreground max-md:hidden">{formatDay(row.date)}</TableCell>
+                    <TableCell className="align-top text-muted-foreground @max-xl:hidden">{formatDay(row.date)}</TableCell>
                     <TableCell className="whitespace-normal align-top">
-                      <div className="font-medium">{row.text || row.counterpartyAccount || "Bank row"}</div>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                        <span className="font-medium">{row.text || row.counterpartyAccount || "Bank row"}</span>
+                        <span className="amount shrink-0 @sm:hidden">{bankAmount(row)}</span>
+                      </div>
                       <div className="text-xs text-muted-foreground">
-                        <span className="md:hidden">{formatDay(row.date)} · </span>
+                        <span className="@xl:hidden">{formatDay(row.date)} · </span>
                         {accountName(row.accountId)}
                         {row.message && row.message !== row.text && ` · ${row.message}`}
                       </div>
+                      <div className="mt-1 border-l-2 pl-2 text-sm @3xl:hidden">{became}</div>
                       {row.hint && (
-                        <Badge variant="secondary" className="mt-1">
+                        <Badge variant="secondary" className="mt-1 h-auto whitespace-normal">
                           {row.hint}
                         </Badge>
                       )}
@@ -262,52 +309,17 @@ export function InboxPage() {
                         </div>
                       ))}
                     </TableCell>
-                    <TableCell className="whitespace-normal align-top text-sm max-lg:hidden">
-                      {tab === "pending" && s && (
-                        <>
-                          <div>
-                            {isTransfer
-                              ? `Transfer ${row.amountMinor < 0 ? "to" : "from"} ${otherAccount}`
-                              : isExpense
-                                ? s.merchant || "Expense"
-                                : s.incomeSource || "Income"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {isTransfer
-                              ? "Not spending or income"
-                              : isExpense
-                              ? [categoryName(s.categoryId) ?? "Uncategorized", members.length > 1 && memberName(s.paidByUserId)]
-                                  .filter(Boolean)
-                                  .join(" · ")
-                              : "Income"}
-                          </div>
-                        </>
-                      )}
-                      {tab === "decided" && (
-                        <>
-                          <div>
-                            {row.outcome === "expense"
-                              ? "Expense"
-                              : row.outcome === "income"
-                                ? "Income"
-                                : row.outcome === "transfer"
-                                  ? "Transfer"
-                                  : row.outcome === "settlement"
-                                    ? "Settlement"
-                                    : `Skipped: ${row.skipReason}`}
-                          </div>
-                          {row.decidedAuto && <div className="text-xs text-muted-foreground">Filed automatically</div>}
-                        </>
-                      )}
+                    <TableCell className="whitespace-normal align-top text-sm @max-3xl:hidden">
+                      {became}
                     </TableCell>
-                    <TableCell className="amount text-right align-top">{bankAmount(row)}</TableCell>
+                    <TableCell className="amount text-right align-top @max-sm:hidden">{bankAmount(row)}</TableCell>
                     <TableCell className="text-right align-top">
                       <div className="flex items-center justify-end gap-1">
                         {tab === "pending" && (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="max-sm:hidden"
+                            className="@max-lg:hidden"
                             onClick={() =>
                               isTransfer ? (best ? pair(row, best) : openTransfer(row)) : isExpense ? openExpense([row]) : openIncome([row])
                             }
@@ -338,6 +350,7 @@ export function InboxPage() {
               })}
             </TableBody>
           </Table>
+          </div>
         )}
       </Surface>
 
