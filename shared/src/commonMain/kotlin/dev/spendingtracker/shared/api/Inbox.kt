@@ -126,6 +126,8 @@ data class BankRow(
     val decidedAt: String?,
     val version: Int,
     val suggestion: BankRowSuggestion?,
+    /** Name of the linked record for decided rows (e.g. merchant, income source, "From → To"). */
+    val outcomeLabel: String? = null,
 )
 
 @Serializable

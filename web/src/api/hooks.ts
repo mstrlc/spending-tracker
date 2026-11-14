@@ -160,6 +160,20 @@ export function useAddMember(householdId: string) {
   });
 }
 
+export function useUpdateMember(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId, displayName, legalName }: { userId: string; displayName: string; legalName?: string | null }) =>
+      unwrap(
+        await api.PUT("/api/households/{householdId}/members/{userId}", {
+          params: { path: { householdId, userId } },
+          body: { displayName, legalName },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.members(householdId) }),
+  });
+}
+
 /** Removes a member; with leaving, the current user leaves and the household drops out of their list. */
 export function useRemoveMember(householdId: string) {
   const qc = useQueryClient();

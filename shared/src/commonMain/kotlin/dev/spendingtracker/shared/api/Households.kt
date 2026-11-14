@@ -20,8 +20,8 @@ data class Household(val id: String, val name: String, val currency: String, val
  * can hand their place over to a real account later.
  */
 @Serializable
-data class Member(val userId: String, val displayName: String, val role: HouseholdRole, val hasLogin: Boolean)
+data class Member(val userId: String, val displayName: String, val role: HouseholdRole, val hasLogin: Boolean, val legalName: String = "")
 
-/** Body for adding a member without a login, or renaming one. */
+/** Body for adding a member without a login, or updating a member's names. */
 @Serializable
-data class MemberInput(val displayName: String)
+data class MemberInput(val displayName: String, val legalName: String? = null)

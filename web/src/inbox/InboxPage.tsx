@@ -337,13 +337,21 @@ export function InboxPage() {
                       <>
                         <div>
                           {row.outcome === "expense"
-                            ? "Expense"
+                            ? row.outcomeLabel
+                              ? `Expense · ${row.outcomeLabel}`
+                              : "Expense"
                             : row.outcome === "income"
-                              ? "Income"
+                              ? row.outcomeLabel
+                                ? `Income · ${row.outcomeLabel}`
+                                : "Income"
                               : row.outcome === "transfer"
-                                ? "Transfer"
+                                ? row.outcomeLabel
+                                  ? `Transfer · ${row.outcomeLabel}`
+                                  : "Transfer"
                                 : row.outcome === "settlement"
-                                  ? "Settlement"
+                                  ? row.outcomeLabel
+                                    ? `Settlement · ${row.outcomeLabel}`
+                                    : "Settlement"
                                   : `Skipped: ${row.skipReason}`}
                         </div>
                         {row.decidedAuto && (

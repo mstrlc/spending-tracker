@@ -147,7 +147,9 @@ fun Route.householdRoutes() = route("/households") {
             }
         }) {
             call.requireOwner()
-            val displayName = requiredText(call.receive<MemberInput>().displayName, "displayName", max = 100)
+            val input = call.receive<MemberInput>()
+            val displayName = requiredText(input.displayName, "displayName", max = 100)
+            val legalName = input.legalName?.trim()?.take(100).orEmpty()
             val householdId = call.household.id
             val id = Uuid.random()
             dbQuery {
@@ -159,14 +161,15 @@ fun Route.householdRoutes() = route("/households") {
                     it[HouseholdMembers.householdId] = householdId
                     it[userId] = id
                     it[role] = "member"
+                    it[HouseholdMembers.legalName] = legalName
                 }
             }
-            call.respond(HttpStatusCode.Created, Member(id.toString(), displayName, HouseholdRole.MEMBER, hasLogin = false))
+            call.respond(HttpStatusCode.Created, Member(id.toString(), displayName, HouseholdRole.MEMBER, hasLogin = false, legalName = legalName))
         }
 
         put("/members/{userId}", {
             operationId = "renameMemberWithoutLogin"
-            description = "Renames a member without a login (people with a login name themselves). Owners only."
+            description = "Updates a member's legal name (any member) or display name (members without a login only). Owners only."
             request {
                 pathParameter<String>("userId")
                 body<MemberInput>()
@@ -181,11 +184,23 @@ fun Route.householdRoutes() = route("/households") {
         }) {
             call.requireOwner()
             val target = call.pathId("userId", "Member")
-            val displayName = requiredText(call.receive<MemberInput>().displayName, "displayName", max = 100)
+            val input = call.receive<MemberInput>()
+            val displayName = requiredText(input.displayName, "displayName", max = 100)
+            val legalName = input.legalName?.trim()?.take(100)
             val member = dbQuery {
                 val row = memberRow(call.household.id, target) ?: throw notFound("Member")
-                if (row[Users.email] != null) throw conflict("member_has_login", "Members with a login name themselves")
-                Users.update({ Users.id eq target }) { it[Users.displayName] = displayName }
+                if (row[Users.email] != null) {
+                    if (displayName != row[Users.displayName]) {
+                        throw conflict("member_has_login", "Members with a login name themselves")
+                    }
+                } else {
+                    Users.update({ Users.id eq target }) { it[Users.displayName] = displayName }
+                }
+                if (legalName != null) {
+                    HouseholdMembers.update({ (HouseholdMembers.householdId eq call.household.id) and (HouseholdMembers.userId eq target) }) {
+                        it[HouseholdMembers.legalName] = legalName
+                    }
+                }
                 memberRow(call.household.id, target)!!.toMember()
             }
             call.respond(member)
@@ -277,8 +292,13 @@ private fun memberRow(householdId: Uuid, userId: Uuid): ResultRow? =
         .where { (HouseholdMembers.householdId eq householdId) and (HouseholdMembers.userId eq userId) }
         .singleOrNull()
 
-private fun ResultRow.toMember() =
-    Member(this[Users.id].toString(), this[Users.displayName], roleFrom(this[HouseholdMembers.role]), hasLogin = this[Users.email] != null)
+private fun ResultRow.toMember() = Member(
+    this[Users.id].toString(),
+    this[Users.displayName],
+    roleFrom(this[HouseholdMembers.role]),
+    hasLogin = this[Users.email] != null,
+    legalName = this[HouseholdMembers.legalName],
+)
 
 /** Whether [userId] belongs to [householdId]. Call inside a transaction. */
 fun isMember(householdId: Uuid, userId: Uuid): Boolean =

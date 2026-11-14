@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
-import { useAddMember, useCreateInvite, useInvites, useMe, useMembers, useRemoveMember, useRevokeInvite } from "../api/hooks";
+import { useAddMember, useCreateInvite, useInvites, useMe, useMembers, useRemoveMember, useRevokeInvite, useUpdateMember } from "../api/hooks";
 import type { HouseholdRole, Invite, Member } from "../api/types";
-import { useConfirm } from "../dialogs";
+import { useConfirm, usePrompt } from "../dialogs";
 import { ErrorText, Field, FormError, PageHeader, PageIntro, SkeletonRows, Surface } from "../ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,8 +29,22 @@ export function MembersPage() {
   const members = useMembers(household.id);
   const invites = useInvites(household.id, isOwner);
   const remove = useRemoveMember(household.id);
+  const updateMember = useUpdateMember(household.id);
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const prompt = usePrompt();
+
+  async function editLegalName(member: Member) {
+    const legalName = await prompt({
+      title: `Legal name for ${member.displayName}`,
+      description: "Used to spot bank transfers to or from them when banks write their legal name (e.g. NOVÁKOVÁ JANA).",
+      label: "Legal name",
+      initial: member.legalName ?? "",
+      placeholder: "Optional",
+    });
+    if (legalName === null) return;
+    updateMember.mutate({ userId: member.userId, displayName: member.displayName, legalName: legalName.trim() });
+  }
 
   async function removeMember(member: Member) {
     const leaving = member.userId === me?.id;
@@ -73,6 +87,7 @@ export function MembersPage() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Name</TableHead>
+                <TableHead>Legal name</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>
                   <span className="sr-only">Actions</span>
@@ -88,6 +103,19 @@ export function MembersPage() {
                       {m.userId === me?.id && <span className="font-normal text-muted-foreground">(you)</span>}
                       {!m.hasLogin && <Badge variant="secondary">No login</Badge>}
                     </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {isOwner ? (
+                      <button
+                        type="button"
+                        onClick={() => editLegalName(m)}
+                        className="text-left underline-offset-4 hover:underline"
+                      >
+                        {m.legalName || <span className="text-xs">Set legal name</span>}
+                      </button>
+                    ) : (
+                      m.legalName || "—"
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{ROLE_LABEL[m.role]}</TableCell>
                   <TableCell className="text-right">

@@ -161,7 +161,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** @description Renames a member without a login (people with a login name themselves). Owners only. */
+        /** @description Updates a member's legal name (any member) or display name (members without a login only). Owners only. */
         put: operations["renameMemberWithoutLogin"];
         post?: never;
         /** @description Owners can remove anyone; members can remove only themselves (leave). The last owner can't be removed. Their accounts and expenses become shared. A member without a login is deleted altogether. */
@@ -1193,11 +1193,15 @@ export interface components {
             role: components["schemas"]["HouseholdRole"];
             /** Boolean */
             hasLogin: boolean;
+            /** String */
+            legalName?: string;
         };
         /** MemberInput */
         MemberInput: {
             /** String */
             displayName: string;
+            /** String */
+            legalName?: null | string;
         };
         /** HouseholdSettings */
         HouseholdSettings: {
@@ -2431,6 +2435,8 @@ export interface components {
              */
             version: number;
             suggestion: null | components["schemas"]["BankRowSuggestion"];
+            /** String */
+            outcomeLabel?: null | string;
         };
         /**
          * BankRowOutcome
@@ -2844,7 +2850,7 @@ export interface components {
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement" | "bank_row";
         /** ActivityEntry */
         ActivityEntry: {
             /**

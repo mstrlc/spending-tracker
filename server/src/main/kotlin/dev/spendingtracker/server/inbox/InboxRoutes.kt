@@ -21,6 +21,10 @@ import dev.spendingtracker.server.db.BankSyncs
 import dev.spendingtracker.server.db.BankRows
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Income
+import dev.spendingtracker.server.db.Merchants
+import dev.spendingtracker.server.db.Settlements
+import dev.spendingtracker.server.db.Transfers
+import dev.spendingtracker.server.db.Users
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.db.isUniqueViolation
 import dev.spendingtracker.server.household.household
@@ -264,7 +268,8 @@ private fun Route.bankRowRoutes() = route("/bank-rows") {
                 .limit(ROW_LIMIT)
                 .toList()
             val suggestions = suggestFor(household.id, household.currency, found.filter { it.isPending() })
-            found.map { it.toBankRow(suggestions[it[BankRows.id]]) }
+            val labels = outcomeLabels(household.id, found)
+            found.map { it.toBankRow(suggestions[it[BankRows.id]], labels[it[BankRows.id]]) }
         }
         call.respond(rows)
     }
@@ -354,7 +359,64 @@ private fun Route.bankRowRoutes() = route("/bank-rows") {
 
 fun reload(householdId: Uuid, ids: List<Uuid>): List<BankRow> {
     val rows = rowsWithFeed().where { (BankRows.householdId eq householdId) and (BankRows.id inList ids) }.associateBy { it[BankRows.id] }
-    return ids.mapNotNull { rows[it]?.toBankRow() }
+    val labels = outcomeLabels(householdId, rows.values.toList())
+    return ids.mapNotNull { id -> rows[id]?.let { it.toBankRow(outcomeLabel = labels[id]) } }
+}
+
+private fun outcomeLabels(householdId: Uuid, rows: List<ResultRow>): Map<Uuid, String> {
+    val expenseIds = rows.mapNotNull { it[BankRows.expenseId] }.distinct()
+    val incomeIds = rows.mapNotNull { it[BankRows.incomeId] }.distinct()
+    val transferIds = rows.mapNotNull { it[BankRows.transferId] }.distinct()
+    val settlementIds = rows.mapNotNull { it[BankRows.settlementId] }.distinct()
+    if (expenseIds.isEmpty() && incomeIds.isEmpty() && transferIds.isEmpty() && settlementIds.isEmpty()) return emptyMap()
+
+    val expenses = if (expenseIds.isEmpty()) emptyMap() else {
+        val expMerchants = Expenses
+            .select(Expenses.id, Expenses.merchantId)
+            .where { (Expenses.householdId eq householdId) and (Expenses.id inList expenseIds) }
+            .associate { it[Expenses.id] to it[Expenses.merchantId] }
+        val merchantIds = expMerchants.values.filterNotNull().distinct()
+        val merchantNames = if (merchantIds.isEmpty()) emptyMap() else Merchants
+            .select(Merchants.id, Merchants.name)
+            .where { Merchants.id inList merchantIds }
+            .associate { it[Merchants.id] to it[Merchants.name] }
+        expMerchants.mapValues { (_, merchantId) -> merchantId?.let(merchantNames::get).orEmpty() }
+    }
+    val incomes = if (incomeIds.isEmpty()) emptyMap() else Income
+        .select(Income.id, Income.sourceName)
+        .where { (Income.householdId eq householdId) and (Income.id inList incomeIds) }
+        .associate { it[Income.id] to it[Income.sourceName] }
+    val accountNames = if (transferIds.isEmpty()) emptyMap() else Accounts
+        .select(Accounts.id, Accounts.name)
+        .where { Accounts.householdId eq householdId }
+        .associate { it[Accounts.id] to it[Accounts.name] }
+    val transfers = if (transferIds.isEmpty()) emptyMap() else Transfers
+        .select(Transfers.id, Transfers.fromAccountId, Transfers.toAccountId)
+        .where { (Transfers.householdId eq householdId) and (Transfers.id inList transferIds) }
+        .associate {
+            val from = accountNames[it[Transfers.fromAccountId]].orEmpty()
+            val to = accountNames[it[Transfers.toAccountId]].orEmpty()
+            it[Transfers.id] to "$from → $to"
+        }
+    val memberNames = if (settlementIds.isEmpty()) emptyMap() else Users
+        .select(Users.id, Users.displayName)
+        .associate { it[Users.id] to it[Users.displayName] }
+    val settlements = if (settlementIds.isEmpty()) emptyMap() else Settlements
+        .select(Settlements.id, Settlements.fromUserId, Settlements.toUserId)
+        .where { (Settlements.householdId eq householdId) and (Settlements.id inList settlementIds) }
+        .associate {
+            val from = memberNames[it[Settlements.fromUserId]].orEmpty()
+            val to = memberNames[it[Settlements.toUserId]].orEmpty()
+            it[Settlements.id] to "$from → $to"
+        }
+
+    return rows.mapNotNull { row ->
+        val label = row[BankRows.expenseId]?.let(expenses::get)
+            ?: row[BankRows.incomeId]?.let(incomes::get)
+            ?: row[BankRows.transferId]?.let(transfers::get)
+            ?: row[BankRows.settlementId]?.let(settlements::get)
+        label?.let { row[BankRows.id] to it }
+    }.toMap()
 }
 
 private data class ValidFeed(

@@ -35,17 +35,24 @@ fun readStatement(content: String, shape: FeedShape): Statement {
         var notBooked = 0
         val rows = records.drop(1)
             .filter { record -> record.size > 1 && record.any { it.isNotBlank() } }
-            .mapNotNull { record ->
+            .flatMap { record ->
                 val fields = header.zip(record.map { it.trim() }).toMap()
                 val raw = JsonObject(fields.filterValues { it.isNotEmpty() }.mapValues { JsonPrimitive(it.value) })
                 val hash = sha(header.joinToString("\u0001") { fields[it].orEmpty() })
                 val occurrence = seen.merge(hash, 1, Int::plus)!!
                 val fallbackId = "csv:${hash.take(20)}${if (occurrence > 1) ":$occurrence" else ""}"
-                val row = runCatching { format.read(Csv(fields), raw, fallbackId) }.getOrElse { e ->
+                val csv = Csv(fields)
+                val row = runCatching { format.read(csv, raw, fallbackId) }.getOrElse { e ->
                     throw StatementException("${format.name}, line ${records.indexOf(record) + headerIndex + 1}: ${e.message}")
                 }
-                if (row == null) notBooked++
-                row
+                if (row == null) {
+                    notBooked++
+                    emptyList()
+                } else {
+                    listOf(row) + runCatching { format.extra(csv, raw, fallbackId, row) }.getOrElse { e ->
+                        throw StatementException("${format.name}, line ${records.indexOf(record) + headerIndex + 1}: ${e.message}")
+                    }
+                }
             }
         return Statement(format.name, rows, notBooked)
     }
@@ -60,6 +67,8 @@ private class Csv(private val fields: Map<String, String>) {
     operator fun get(column: String): String = fields[column].orEmpty()
 
     fun amount(column: String) = parseAmount(get(column)) ?: throw IllegalArgumentException("\"${get(column)}\" in $column isn't an amount")
+
+    fun amountOrNull(column: String) = get(column).takeIf { it.isNotEmpty() }?.let { parseAmount(it) }
 
     fun date(column: String) = parseDate(get(column)) ?: throw IllegalArgumentException("\"${get(column)}\" in $column isn't a date")
 
@@ -113,6 +122,7 @@ private class CsvFormat(
     val marker: List<String>,
     val delimiter: Char,
     val required: List<String>,
+    val extra: (row: Csv, raw: JsonObject, fallbackId: String, main: ParsedRow) -> List<ParsedRow> = { _, _, _, _ -> emptyList() },
     /** Null for a row that hasn't settled. */
     val read: (row: Csv, raw: JsonObject, fallbackId: String) -> ParsedRow?,
 )
@@ -130,31 +140,52 @@ private val CSV_FORMATS = listOf(
         marker = listOf("Type", "Started Date", "Completed Date", "Description"),
         delimiter = ',',
         required = listOf("Type", "Started Date", "Completed Date", "Description", "Amount", "Currency", "State"),
-    ) { row, raw, fallbackId ->
-        if (row["State"] != "COMPLETED") return@CsvFormat null
-        val type = row["Type"]
-        val code = REVOLUT_CODES[type] ?: type.uppercase().replace(' ', '_')
-        val description = row["Description"]
-        val currency = row["Currency"].uppercase()
-        val started = row.date("Started Date")
-        val booked = row.dateOrNull("Completed Date") ?: started
-        val person = code == "TRANSFER" || code == "REV_PAYMENT"
-        ParsedRow(
-            externalId = fallbackId,
-            bookingDate = booked,
-            valueDate = null,
-            date = started,
-            amountMinor = toMinor(row.amount("Amount"), currency),
-            currency = currency,
-            counterpartyName = if (person) description.replace(Regex("^(To|From|Payment from) "), "") else "",
-            counterpartyIban = null,
-            counterpartyAccount = "",
-            text = description.replace(Regex("^(To|From|Payment from) "), ""),
-            message = description,
-            code = code,
-            raw = raw,
-        )
-    },
+        read = { row, raw, fallbackId ->
+            if (row["State"] != "COMPLETED") return@CsvFormat null
+            val type = row["Type"]
+            val code = REVOLUT_CODES[type] ?: type.uppercase().replace(' ', '_')
+            val description = row["Description"]
+            val currency = row["Currency"].uppercase()
+            val started = row.date("Started Date")
+            val booked = row.dateOrNull("Completed Date") ?: started
+            val person = code == "TRANSFER" || code == "REV_PAYMENT"
+            ParsedRow(
+                externalId = fallbackId,
+                bookingDate = booked,
+                valueDate = null,
+                date = started,
+                amountMinor = toMinor(row.amount("Amount"), currency),
+                currency = currency,
+                counterpartyName = if (person) description.replace(Regex("^(To|From|Payment from) "), "") else "",
+                counterpartyIban = null,
+                counterpartyAccount = "",
+                text = description.replace(Regex("^(To|From|Payment from) "), ""),
+                message = description,
+                code = code,
+                raw = raw,
+            )
+        },
+        extra = { row, raw, fallbackId, main ->
+            val fee = row.amountOrNull("Fee")?.let { toMinor(it, main.currency) } ?: 0L
+            if (fee == 0L) emptyList() else listOf(
+                ParsedRow(
+                    externalId = "$fallbackId:fee",
+                    bookingDate = main.bookingDate,
+                    valueDate = null,
+                    date = main.date,
+                    amountMinor = -kotlin.math.abs(fee),
+                    currency = main.currency,
+                    counterpartyName = "Revolut",
+                    counterpartyIban = null,
+                    counterpartyAccount = "",
+                    text = if (main.text.isNotEmpty()) "Revolut fee: ${main.text}" else "Revolut fee",
+                    message = "Fee for ${main.message}".trim(),
+                    code = "FEE",
+                    raw = raw,
+                ),
+            )
+        },
+    ),
     CsvFormat(
         name = "ČSOB CSV",
         marker = listOf("datum zaúčtování", "číslo protiúčtu"),

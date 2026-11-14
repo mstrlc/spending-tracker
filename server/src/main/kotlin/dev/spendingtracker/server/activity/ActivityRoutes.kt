@@ -176,6 +176,9 @@ private fun ResultRow.toEntry(
             current.text("from_user_id")?.let(Uuid::parse)?.let(names::get),
             current.text("to_user_id")?.let(Uuid::parse)?.let(names::get),
         ).joinToString(" → ")
+        ActivityEntity.BANK_ROW -> current.text("text")?.takeIf { it.isNotBlank() }
+            ?: current.text("counterparty_name")?.takeIf { it.isNotBlank() }
+            ?: current.text("message")?.takeIf { it.isNotBlank() }
         ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET,
         ActivityEntity.TRIP, ActivityEntity.MERCHANT -> current.text("name")
     }

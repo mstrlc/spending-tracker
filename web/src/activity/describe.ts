@@ -30,6 +30,7 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   split_rule: "split",
   split_share: "share of",
   settlement: "settlement",
+  bank_row: "bank row",
 };
 
 const LABELS: Record<string, string> = {

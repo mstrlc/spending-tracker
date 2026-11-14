@@ -39,6 +39,7 @@ object HouseholdMembers : Table("household_members") {
     val householdId = uuid("household_id")
     val userId = uuid("user_id")
     val role = text("role")
+    val legalName = text("legal_name").default("")
     override val primaryKey = PrimaryKey(householdId, userId)
 }
 

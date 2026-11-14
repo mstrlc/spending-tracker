@@ -4,6 +4,8 @@ import dev.spendingtracker.server.market.CzkRate
 import dev.spendingtracker.shared.api.Account
 import dev.spendingtracker.shared.api.AccountInput
 import dev.spendingtracker.shared.api.AccountKind
+import dev.spendingtracker.shared.api.ActivityEntity
+import dev.spendingtracker.shared.api.ActivityPage
 import dev.spendingtracker.shared.api.BankFeed
 import dev.spendingtracker.shared.api.BankFeedInput
 import dev.spendingtracker.shared.api.BankInstitution
@@ -21,6 +23,8 @@ import dev.spendingtracker.shared.api.ImportResult
 import dev.spendingtracker.shared.api.Income
 import dev.spendingtracker.shared.api.IncomeInput
 import dev.spendingtracker.shared.api.LinkBankRows
+import dev.spendingtracker.shared.api.Member
+import dev.spendingtracker.shared.api.MemberInput
 import dev.spendingtracker.shared.api.SkipBankRows
 import dev.spendingtracker.shared.api.StatementResult
 import dev.spendingtracker.shared.api.StatementUpload
@@ -31,6 +35,7 @@ import io.ktor.client.call.body
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.HttpStatusCode
 import kotlinx.datetime.LocalDate
@@ -282,5 +287,133 @@ class InboxTest {
         client.post("$base/import") {
             setBody(file.copy(bankRows = listOf(ImportBankRow("Nope", raw("t9", "-1", "X")))))
         }.assertError(HttpStatusCode.BadRequest, "unknown_feed")
+    }
+
+    @Test
+    fun revolutFeesAndCsvThenGoCardlessDedup() = apiTest {
+        val client = newClient()
+        val alice = client.signup()
+        val household = client.createHousehold()
+        val base = "/api/households/${household.id}"
+        val account = client.post("$base/accounts") {
+            setBody(AccountInput("Revolut", kind = AccountKind.BANK))
+        }.body<Account>()
+        val feed = client.post("$base/bank-feeds") {
+            setBody(BankFeedInput(account.id, "Revolut CZK", BankInstitution.REVOLUT, currency = "CZK"))
+        }.body<BankFeed>()
+
+        // Revolut CSV with a non-zero fee on the first row and 0.00 on the second
+        val csv = """
+            Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+            CARD_PAYMENT,Current,2026-09-10 10:00:00,2026-09-10 12:00:00,Albert,-250.00,15.00,CZK,COMPLETED,1000.00
+            CARD_PAYMENT,Current,2026-09-11 10:00:00,2026-09-11 12:00:00,Bakery,-80.00,0.00,CZK,COMPLETED,920.00
+        """.trimIndent()
+        val res1 = client.post("$base/bank-feeds/${feed.id}/statements") {
+            setBody(StatementUpload(csv, "rev.csv"))
+        }.body<StatementResult>()
+        assertEquals(3, res1.added)
+
+        val pending = client.pending(base)
+        val feeRow = pending.single { it.code == "FEE" }
+        assertEquals(-1500L, feeRow.amountMinor)
+        assertEquals("Revolut fee: Albert", feeRow.text)
+
+        // Later GoCardless JSON with the same Albert and Bakery transactions (different externalId)
+        val gcJson = """
+            {
+              "transactions": {
+                "booked": [
+                  {
+                    "transactionId": "gc-albert-1",
+                    "bookingDate": "2026-09-10",
+                    "valueDate": "2026-09-10",
+                    "transactionAmount": { "amount": "-250.00", "currency": "CZK" },
+                    "remittanceInformationUnstructured": "Albert"
+                  },
+                  {
+                    "transactionId": "gc-bakery-1",
+                    "bookingDate": "2026-09-11",
+                    "valueDate": "2026-09-11",
+                    "transactionAmount": { "amount": "-80.00", "currency": "CZK" },
+                    "remittanceInformationUnstructured": "Bakery"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+        val res2 = client.post("$base/bank-feeds/${feed.id}/statements") {
+            setBody(StatementUpload(gcJson, "gc.json"))
+        }.body<StatementResult>()
+        assertEquals(0, res2.added)
+        assertEquals(2, res2.existing)
+    }
+
+    @Test
+    fun memberLegalNameHintDecidedOutcomeLabelAndActivity() = apiTest {
+        val client = newClient()
+        val alice = client.signup()
+        val household = client.createHousehold()
+        val base = "/api/households/${household.id}"
+
+        // Set Alice's legal name for bank transfer hints
+        val updatedMember = client.put("$base/members/${alice.id}") {
+            setBody(MemberInput("Alice", legalName = "Nováková Alice"))
+        }.body<Member>()
+        assertEquals("Nováková Alice", updatedMember.legalName)
+
+        val account = client.post("$base/accounts") {
+            setBody(AccountInput("Current", kind = AccountKind.BANK))
+        }.body<Account>()
+        val feed = client.post("$base/bank-feeds") {
+            setBody(BankFeedInput(account.id, "Current CZK", BankInstitution.OTHER, currency = "CZK"))
+        }.body<BankFeed>()
+
+        val gcJson = """
+            {
+              "transactions": {
+                "booked": [
+                  {
+                    "transactionId": "t-legal",
+                    "bookingDate": "2026-09-12",
+                    "transactionAmount": { "amount": "-500.00", "currency": "CZK" },
+                    "debtorName": "NOVAKOVA ALICE",
+                    "creditorName": "NOVAKOVA ALICE",
+                    "remittanceInformationUnstructured": "Transfer"
+                  },
+                  {
+                    "transactionId": "t-exp",
+                    "bookingDate": "2026-09-13",
+                    "transactionAmount": { "amount": "-120.00", "currency": "CZK" },
+                    "remittanceInformationUnstructured": "Cafe"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+        client.post("$base/bank-feeds/${feed.id}/statements") { setBody(StatementUpload(gcJson, "gc.json")) }
+
+        val pending = client.pending(base)
+        assertEquals("To or from someone in the household", pending.first { it.text == "NOVAKOVA ALICE" }.hint)
+
+        // File the cafe row as an expense -> decided row carries outcomeLabel = "Cafe"
+        val expRow = pending.first { it.text == "Cafe" }
+        client.post("$base/expenses") {
+            setBody(
+                ExpenseInput(
+                    date = expRow.date,
+                    amountMinor = 12000,
+                    merchant = "Cafe",
+                    accountId = account.id,
+                    bankRows = listOf(expRow.ref()),
+                ),
+            )
+        }.also { assertEquals(HttpStatusCode.Created, it.status) }
+
+        val decided = client.get("$base/bank-rows?status=decided").body<List<BankRow>>()
+        assertEquals("Cafe", decided.single().outcomeLabel)
+
+        // Bank rows appear in Activity
+        val activity = client.get("$base/activity?entity=bank_row").body<ActivityPage>()
+        assertTrue(activity.entries.any { it.entity == ActivityEntity.BANK_ROW && it.label == "Cafe" })
     }
 }

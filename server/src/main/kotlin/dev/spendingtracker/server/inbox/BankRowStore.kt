@@ -44,8 +44,8 @@ fun loadHintContext(householdId: Uuid): HintContext {
     val ibans = Accounts.select(Accounts.iban).where { Accounts.householdId eq householdId }.mapNotNull { it[Accounts.iban] } +
         BankFeeds.select(BankFeeds.iban).where { BankFeeds.householdId eq householdId }.mapNotNull { it[BankFeeds.iban] }
     val names = HouseholdMembers.join(Users, JoinType.INNER, HouseholdMembers.userId, Users.id)
-        .select(Users.displayName).where { HouseholdMembers.householdId eq householdId }
-        .map { it[Users.displayName] }
+        .select(Users.displayName, HouseholdMembers.legalName).where { HouseholdMembers.householdId eq householdId }
+        .flatMap { listOfNotNull(it[Users.displayName], it[HouseholdMembers.legalName].takeIf { n -> n.isNotBlank() }) }
     return HintContext(ibans.toSet(), names)
 }
 
@@ -62,6 +62,9 @@ data class StoredCounts(val added: Int, val existing: Int, val beforeImportFrom:
  * Adds [rows] to a feed, leaving out those it has already (same external id) and those booked before [importFrom].
  * [hints] can give a row a hint of its own (the old app's decision); otherwise the reader's applies. Call inside a transaction.
  */
+private data class ExistingRowKey(val bookingDate: LocalDate, val amountMinor: Long, val currency: String)
+private class ExistingRowRef(val externalId: String, val counterpartyIban: String?, val normalizedText: String)
+
 fun storeRows(
     householdId: Uuid,
     feedId: Uuid,
@@ -71,9 +74,40 @@ fun storeRows(
     context: HintContext,
     hints: Map<String, String> = emptyMap(),
 ): StoredCounts {
-    val known = BankRows.select(BankRows.externalId).where { BankRows.feedId eq feedId }.map { it[BankRows.externalId] }.toMutableSet()
+    val existing = BankRows
+        .select(BankRows.externalId, BankRows.bookingDate, BankRows.amountMinor, BankRows.currency, BankRows.counterpartyIban, BankRows.text)
+        .where { BankRows.feedId eq feedId }
+        .toList()
+    val known = existing.map { it[BankRows.externalId] }.toMutableSet()
+    val matchedExternalIds = rows.map { it.externalId }.filter { it in known }.toSet()
+    val pool = existing
+        .filter { it[BankRows.externalId] !in matchedExternalIds }
+        .groupBy { ExistingRowKey(it[BankRows.bookingDate], it[BankRows.amountMinor], it[BankRows.currency]) }
+        .mapValues { (_, list) ->
+            list.map {
+                ExistingRowRef(it[BankRows.externalId], it[BankRows.counterpartyIban], normalizeText(it[BankRows.text]))
+            }.toMutableList()
+        }
+
     val before = rows.count { importFrom != null && it.bookingDate < importFrom }
-    val fresh = rows.filter { (importFrom == null || it.bookingDate >= importFrom) && known.add(it.externalId) }
+    val fresh = rows.filter { row ->
+        if (importFrom != null && row.bookingDate < importFrom) return@filter false
+        if (!known.add(row.externalId)) return@filter false
+        // Also recognize the same transaction imported earlier from a different format (e.g. CSV vs GoCardless).
+        val candidates = pool[ExistingRowKey(row.bookingDate, row.amountMinor, row.currency)]
+        if (candidates != null) {
+            val normText = normalizeText(row.text)
+            val idx = candidates.indexOfFirst { cand ->
+                (row.counterpartyIban != null && row.counterpartyIban == cand.counterpartyIban) ||
+                    (normText.isNotEmpty() && normText == cand.normalizedText)
+            }
+            if (idx >= 0) {
+                candidates.removeAt(idx)
+                return@filter false
+            }
+        }
+        true
+    }
     BankRows.batchInsert(fresh, shouldReturnGeneratedValues = false) { row ->
         this[BankRows.id] = Uuid.random()
         this[BankRows.householdId] = householdId
@@ -113,7 +147,7 @@ fun ResultRow.outcome() = when {
 }
 
 /** A row of BankRows joined with BankFeeds. */
-fun ResultRow.toBankRow(suggestion: BankRowSuggestion? = null) = BankRow(
+fun ResultRow.toBankRow(suggestion: BankRowSuggestion? = null, outcomeLabel: String? = null) = BankRow(
     id = this[BankRows.id].toString(),
     feedId = this[BankRows.feedId].toString(),
     accountId = this[BankFeeds.accountId].toString(),
@@ -141,6 +175,7 @@ fun ResultRow.toBankRow(suggestion: BankRowSuggestion? = null) = BankRow(
     decidedAt = this[BankRows.decidedAt]?.toString(),
     version = this[BankRows.version],
     suggestion = suggestion,
+    outcomeLabel = outcomeLabel,
 )
 
 fun rowsWithFeed() = BankRows.join(BankFeeds, JoinType.INNER, BankRows.feedId, BankFeeds.id)

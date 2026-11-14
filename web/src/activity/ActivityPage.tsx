@@ -18,6 +18,7 @@ const FILTERS: { value: ActivityEntity | ""; label: string }[] = [
   { value: "asset_valuation", label: "Asset values" },
   { value: "asset_fee", label: "Asset fees" },
   { value: "settlement", label: "Settlements" },
+  { value: "bank_row", label: "Bank rows" },
   { value: "split_rule", label: "Splits" },
   { value: "split_share", label: "Split shares" },
   { value: "trip", label: "Trips" },
