@@ -5,10 +5,10 @@ import dev.spendingtracker.server.common.dateParam
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Income
-import dev.spendingtracker.server.db.InvestmentContributions
+import dev.spendingtracker.server.db.AssetContributions
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
-import dev.spendingtracker.server.investment.Dated
+import dev.spendingtracker.server.asset.Dated
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.Overview
 import io.github.smiley4.ktoropenapi.get
@@ -74,17 +74,17 @@ fun Route.overviewRoutes() = route("/overview") {
                 .where { (Income.householdId eq householdId) and (Income.date.between(windowStart.firstDay, month.lastDay)) }
                 .orderBy(Income.date to SortOrder.DESC)
                 .map { Earning(it[Income.date], it[Income.amountMinor], it[Income.sourceName]) }
-            val contributions = InvestmentContributions.selectAll()
+            val contributions = AssetContributions.selectAll()
                 .where {
-                    (InvestmentContributions.householdId eq householdId) and
-                        (InvestmentContributions.date.between(windowStart.firstDay, month.lastDay))
+                    (AssetContributions.householdId eq householdId) and
+                        (AssetContributions.date.between(windowStart.firstDay, month.lastDay))
                 }
-                .map { Dated(it[InvestmentContributions.date], it[InvestmentContributions.amountMinor]) }
+                .map { Dated(it[AssetContributions.date], it[AssetContributions.amountMinor]) }
             // Where the ledger starts: months before it are unknown, not empty.
             val firstExpense = Expenses.select(Expenses.date.min()).where { Expenses.householdId eq householdId }.single()[Expenses.date.min()]
             val firstIncome = Income.select(Income.date.min()).where { Income.householdId eq householdId }.single()[Income.date.min()]
-            val firstContribution = InvestmentContributions.select(InvestmentContributions.date.min())
-                .where { InvestmentContributions.householdId eq householdId }.single()[InvestmentContributions.date.min()]
+            val firstContribution = AssetContributions.select(AssetContributions.date.min())
+                .where { AssetContributions.householdId eq householdId }.single()[AssetContributions.date.min()]
             Flows(spends, earnings, contributions) to listOfNotNull(firstExpense, firstIncome, firstContribution).minOrNull()?.yearMonth
         }
         val (spends, earnings, contributions) = flows

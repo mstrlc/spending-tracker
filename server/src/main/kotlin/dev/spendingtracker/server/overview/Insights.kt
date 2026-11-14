@@ -1,6 +1,6 @@
 package dev.spendingtracker.server.overview
 
-import dev.spendingtracker.server.investment.Dated
+import dev.spendingtracker.server.asset.Dated
 import dev.spendingtracker.shared.api.CategoryAnomaly
 import dev.spendingtracker.shared.api.CategoryTotal
 import dev.spendingtracker.shared.api.MonthFlow
@@ -21,7 +21,7 @@ import kotlin.uuid.Uuid
 
 /**
  * An expense reduced to what the overview needs: its top-level category and whether that is an investment category.
- * Those are transfers into investments, not spending; what was invested is read from investment contributions instead.
+ * Those are transfers into investments, not spending; what was invested is read from asset contributions instead.
  */
 data class Spend(val date: LocalDate, val amountMinor: Long, val merchant: String, val topCategoryId: Uuid?, val investment: Boolean)
 

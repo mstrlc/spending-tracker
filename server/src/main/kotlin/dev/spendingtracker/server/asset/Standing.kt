@@ -1,4 +1,4 @@
-package dev.spendingtracker.server.investment
+package dev.spendingtracker.server.asset
 
 import kotlinx.datetime.LocalDate
 import java.math.BigDecimal
@@ -12,7 +12,7 @@ data class Lot(val date: LocalDate, val amountMinor: Long, val quantity: BigDeci
 /** Shares valued at a close: the value in household minor units, and the day of that close. */
 data class Priced(val valueMinor: Long, val date: LocalDate)
 
-/** Where a holding stands; see [dev.spendingtracker.shared.api.Investment] for what each figure means. */
+/** Where a holding stands; see [dev.spendingtracker.shared.api.Asset] for what each figure means. */
 data class Standing(
     val contributedMinor: Long,
     val valueMinor: Long,

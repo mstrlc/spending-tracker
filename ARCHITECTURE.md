@@ -74,7 +74,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 
 ### Assets and net worth
 
-- **Investments become assets** with a kind: market (priced from closing prices), savings, building savings or pension, receivable, vehicle. They share contributions and valuations.
+- ~~**Investments become assets**~~ (done 2026-11-14) with a kind: market (priced from closing prices), savings, building savings or pension, receivable, vehicle. They share contributions and valuations.
 
 ### Reporting and planning
 
@@ -105,6 +105,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
    - ~~**Investments**~~ (done 2026-11-03): market holdings (fund, stock, bond, crypto, other) held by a member or jointly, with dated contributions (negative for withdrawals, optionally from an account) and dated valuations. Each holding shows what went in, what it's worth (latest valuation plus contributions since, at cost), the gain and the gain %. The Overview's Invested is now the month's net contributions; expenses in investment categories still stay out of spending but no longer count as invested, so the same money isn't counted twice.
      Market valuation (2026-11-03): a holding can follow a listed security (search by name, ticker or ISIN) and its contributions record shares; it's then valued daily from closing prices (Yahoo Finance's unofficial keyless API, behind a `MarketData` interface) converted at ČNB fixings, both cached in Postgres and refreshed at most every 6 hours. The Investments page and each holding show worth against money put in over time.
      Fees (2026-11-03): a holding records the fees its provider charged (discounts negative), shown as a running total and in its history. On a holding valued by hand they're informational: the provider already took them out of the value, so they change neither worth nor money put in. On a market-valued holding they're broker commissions paid on top of the shares, so they count as money put in and lower the gain. Each holding breaks them down by year against its average worth (a yearly rate, part years scaled up), and overall against money put in and the gain before fees. Investments show CZK in whole crowns.
-     Not yet: other net-worth assets (property, cars, loans), money-weighted return, entering a buy in the security's currency.
-3. **Next**: the data model changes above (members without login, debts and split ratios, account kinds, assets, merchants, split lines, trips, income deductions), the old-app import, inbox (bank import), budget.
+     Assets (2026-11-14): investments became assets (tables, API `/assets`, the Assets page). Besides the market kinds (fund, stock, bond, crypto), an asset can be savings, a savings scheme (building savings, pension), money owed to the household, a vehicle, property or other; only market kinds can follow a security, the rest are valued by hand. Past activity entries were renamed with them.
+     Not yet: loans and other liabilities, savings balances from bank feeds, money-weighted return, entering a buy in the security's currency.
+3. **Next**: the data model changes above (members without login, debts and split ratios, account kinds, merchants, split lines, trips, income deductions), the old-app import, inbox (bank import), budget.
 4. **Later**: net worth, forecast, MCP server, mobile apps, hosting, goals, wishlist.

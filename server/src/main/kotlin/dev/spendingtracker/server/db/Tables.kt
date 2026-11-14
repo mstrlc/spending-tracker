@@ -97,7 +97,7 @@ object Income : Table("income") {
     override val primaryKey = PrimaryKey(id)
 }
 
-object Investments : Table("investments") {
+object Assets : Table("assets") {
     val id = uuid("id")
     val householdId = uuid("household_id")
     val name = text("name")
@@ -111,10 +111,10 @@ object Investments : Table("investments") {
     override val primaryKey = PrimaryKey(id)
 }
 
-object InvestmentContributions : Table("investment_contributions") {
+object AssetContributions : Table("asset_contributions") {
     val id = uuid("id")
     val householdId = uuid("household_id")
-    val investmentId = uuid("investment_id")
+    val assetId = uuid("asset_id")
     val date = date("date")
     val amountMinor = long("amount_minor")
     val quantity = decimal("quantity", 30, 10).nullable()
@@ -126,10 +126,10 @@ object InvestmentContributions : Table("investment_contributions") {
     override val primaryKey = PrimaryKey(id)
 }
 
-object InvestmentValuations : Table("investment_valuations") {
+object AssetValuations : Table("asset_valuations") {
     val id = uuid("id")
     val householdId = uuid("household_id")
-    val investmentId = uuid("investment_id")
+    val assetId = uuid("asset_id")
     val date = date("date")
     val valueMinor = long("value_minor")
     val notes = text("notes")
@@ -139,10 +139,10 @@ object InvestmentValuations : Table("investment_valuations") {
     override val primaryKey = PrimaryKey(id)
 }
 
-object InvestmentFees : Table("investment_fees") {
+object AssetFees : Table("asset_fees") {
     val id = uuid("id")
     val householdId = uuid("household_id")
-    val investmentId = uuid("investment_id")
+    val assetId = uuid("asset_id")
     val date = date("date")
     val amountMinor = long("amount_minor")
     val notes = text("notes")

@@ -1,4 +1,4 @@
-package dev.spendingtracker.server.investment
+package dev.spendingtracker.server.asset
 
 import dev.spendingtracker.server.db.FxRates
 import dev.spendingtracker.server.db.SecurityPrices

@@ -9,7 +9,7 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { CategoriesPage } from "./categories/CategoriesPage";
 import { ExpensesPage } from "./expenses/ExpensesPage";
 import { IncomePage } from "./income/IncomePage";
-import { InvestmentsPage } from "./investments/InvestmentsPage";
+import { AssetsPage } from "./assets/AssetsPage";
 import { HomeRedirect, HouseholdLayout, OnboardingPage } from "./households/HouseholdPages";
 import { InvitePage } from "./households/InvitePage";
 import { OverviewPage } from "./overview/OverviewPage";
@@ -38,7 +38,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="overview" element={<OverviewPage />} />
               <Route path="expenses" element={<ExpensesPage />} />
               <Route path="income" element={<IncomePage />} />
-              <Route path="investments" element={<InvestmentsPage />} />
+              <Route path="assets" element={<AssetsPage />} />
               <Route path="accounts" element={<AccountsPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="members" element={<MembersPage />} />

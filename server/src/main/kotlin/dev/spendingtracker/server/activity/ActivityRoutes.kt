@@ -3,7 +3,7 @@ package dev.spendingtracker.server.activity
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.parseId
 import dev.spendingtracker.server.db.AuditLog
-import dev.spendingtracker.server.db.Investments
+import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.Users
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
@@ -39,7 +39,7 @@ private const val MAX_LIMIT = 200
 // Bookkeeping columns: they change with every write or never, and say nothing a person would look for.
 private val HIDDEN_FIELDS = setOf(
     "id", "household_id", "user_id", "version", "created_at", "updated_at", "joined_at",
-    "created_by", "external_ref", "invited_by", "accepted_by", "investment_id",
+    "created_by", "external_ref", "invited_by", "accepted_by", "asset_id",
 )
 
 /** Must be inside a HouseholdAccess scope. */
@@ -84,7 +84,7 @@ fun Route.activityRoutes() = route("/activity") {
             val rows = AuditLog.selectAll().where(filter).orderBy(AuditLog.id to SortOrder.DESC).limit(limit + 1).toList()
             val shown = rows.take(limit)
             val names = userNames(shown)
-            val holdings = investmentNames(shown)
+            val holdings = assetNames(shown)
             ActivityPage(
                 entries = shown.map { it.toEntry(names, holdings) },
                 nextBefore = if (rows.size > limit) shown.last()[AuditLog.id] else null,
@@ -106,13 +106,13 @@ private fun userNames(rows: List<ResultRow>): Map<Uuid, String> {
 }
 
 /** Current names of the holdings that contribution and valuation entries belong to; deleted ones are missing. */
-private fun investmentNames(rows: List<ResultRow>): Map<String, String> {
-    val ids = rows.filter { it[AuditLog.entity].startsWith("investment_") }
-        .mapNotNull { row -> (row[AuditLog.after] ?: row[AuditLog.before])?.let(::parseRow)?.text("investment_id") }
+private fun assetNames(rows: List<ResultRow>): Map<String, String> {
+    val ids = rows.filter { it[AuditLog.entity].startsWith("asset_") }
+        .mapNotNull { row -> (row[AuditLog.after] ?: row[AuditLog.before])?.let(::parseRow)?.text("asset_id") }
         .distinct()
         .map(Uuid::parse)
     if (ids.isEmpty()) return emptyMap()
-    return Investments.selectAll().where { Investments.id inList ids }.associate { it[Investments.id].toString() to it[Investments.name] }
+    return Assets.selectAll().where { Assets.id inList ids }.associate { it[Assets.id].toString() to it[Assets.name] }
 }
 
 private fun ResultRow.toEntry(names: Map<Uuid, String>, holdings: Map<String, String>): ActivityEntry {
@@ -125,9 +125,9 @@ private fun ResultRow.toEntry(names: Map<Uuid, String>, holdings: Map<String, St
         ActivityEntity.INCOME -> current.text("source")
         ActivityEntity.INVITE -> current.text("email")
         ActivityEntity.MEMBER -> names[this[AuditLog.entityId]]
-        ActivityEntity.INVESTMENT_CONTRIBUTION, ActivityEntity.INVESTMENT_VALUATION, ActivityEntity.INVESTMENT_FEE ->
-            current.text("investment_id")?.let(holdings::get)
-        ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.INVESTMENT -> current.text("name")
+        ActivityEntity.ASSET_CONTRIBUTION, ActivityEntity.ASSET_VALUATION, ActivityEntity.ASSET_FEE ->
+            current.text("asset_id")?.let(holdings::get)
+        ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET -> current.text("name")
     }
     val actor = this[AuditLog.actorUserId]
     return ActivityEntry(

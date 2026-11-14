@@ -76,7 +76,7 @@ const SECTIONS = [
   { to: "overview", label: "Overview", icon: <Gauge /> },
   { to: "expenses", label: "Expenses", icon: <Receipt /> },
   { to: "income", label: "Income", icon: <Inbound /> },
-  { to: "investments", label: "Investments", icon: <TrendUp /> },
+  { to: "assets", label: "Assets", icon: <TrendUp /> },
   { to: "accounts", label: "Accounts", icon: <Wallet /> },
   { to: "categories", label: "Categories", icon: <Tag /> },
   { to: "members", label: "Members", icon: <Users /> },

@@ -52,12 +52,12 @@ const KINDS = {
  * existing entry in [target], edits or deletes it. Sits at the top of the holding's sheet; [onDone] closes it.
  */
 export function EntryForm({
-  investmentId,
+  assetId,
   security,
   target,
   onDone,
 }: {
-  investmentId: string;
+  assetId: string;
   /** The security the holding follows; contributions then ask for shares. */
   security: SecurityQuote | null;
   target: EntryTarget;
@@ -65,12 +65,12 @@ export function EntryForm({
 }) {
   const household = useHousehold();
   const accounts = useAccounts(household.id).data ?? [];
-  const saveContribution = useSaveContribution(household.id, investmentId);
-  const saveValuation = useSaveValuation(household.id, investmentId);
-  const saveFee = useSaveFee(household.id, investmentId);
-  const deleteContribution = useDeleteContribution(household.id, investmentId);
-  const deleteValuation = useDeleteValuation(household.id, investmentId);
-  const deleteFee = useDeleteFee(household.id, investmentId);
+  const saveContribution = useSaveContribution(household.id, assetId);
+  const saveValuation = useSaveValuation(household.id, assetId);
+  const saveFee = useSaveFee(household.id, assetId);
+  const deleteContribution = useDeleteContribution(household.id, assetId);
+  const deleteValuation = useDeleteValuation(household.id, assetId);
+  const deleteFee = useDeleteFee(household.id, assetId);
   const kind = KINDS[target.type];
   const existing = target.type === "valuation" ? target.valuation : target.type === "fee" ? target.fee : target.contribution;
   const save = { contribution: saveContribution, valuation: saveValuation, fee: saveFee }[target.type];

@@ -1,14 +1,15 @@
 package dev.spendingtracker.server
 
-import dev.spendingtracker.server.investment.Prices
+import dev.spendingtracker.server.asset.Prices
 import dev.spendingtracker.server.market.CzkRate
 import dev.spendingtracker.server.market.SecurityInfo
 import dev.spendingtracker.shared.api.ContributionInput
 import dev.spendingtracker.shared.api.FeeInput
 import dev.spendingtracker.shared.api.HistoryPoint
-import dev.spendingtracker.shared.api.Investment
-import dev.spendingtracker.shared.api.InvestmentHistory
-import dev.spendingtracker.shared.api.InvestmentInput
+import dev.spendingtracker.shared.api.Asset
+import dev.spendingtracker.shared.api.AssetHistory
+import dev.spendingtracker.shared.api.AssetInput
+import dev.spendingtracker.shared.api.AssetKind
 import dev.spendingtracker.shared.api.SecurityMatch
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -47,21 +48,24 @@ class MarketValuationTest {
                 listOf("VWCE.DE"),
                 client.get("/api/securities/search?q=all-world").body<List<SecurityMatch>>().map { it.symbol },
             )
-            client.post("$household/investments") { setBody(InvestmentInput("Nope", symbol = "NOPE.DE")) }
+            client.post("$household/assets") { setBody(AssetInput("Nope", symbol = "NOPE.DE")) }
                 .assertError(HttpStatusCode.BadRequest, "invalid_symbol")
+            // Only market kinds follow a security.
+            client.post("$household/assets") { setBody(AssetInput("Car", kind = AssetKind.VEHICLE, symbol = "VWCE.DE")) }
+                .assertError(HttpStatusCode.BadRequest, "symbol_not_market")
 
-            val fund = client.post("$household/investments") { setBody(InvestmentInput("World", symbol = " vwce.de ")) }.body<Investment>()
+            val fund = client.post("$household/assets") { setBody(AssetInput("World", symbol = " vwce.de ")) }.body<Asset>()
             assertEquals("VWCE.DE", fund.security?.symbol)
             assertEquals("EUR", fund.security?.currency)
             assertEquals(120.0, fund.security?.close)
 
-            val contributions = "$household/investments/${fund.id}/contributions"
+            val contributions = "$household/assets/${fund.id}/contributions"
             // 1 share at €100 when the euro was 25 CZK.
             client.post(contributions) { setBody(ContributionInput(LocalDate(2026, 1, 15), 250_000, quantity = 1.0)) }
             client.post(contributions) { setBody(ContributionInput(LocalDate(2026, 2, 1), 100, quantity = -1.0)) }
                 .assertError(HttpStatusCode.BadRequest, "invalid_quantity")
 
-            val held = client.get("$household/investments").body<List<Investment>>().single()
+            val held = client.get("$household/assets").body<List<Asset>>().single()
             assertTrue(held.marketValued)
             assertEquals(1.0, held.shares)
             // 1 × €120 × 24 CZK.
@@ -70,14 +74,14 @@ class MarketValuationTest {
             assertEquals(LocalDate(2026, 3, 31), held.valuedOn)
 
             // A commission was paid on top of the share: money put in that the worth doesn't hold.
-            client.post("$household/investments/${fund.id}/fees") { setBody(FeeInput(LocalDate(2026, 1, 15), 3_100)) }
-            val charged = client.get("$household/investments").body<List<Investment>>().single()
+            client.post("$household/assets/${fund.id}/fees") { setBody(FeeInput(LocalDate(2026, 1, 15), 3_100)) }
+            val charged = client.get("$household/assets").body<List<Asset>>().single()
             assertEquals(253_100L to 288_000L, charged.contributedMinor to charged.valueMinor)
             assertEquals(34_900L to 3_100L, charged.gainMinor to charged.feesMinor)
 
             // Money recorded without shares counts at cost on top.
             client.post(contributions) { setBody(ContributionInput(LocalDate(2026, 2, 10), 10_000)) }
-            val history = client.get("$household/investments/history").body<InvestmentHistory>().points
+            val history = client.get("$household/assets/history").body<AssetHistory>().points
             assertEquals(
                 listOf(
                     HistoryPoint(LocalDate(2026, 1, 31), 253_100, 250_000),

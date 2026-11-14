@@ -229,7 +229,7 @@ export interface paths {
         get?: never;
         put: operations["updateAccount"];
         post?: never;
-        /** @description Fails with 409 account_in_use while expenses, income or investment contributions reference the account; close it instead. */
+        /** @description Fails with 409 account_in_use while expenses, income or asset contributions reference the account; close it instead. */
         delete: operations["deleteAccount"];
         options?: never;
         head?: never;
@@ -337,7 +337,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/investments": {
+    "/api/households/{householdId}/assets": {
         parameters: {
             query?: never;
             header?: never;
@@ -345,16 +345,16 @@ export interface paths {
             cookie?: never;
         };
         /** @description Holdings by name, each with what was put in, what it's worth and the gain as of today. */
-        get: operations["listInvestments"];
+        get: operations["listAssets"];
         put?: never;
-        post: operations["createInvestment"];
+        post: operations["createAsset"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/investments/history": {
+    "/api/households/{householdId}/assets/history": {
         parameters: {
             query?: never;
             header?: never;
@@ -362,7 +362,7 @@ export interface paths {
             cookie?: never;
         };
         /** @description What the holdings (or one of them) had put in and were worth at the end of each month since the first contribution, then today. */
-        get: operations["getInvestmentHistory"];
+        get: operations["getAssetHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -371,7 +371,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/investments/{investmentId}": {
+    "/api/households/{householdId}/assets/{assetId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -379,16 +379,16 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["updateInvestment"];
+        put: operations["updateAsset"];
         post?: never;
         /** @description Deletes the holding with its contributions and valuations. */
-        delete: operations["deleteInvestment"];
+        delete: operations["deleteAsset"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/investments/{investmentId}/contributions": {
+    "/api/households/{householdId}/assets/{assetId}/contributions": {
         parameters: {
             query?: never;
             header?: never;
@@ -405,7 +405,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/investments/{investmentId}/contributions/{contributionId}": {
+    "/api/households/{householdId}/assets/{assetId}/contributions/{contributionId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -421,7 +421,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/investments/{investmentId}/valuations": {
+    "/api/households/{householdId}/assets/{assetId}/valuations": {
         parameters: {
             query?: never;
             header?: never;
@@ -439,7 +439,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/investments/{investmentId}/valuations/{valuationId}": {
+    "/api/households/{householdId}/assets/{assetId}/valuations/{valuationId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -455,7 +455,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/investments/{investmentId}/fees": {
+    "/api/households/{householdId}/assets/{assetId}/fees": {
         parameters: {
             query?: never;
             header?: never;
@@ -472,7 +472,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/investments/{investmentId}/fees/{feeId}": {
+    "/api/households/{householdId}/assets/{assetId}/fees/{feeId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -828,13 +828,13 @@ export interface components {
              */
             version?: null | number;
         };
-        /** Investment */
-        Investment: {
+        /** Asset */
+        Asset: {
             /** String */
             id: string;
             /** String */
             name: string;
-            kind: components["schemas"]["InvestmentKind"];
+            kind: components["schemas"]["AssetKind"];
             /** String */
             ownerUserId: null | string;
             /** String */
@@ -878,10 +878,10 @@ export interface components {
             feesMinor: number;
         };
         /**
-         * InvestmentKind
+         * AssetKind
          * @enum {string}
          */
-        InvestmentKind: "fund" | "stock" | "bond" | "crypto" | "other";
+        AssetKind: "fund" | "stock" | "bond" | "crypto" | "savings" | "scheme" | "receivable" | "vehicle" | "property" | "other";
         /** SecurityQuote */
         SecurityQuote: {
             /** String */
@@ -915,16 +915,16 @@ export interface components {
              */
             valueMinor: number;
         };
-        /** InvestmentHistory */
-        InvestmentHistory: {
+        /** AssetHistory */
+        AssetHistory: {
             /** ArrayList<HistoryPoint> */
             points: components["schemas"]["HistoryPoint"][];
         };
-        /** InvestmentInput */
-        InvestmentInput: {
+        /** AssetInput */
+        AssetInput: {
             /** String */
             name: string;
-            kind?: components["schemas"]["InvestmentKind"];
+            kind?: components["schemas"]["AssetKind"];
             /** String */
             ownerUserId?: null | string;
             /** String */
@@ -942,7 +942,7 @@ export interface components {
             /** String */
             id: string;
             /** String */
-            investmentId: string;
+            assetId: string;
             /** LocalDate */
             date: string;
             /**
@@ -994,7 +994,7 @@ export interface components {
             /** String */
             id: string;
             /** String */
-            investmentId: string;
+            assetId: string;
             /** LocalDate */
             date: string;
             /**
@@ -1032,7 +1032,7 @@ export interface components {
             /** String */
             id: string;
             /** String */
-            investmentId: string;
+            assetId: string;
             /** LocalDate */
             date: string;
             /**
@@ -1069,7 +1069,7 @@ export interface components {
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "investment" | "investment_contribution" | "investment_valuation" | "investment_fee";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -2413,7 +2413,7 @@ export interface operations {
             };
         };
     };
-    listInvestments: {
+    listAssets: {
         parameters: {
             query?: never;
             header?: never;
@@ -2429,7 +2429,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Investment"][];
+                    "application/json": components["schemas"]["Asset"][];
                 };
             };
             /** @description Not a member of this household, or no such household */
@@ -2441,7 +2441,7 @@ export interface operations {
             };
         };
     };
-    createInvestment: {
+    createAsset: {
         parameters: {
             query?: never;
             header?: never;
@@ -2452,7 +2452,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["InvestmentInput"];
+                "application/json": components["schemas"]["AssetInput"];
             };
         };
         responses: {
@@ -2461,7 +2461,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Investment"];
+                    "application/json": components["schemas"]["Asset"];
                 };
             };
             400: {
@@ -2481,11 +2481,11 @@ export interface operations {
             };
         };
     };
-    getInvestmentHistory: {
+    getAssetHistory: {
         parameters: {
             query?: {
                 /** @description Only this holding */
-                investmentId?: string;
+                assetId?: string;
             };
             header?: never;
             path: {
@@ -2500,7 +2500,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["InvestmentHistory"];
+                    "application/json": components["schemas"]["AssetHistory"];
                 };
             };
             400: {
@@ -2520,19 +2520,19 @@ export interface operations {
             };
         };
     };
-    updateInvestment: {
+    updateAsset: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
             };
             cookie?: never;
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["InvestmentInput"];
+                "application/json": components["schemas"]["AssetInput"];
             };
         };
         responses: {
@@ -2541,7 +2541,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Investment"];
+                    "application/json": components["schemas"]["Asset"];
                 };
             };
             400: {
@@ -2570,7 +2570,7 @@ export interface operations {
             };
         };
     };
-    deleteInvestment: {
+    deleteAsset: {
         parameters: {
             query: {
                 version: number;
@@ -2578,7 +2578,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
             };
             cookie?: never;
         };
@@ -2614,7 +2614,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
             };
             cookie?: never;
         };
@@ -2644,7 +2644,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
             };
             cookie?: never;
         };
@@ -2686,7 +2686,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
                 contributionId: string;
             };
             cookie?: never;
@@ -2739,7 +2739,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
                 contributionId: string;
             };
             cookie?: never;
@@ -2776,7 +2776,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
             };
             cookie?: never;
         };
@@ -2806,7 +2806,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
             };
             cookie?: never;
         };
@@ -2856,7 +2856,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
                 valuationId: string;
             };
             cookie?: never;
@@ -2909,7 +2909,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
                 valuationId: string;
             };
             cookie?: never;
@@ -2946,7 +2946,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
             };
             cookie?: never;
         };
@@ -2976,7 +2976,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
             };
             cookie?: never;
         };
@@ -3018,7 +3018,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
                 feeId: string;
             };
             cookie?: never;
@@ -3071,7 +3071,7 @@ export interface operations {
             header?: never;
             path: {
                 householdId: string;
-                investmentId: string;
+                assetId: string;
                 feeId: string;
             };
             cookie?: never;

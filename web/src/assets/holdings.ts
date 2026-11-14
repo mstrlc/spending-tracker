@@ -1,21 +1,29 @@
-import type { Contribution, Fee, HistoryPoint, Investment, InvestmentKind, Valuation } from "../api/types";
+import type { Contribution, Fee, HistoryPoint, Asset, AssetKind, Valuation } from "../api/types";
 import { formatAmount } from "../lib/money";
 
-export const KINDS: { value: InvestmentKind; label: string }[] = [
-  { value: "fund", label: "Fund" },
-  { value: "stock", label: "Stock" },
-  { value: "bond", label: "Bond" },
-  { value: "crypto", label: "Crypto" },
-  { value: "other", label: "Other" },
+/** Asset kinds; [market] ones can follow a listed security, the rest are valued by hand. */
+export const KINDS: { value: AssetKind; label: string; market: boolean }[] = [
+  { value: "fund", label: "Fund", market: true },
+  { value: "stock", label: "Stock", market: true },
+  { value: "bond", label: "Bond", market: true },
+  { value: "crypto", label: "Crypto", market: true },
+  { value: "savings", label: "Savings", market: false },
+  { value: "scheme", label: "Savings scheme", market: false },
+  { value: "receivable", label: "Owed to us", market: false },
+  { value: "vehicle", label: "Vehicle", market: false },
+  { value: "property", label: "Property", market: false },
+  { value: "other", label: "Other", market: false },
 ];
 
-export const kindLabel = (kind: InvestmentKind) => KINDS.find((k) => k.value === kind)?.label ?? kind;
+export const isMarketKind = (kind: AssetKind) => KINDS.find((k) => k.value === kind)?.market ?? false;
+
+export const kindLabel = (kind: AssetKind) => KINDS.find((k) => k.value === kind)?.label ?? kind;
 
 export type Totals = { contributedMinor: number; valueMinor: number; gainMinor: number; feesMinor: number };
 
 /** The holdings added up: what went in, what it's worth and the gain. */
-export function portfolioTotals(investments: Investment[]): Totals {
-  return investments.reduce(
+export function portfolioTotals(assets: Asset[]): Totals {
+  return assets.reduce(
     (sum, i) => ({
       contributedMinor: sum.contributedMinor + i.contributedMinor,
       valueMinor: sum.valueMinor + i.valueMinor,
@@ -39,17 +47,17 @@ export function formatPercent(ratio: number): string {
 }
 
 /**
- * An amount on the Investments page: crowns are rounded to whole CZK ("208,794"), since haléře say nothing at
+ * An amount on the Assets page: crowns are rounded to whole CZK ("208,794"), since haléře say nothing at
  * this scale; other currencies keep their minor units.
  */
-export function formatInvestment(amountMinor: number, currency: string): string {
+export function formatAsset(amountMinor: number, currency: string): string {
   if (currency !== "CZK") return formatAmount(amountMinor, currency);
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.round(amountMinor / 100));
 }
 
 /** An amount with its sign spelled out, for gains: "+1,200", "−50". */
 export function formatSigned(amountMinor: number, currency: string): string {
-  const whole = formatInvestment(Math.abs(amountMinor), currency);
+  const whole = formatAsset(Math.abs(amountMinor), currency);
   // A gain that rounds to nothing gets no sign.
   const sign = /[1-9]/.test(whole) ? (amountMinor > 0 ? "+" : amountMinor < 0 ? "−" : "") : "";
   return sign + whole;
@@ -119,7 +127,7 @@ export type FeeSummary = {
   yearlyRate: number | null;
 };
 
-export function feeSummary(fees: Fee[], points: HistoryPoint[], holding: Pick<Investment, "contributedMinor" | "gainMinor">): FeeSummary {
+export function feeSummary(fees: Fee[], points: HistoryPoint[], holding: Pick<Asset, "contributedMinor" | "gainMinor">): FeeSummary {
   const feesMinor = fees.reduce((sum, f) => sum + f.amountMinor, 0);
   const average = mean(chargedPoints(fees, points).map((p) => p.valueMinor));
   const months = new Set(fees.map((f) => f.date.slice(0, 7))).size;

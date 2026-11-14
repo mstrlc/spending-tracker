@@ -13,10 +13,10 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   category: "category",
   expense: "expense",
   income: "income",
-  investment: "investment",
-  investment_contribution: "contribution to",
-  investment_valuation: "value of",
-  investment_fee: "fee on",
+  asset: "asset",
+  asset_contribution: "contribution to",
+  asset_valuation: "value of",
+  asset_fee: "fee on",
 };
 
 const LABELS: Record<string, string> = {
@@ -55,8 +55,8 @@ export function describeAction(entry: ActivityEntry): [string, string, string] {
   // Contributions and values are labelled by their holding, which may be gone since.
   const name =
     entry.label ||
-    (entry.entity === "investment_contribution" || entry.entity === "investment_valuation" || entry.entity === "investment_fee"
-      ? "a deleted investment"
+    (entry.entity === "asset_contribution" || entry.entity === "asset_valuation" || entry.entity === "asset_fee"
+      ? "a deleted asset"
       : `untitled ${NOUNS[entry.entity]}`);
   if (entry.entity === "member") {
     const self = entry.actorUserId !== null && entry.actorUserId === entry.entityId;
@@ -97,7 +97,7 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
     case "archived":
       return value === "true" ? "Yes" : "No";
     case "kind":
-      // Category kinds; investment kinds (fund, stock, …) read as they are.
+      // Category kinds; asset kinds (fund, stock, …) read as they are.
       if (value === "investment") return "Investing";
       if (value === "consumption") return "Spending";
       return value === null ? "–" : value.charAt(0).toUpperCase() + value.slice(1);

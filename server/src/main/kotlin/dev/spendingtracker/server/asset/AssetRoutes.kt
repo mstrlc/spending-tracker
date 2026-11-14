@@ -1,4 +1,4 @@
-package dev.spendingtracker.server.investment
+package dev.spendingtracker.server.asset
 
 import dev.spendingtracker.server.auth.userId
 import dev.spendingtracker.server.common.ApiException
@@ -15,10 +15,10 @@ import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.common.versionParam
 import dev.spendingtracker.server.db.Accounts
-import dev.spendingtracker.server.db.InvestmentContributions
-import dev.spendingtracker.server.db.InvestmentFees
-import dev.spendingtracker.server.db.InvestmentValuations
-import dev.spendingtracker.server.db.Investments
+import dev.spendingtracker.server.db.AssetContributions
+import dev.spendingtracker.server.db.AssetFees
+import dev.spendingtracker.server.db.AssetValuations
+import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.db.isUniqueViolation
 import dev.spendingtracker.server.household.household
@@ -29,10 +29,10 @@ import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.Contribution
 import dev.spendingtracker.shared.api.HistoryPoint
 import dev.spendingtracker.shared.api.ContributionInput
-import dev.spendingtracker.shared.api.Investment
-import dev.spendingtracker.shared.api.InvestmentHistory
-import dev.spendingtracker.shared.api.InvestmentInput
-import dev.spendingtracker.shared.api.InvestmentKind
+import dev.spendingtracker.shared.api.Asset
+import dev.spendingtracker.shared.api.AssetHistory
+import dev.spendingtracker.shared.api.AssetInput
+import dev.spendingtracker.shared.api.AssetKind
 import dev.spendingtracker.shared.api.SecurityQuote
 import dev.spendingtracker.shared.api.Valuation
 import dev.spendingtracker.shared.api.ValuationInput
@@ -68,32 +68,32 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /** Must be inside a HouseholdAccess scope. */
-fun Route.investmentRoutes() = route("/investments") {
+fun Route.assetRoutes() = route("/assets") {
     get({
-        operationId = "listInvestments"
+        operationId = "listAssets"
         description = "Holdings by name, each with what was put in, what it's worth and the gain as of today."
         response {
-            code(HttpStatusCode.OK) { body<List<Investment>>() }
+            code(HttpStatusCode.OK) { body<List<Asset>>() }
         }
     }) {
         val book = call.book()
-        call.respond(book.holdings.map { book.investment(it) })
+        call.respond(book.holdings.map { book.asset(it) })
     }
 
     get("/history", {
-        operationId = "getInvestmentHistory"
+        operationId = "getAssetHistory"
         description = "What the holdings (or one of them) had put in and were worth at the end of each month " +
             "since the first contribution, then today."
         request {
-            queryParameter<String>("investmentId") { description = "Only this holding" }
+            queryParameter<String>("assetId") { description = "Only this holding" }
         }
         response {
-            code(HttpStatusCode.OK) { body<InvestmentHistory>() }
+            code(HttpStatusCode.OK) { body<AssetHistory>() }
             code(HttpStatusCode.BadRequest) { body<ApiError>() }
         }
     }) {
-        val investmentId = parseId(call.request.queryParameters["investmentId"], "investmentId")
-        val book = call.book(investmentId)
+        val assetId = parseId(call.request.queryParameters["assetId"], "assetId")
+        val book = call.book(assetId)
         val first = book.lots.values.flatten().minOfOrNull { it.date }
         val points = if (first == null) {
             emptyList()
@@ -103,72 +103,72 @@ fun Route.investmentRoutes() = route("/investments") {
                 HistoryPoint(day, standings.sumOf { it.contributedMinor }, standings.sumOf { it.valueMinor })
             }
         }
-        call.respond(InvestmentHistory(points))
+        call.respond(AssetHistory(points))
     }
 
     post({
-        operationId = "createInvestment"
-        request { body<InvestmentInput>() }
+        operationId = "createAsset"
+        request { body<AssetInput>() }
         response {
-            code(HttpStatusCode.Created) { body<Investment>() }
+            code(HttpStatusCode.Created) { body<Asset>() }
             code(HttpStatusCode.BadRequest) { body<ApiError>() }
         }
     }) {
         val householdId = call.household.id
-        val input = call.receive<InvestmentInput>().validated()
+        val input = call.receive<AssetInput>().validated()
         call.registerSymbol(input.symbol)
         val id = Uuid.random()
         dbQuery {
             input.checkOwner(householdId)
-            Investments.insert {
-                it[Investments.id] = id
-                it[Investments.householdId] = householdId
+            Assets.insert {
+                it[Assets.id] = id
+                it[Assets.householdId] = householdId
                 it.write(input)
                 it[version] = 1
                 it[createdBy] = call.userId
             }
         }
         val book = call.book(id)
-        call.respond(HttpStatusCode.Created, book.investment(book.holdings.single()))
+        call.respond(HttpStatusCode.Created, book.asset(book.holdings.single()))
     }
 
-    put("/{investmentId}", {
-        operationId = "updateInvestment"
+    put("/{assetId}", {
+        operationId = "updateAsset"
         request {
-            pathParameter<String>("investmentId")
-            body<InvestmentInput>()
+            pathParameter<String>("assetId")
+            body<AssetInput>()
         }
         response {
-            code(HttpStatusCode.OK) { body<Investment>() }
+            code(HttpStatusCode.OK) { body<Asset>() }
             code(HttpStatusCode.BadRequest) { body<ApiError>() }
             code(HttpStatusCode.NotFound) { body<ApiError>() }
             code(HttpStatusCode.Conflict) { body<ApiError>() }
         }
     }) {
         val householdId = call.household.id
-        val id = call.pathId("investmentId", "Investment")
-        val raw = call.receive<InvestmentInput>()
+        val id = call.pathId("assetId", "Asset")
+        val raw = call.receive<AssetInput>()
         val version = requireVersion(raw.version)
         val input = raw.validated()
         call.registerSymbol(input.symbol)
         dbQuery {
             input.checkOwner(householdId)
-            val affected = Investments.update({ matchInvestment(householdId, id) and (Investments.version eq version) }) {
+            val affected = Assets.update({ matchAsset(householdId, id) and (Assets.version eq version) }) {
                 it.write(input)
-                it[Investments.version] = version + 1
+                it[Assets.version] = version + 1
                 it[updatedAt] = Clock.System.now()
             }
-            checkVersioned(affected, { investmentExists(householdId, id) }, "Investment")
+            checkVersioned(affected, { assetExists(householdId, id) }, "Asset")
         }
         val book = call.book(id)
-        call.respond(book.investment(book.holdings.single()))
+        call.respond(book.asset(book.holdings.single()))
     }
 
-    delete("/{investmentId}", {
-        operationId = "deleteInvestment"
+    delete("/{assetId}", {
+        operationId = "deleteAsset"
         description = "Deletes the holding with its contributions and valuations."
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             queryParameter<Int>("version") { required = true }
         }
         response {
@@ -178,37 +178,37 @@ fun Route.investmentRoutes() = route("/investments") {
         }
     }) {
         val householdId = call.household.id
-        val id = call.pathId("investmentId", "Investment")
+        val id = call.pathId("assetId", "Asset")
         val version = call.versionParam()
         dbQuery {
-            val affected = Investments.deleteWhere { matchInvestment(householdId, id) and (Investments.version eq version) }
-            checkVersioned(affected, { investmentExists(householdId, id) }, "Investment")
+            val affected = Assets.deleteWhere { matchAsset(householdId, id) and (Assets.version eq version) }
+            checkVersioned(affected, { assetExists(householdId, id) }, "Asset")
         }
         call.respond(HttpStatusCode.NoContent)
     }
 
-    route("/{investmentId}/contributions") { contributionRoutes() }
-    route("/{investmentId}/valuations") { valuationRoutes() }
-    route("/{investmentId}/fees") { feeRoutes() }
+    route("/{assetId}/contributions") { contributionRoutes() }
+    route("/{assetId}/valuations") { valuationRoutes() }
+    route("/{assetId}/fees") { feeRoutes() }
 }
 
 private fun Route.contributionRoutes() {
     get({
         operationId = "listContributions"
         description = "The holding's contributions, newest first."
-        request { pathParameter<String>("investmentId") }
+        request { pathParameter<String>("assetId") }
         response {
             code(HttpStatusCode.OK) { body<List<Contribution>>() }
             code(HttpStatusCode.NotFound) { body<ApiError>() }
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val contributions = dbQuery {
-            requireInvestment(householdId, investmentId)
-            InvestmentContributions.selectAll()
-                .where { InvestmentContributions.investmentId eq investmentId }
-                .orderBy(InvestmentContributions.date to SortOrder.DESC, InvestmentContributions.id to SortOrder.ASC)
+            requireAsset(householdId, assetId)
+            AssetContributions.selectAll()
+                .where { AssetContributions.assetId eq assetId }
+                .orderBy(AssetContributions.date to SortOrder.DESC, AssetContributions.id to SortOrder.ASC)
                 .map { it.toContribution() }
         }
         call.respond(contributions)
@@ -217,7 +217,7 @@ private fun Route.contributionRoutes() {
     post({
         operationId = "createContribution"
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             body<ContributionInput>()
         }
         response {
@@ -227,21 +227,21 @@ private fun Route.contributionRoutes() {
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val input = call.receive<ContributionInput>().validated()
         val id = Uuid.random()
         val contribution = dbQuery {
-            requireInvestment(householdId, investmentId)
+            requireAsset(householdId, assetId)
             input.checkAccount(householdId)
-            InvestmentContributions.insert {
-                it[InvestmentContributions.id] = id
-                it[InvestmentContributions.householdId] = householdId
-                it[InvestmentContributions.investmentId] = investmentId
+            AssetContributions.insert {
+                it[AssetContributions.id] = id
+                it[AssetContributions.householdId] = householdId
+                it[AssetContributions.assetId] = assetId
                 it.write(input)
                 it[version] = 1
                 it[createdBy] = call.userId
             }
-            InvestmentContributions.selectAll().where { InvestmentContributions.id eq id }.single().toContribution()
+            AssetContributions.selectAll().where { AssetContributions.id eq id }.single().toContribution()
         }
         call.respond(HttpStatusCode.Created, contribution)
     }
@@ -249,7 +249,7 @@ private fun Route.contributionRoutes() {
     put("/{contributionId}", {
         operationId = "updateContribution"
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             pathParameter<String>("contributionId")
             body<ContributionInput>()
         }
@@ -261,21 +261,21 @@ private fun Route.contributionRoutes() {
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val id = call.pathId("contributionId", "Contribution")
         val raw = call.receive<ContributionInput>()
         val version = requireVersion(raw.version)
         val input = raw.validated()
         val contribution = dbQuery {
             input.checkAccount(householdId)
-            val match = matchContribution(householdId, investmentId, id)
-            val affected = InvestmentContributions.update({ match and (InvestmentContributions.version eq version) }) {
+            val match = matchContribution(householdId, assetId, id)
+            val affected = AssetContributions.update({ match and (AssetContributions.version eq version) }) {
                 it.write(input)
-                it[InvestmentContributions.version] = version + 1
+                it[AssetContributions.version] = version + 1
                 it[updatedAt] = Clock.System.now()
             }
-            checkVersioned(affected, { !InvestmentContributions.selectAll().where(match).empty() }, "Contribution")
-            InvestmentContributions.selectAll().where { InvestmentContributions.id eq id }.single().toContribution()
+            checkVersioned(affected, { !AssetContributions.selectAll().where(match).empty() }, "Contribution")
+            AssetContributions.selectAll().where { AssetContributions.id eq id }.single().toContribution()
         }
         call.respond(contribution)
     }
@@ -283,7 +283,7 @@ private fun Route.contributionRoutes() {
     delete("/{contributionId}", {
         operationId = "deleteContribution"
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             pathParameter<String>("contributionId")
             queryParameter<Int>("version") { required = true }
         }
@@ -294,13 +294,13 @@ private fun Route.contributionRoutes() {
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val id = call.pathId("contributionId", "Contribution")
         val version = call.versionParam()
         dbQuery {
-            val match = matchContribution(householdId, investmentId, id)
-            val affected = InvestmentContributions.deleteWhere { match and (InvestmentContributions.version eq version) }
-            checkVersioned(affected, { !InvestmentContributions.selectAll().where(match).empty() }, "Contribution")
+            val match = matchContribution(householdId, assetId, id)
+            val affected = AssetContributions.deleteWhere { match and (AssetContributions.version eq version) }
+            checkVersioned(affected, { !AssetContributions.selectAll().where(match).empty() }, "Contribution")
         }
         call.respond(HttpStatusCode.NoContent)
     }
@@ -310,19 +310,19 @@ private fun Route.valuationRoutes() {
     get({
         operationId = "listValuations"
         description = "The holding's valuations, newest first."
-        request { pathParameter<String>("investmentId") }
+        request { pathParameter<String>("assetId") }
         response {
             code(HttpStatusCode.OK) { body<List<Valuation>>() }
             code(HttpStatusCode.NotFound) { body<ApiError>() }
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val valuations = dbQuery {
-            requireInvestment(householdId, investmentId)
-            InvestmentValuations.selectAll()
-                .where { InvestmentValuations.investmentId eq investmentId }
-                .orderBy(InvestmentValuations.date to SortOrder.DESC)
+            requireAsset(householdId, assetId)
+            AssetValuations.selectAll()
+                .where { AssetValuations.assetId eq assetId }
+                .orderBy(AssetValuations.date to SortOrder.DESC)
                 .map { it.toValuation() }
         }
         call.respond(valuations)
@@ -332,7 +332,7 @@ private fun Route.valuationRoutes() {
         operationId = "createValuation"
         description = "Fails with 409 valuation_exists when the holding already has a valuation on that day."
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             body<ValuationInput>()
         }
         response {
@@ -343,21 +343,21 @@ private fun Route.valuationRoutes() {
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val input = call.receive<ValuationInput>().validated()
         val id = Uuid.random()
         val valuation = oneValuationPerDay {
             dbQuery {
-                requireInvestment(householdId, investmentId)
-                InvestmentValuations.insert {
-                    it[InvestmentValuations.id] = id
-                    it[InvestmentValuations.householdId] = householdId
-                    it[InvestmentValuations.investmentId] = investmentId
+                requireAsset(householdId, assetId)
+                AssetValuations.insert {
+                    it[AssetValuations.id] = id
+                    it[AssetValuations.householdId] = householdId
+                    it[AssetValuations.assetId] = assetId
                     it.write(input)
                     it[version] = 1
                     it[createdBy] = call.userId
                 }
-                InvestmentValuations.selectAll().where { InvestmentValuations.id eq id }.single().toValuation()
+                AssetValuations.selectAll().where { AssetValuations.id eq id }.single().toValuation()
             }
         }
         call.respond(HttpStatusCode.Created, valuation)
@@ -366,7 +366,7 @@ private fun Route.valuationRoutes() {
     put("/{valuationId}", {
         operationId = "updateValuation"
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             pathParameter<String>("valuationId")
             body<ValuationInput>()
         }
@@ -378,21 +378,21 @@ private fun Route.valuationRoutes() {
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val id = call.pathId("valuationId", "Valuation")
         val raw = call.receive<ValuationInput>()
         val version = requireVersion(raw.version)
         val input = raw.validated()
         val valuation = oneValuationPerDay {
             dbQuery {
-                val match = matchValuation(householdId, investmentId, id)
-                val affected = InvestmentValuations.update({ match and (InvestmentValuations.version eq version) }) {
+                val match = matchValuation(householdId, assetId, id)
+                val affected = AssetValuations.update({ match and (AssetValuations.version eq version) }) {
                     it.write(input)
-                    it[InvestmentValuations.version] = version + 1
+                    it[AssetValuations.version] = version + 1
                     it[updatedAt] = Clock.System.now()
                 }
-                checkVersioned(affected, { !InvestmentValuations.selectAll().where(match).empty() }, "Valuation")
-                InvestmentValuations.selectAll().where { InvestmentValuations.id eq id }.single().toValuation()
+                checkVersioned(affected, { !AssetValuations.selectAll().where(match).empty() }, "Valuation")
+                AssetValuations.selectAll().where { AssetValuations.id eq id }.single().toValuation()
             }
         }
         call.respond(valuation)
@@ -401,7 +401,7 @@ private fun Route.valuationRoutes() {
     delete("/{valuationId}", {
         operationId = "deleteValuation"
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             pathParameter<String>("valuationId")
             queryParameter<Int>("version") { required = true }
         }
@@ -412,13 +412,13 @@ private fun Route.valuationRoutes() {
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val id = call.pathId("valuationId", "Valuation")
         val version = call.versionParam()
         dbQuery {
-            val match = matchValuation(householdId, investmentId, id)
-            val affected = InvestmentValuations.deleteWhere { match and (InvestmentValuations.version eq version) }
-            checkVersioned(affected, { !InvestmentValuations.selectAll().where(match).empty() }, "Valuation")
+            val match = matchValuation(householdId, assetId, id)
+            val affected = AssetValuations.deleteWhere { match and (AssetValuations.version eq version) }
+            checkVersioned(affected, { !AssetValuations.selectAll().where(match).empty() }, "Valuation")
         }
         call.respond(HttpStatusCode.NoContent)
     }
@@ -426,21 +426,25 @@ private fun Route.valuationRoutes() {
 
 // ---- Holdings ----
 
-private data class ValidInvestment(
+private data class ValidAsset(
     val name: String,
-    val kind: InvestmentKind,
+    val kind: AssetKind,
     val ownerUserId: Uuid?,
     val notes: String,
     val symbol: String?,
 )
 
-private fun InvestmentInput.validated() = ValidInvestment(
+private fun AssetInput.validated() = ValidAsset(
     name = requiredText(name, "name", max = 200),
     kind = kind,
     ownerUserId = parseId(ownerUserId, "ownerUserId"),
     notes = optionalText(notes, "notes", max = 2000),
     symbol = symbol?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }?.let { requiredText(it, "symbol", max = 40) },
-)
+).also {
+    if (it.symbol != null && !it.kind.market) {
+        throw badRequest("symbol_not_market", "Only funds, stocks, bonds and crypto can follow a listed security", "symbol")
+    }
+}
 
 /** Makes sure the provider knows [symbol], fetching its prices the first time; unknown symbols are a 400. */
 private suspend fun RoutingCall.registerSymbol(symbol: String?) {
@@ -453,33 +457,33 @@ private suspend fun RoutingCall.registerSymbol(symbol: String?) {
     if (!known) throw badRequest("invalid_symbol", "No security with this symbol", "symbol")
 }
 
-private fun ValidInvestment.checkOwner(householdId: Uuid) {
+private fun ValidAsset.checkOwner(householdId: Uuid) {
     if (ownerUserId != null && !isMember(householdId, ownerUserId)) {
         throw badRequest("invalid_member", "Owner must be a member of the household", "ownerUserId")
     }
 }
 
-private fun UpdateBuilder<*>.write(input: ValidInvestment) {
-    this[Investments.name] = input.name
-    this[Investments.kind] = input.kind.dbValue
-    this[Investments.ownerUserId] = input.ownerUserId
-    this[Investments.notes] = input.notes
-    this[Investments.symbol] = input.symbol
+private fun UpdateBuilder<*>.write(input: ValidAsset) {
+    this[Assets.name] = input.name
+    this[Assets.kind] = input.kind.dbValue
+    this[Assets.ownerUserId] = input.ownerUserId
+    this[Assets.notes] = input.notes
+    this[Assets.symbol] = input.symbol
 }
 
-private val InvestmentKind.dbValue get() = name.lowercase()
+private val AssetKind.dbValue get() = name.lowercase()
 
-private fun kindFrom(value: String) = InvestmentKind.entries.first { it.dbValue == value }
+private fun kindFrom(value: String) = AssetKind.entries.first { it.dbValue == value }
 
-private fun matchInvestment(householdId: Uuid, id: Uuid) = (Investments.id eq id) and (Investments.householdId eq householdId)
+private fun matchAsset(householdId: Uuid, id: Uuid) = (Assets.id eq id) and (Assets.householdId eq householdId)
 
-private fun investmentExists(householdId: Uuid, id: Uuid) = !Investments.selectAll().where { matchInvestment(householdId, id) }.empty()
+private fun assetExists(householdId: Uuid, id: Uuid) = !Assets.selectAll().where { matchAsset(householdId, id) }.empty()
 
-internal fun requireInvestment(householdId: Uuid, id: Uuid) {
-    if (!investmentExists(householdId, id)) throw notFound("Investment")
+internal fun requireAsset(householdId: Uuid, id: Uuid) {
+    if (!assetExists(householdId, id)) throw notFound("Asset")
 }
 
-internal fun RoutingCall.investmentId() = pathId("investmentId", "Investment")
+internal fun RoutingCall.assetId() = pathId("assetId", "Asset")
 
 /**
  * A household's holdings (or one of them) with their contributions, valuations and market data, ready to value
@@ -494,15 +498,15 @@ private class Book(
     val today: LocalDate,
 ) {
     fun standing(row: ResultRow, on: LocalDate): Standing {
-        val id = row[Investments.id]
-        val price = row[Investments.symbol]?.let { symbol -> { shares: BigDecimal, day: LocalDate -> prices.value(symbol, shares, day) } }
+        val id = row[Assets.id]
+        val price = row[Assets.symbol]?.let { symbol -> { shares: BigDecimal, day: LocalDate -> prices.value(symbol, shares, day) } }
         return standingOn(lots[id].orEmpty(), valuations[id].orEmpty(), fees[id].orEmpty(), on, price)
     }
 
-    fun investment(row: ResultRow): Investment {
+    fun asset(row: ResultRow): Asset {
         val standing = standing(row, today)
-        val quantities = lots[row[Investments.id]].orEmpty().mapNotNull { it.quantity }
-        val security = row[Investments.symbol]?.let { symbol ->
+        val quantities = lots[row[Assets.id]].orEmpty().mapNotNull { it.quantity }
+        val security = row[Assets.symbol]?.let { symbol ->
             val info = prices.securities[symbol]
             val close = prices.close(symbol, today)
             SecurityQuote(
@@ -514,13 +518,13 @@ private class Book(
                 closeOn = close?.first,
             )
         }
-        return Investment(
-            id = row[Investments.id].toString(),
-            name = row[Investments.name],
-            kind = kindFrom(row[Investments.kind]),
-            ownerUserId = row[Investments.ownerUserId]?.toString(),
-            notes = row[Investments.notes],
-            version = row[Investments.version],
+        return Asset(
+            id = row[Assets.id].toString(),
+            name = row[Assets.name],
+            kind = kindFrom(row[Assets.kind]),
+            ownerUserId = row[Assets.ownerUserId]?.toString(),
+            notes = row[Assets.notes],
+            version = row[Assets.version],
             security = security,
             shares = if (quantities.isEmpty()) null else quantities.sumOf { it }.toDouble(),
             marketValued = standing.marketValued,
@@ -529,62 +533,62 @@ private class Book(
             valuedOn = standing.valuedOn,
             gainMinor = standing.gainMinor,
             firstContributedOn = standing.firstContributedOn,
-            feesMinor = fees[row[Investments.id]].orEmpty().sumOf { it.amountMinor },
+            feesMinor = fees[row[Assets.id]].orEmpty().sumOf { it.amountMinor },
         )
     }
 }
 
 /**
- * Loads the household's holdings, by name, or only [investmentId]. Market data they follow is refreshed first
+ * Loads the household's holdings, by name, or only [assetId]. Market data they follow is refreshed first
  * where stale: prices of their securities, and the ČNB fixings back to the first contribution when a security
  * trades in another currency than the household's.
  */
-private suspend fun RoutingCall.book(investmentId: Uuid? = null): Book {
+private suspend fun RoutingCall.book(assetId: Uuid? = null): Book {
     val householdId = household.id
     val currency = household.currency
     val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
-    val filter = if (investmentId == null) {
-        Investments.householdId eq householdId
+    val filter = if (assetId == null) {
+        Assets.householdId eq householdId
     } else {
-        matchInvestment(householdId, investmentId)
+        matchAsset(householdId, assetId)
     }
-    val contributionFilter = if (investmentId == null) {
-        InvestmentContributions.householdId eq householdId
+    val contributionFilter = if (assetId == null) {
+        AssetContributions.householdId eq householdId
     } else {
-        (InvestmentContributions.householdId eq householdId) and (InvestmentContributions.investmentId eq investmentId)
+        (AssetContributions.householdId eq householdId) and (AssetContributions.assetId eq assetId)
     }
     val (symbols, fxYears) = dbQuery {
-        val symbols = Investments.select(Investments.symbol).where(filter).mapNotNull { it[Investments.symbol] }.distinct()
+        val symbols = Assets.select(Assets.symbol).where(filter).mapNotNull { it[Assets.symbol] }.distinct()
         val foreign = securities(symbols).values.any { it.currency != currency }
-        val first = InvestmentContributions.select(InvestmentContributions.date.min()).where(contributionFilter)
-            .single()[InvestmentContributions.date.min()]
+        val first = AssetContributions.select(AssetContributions.date.min()).where(contributionFilter)
+            .single()[AssetContributions.date.min()]
         symbols to if (foreign && first != null) (first.year..today.year).toList() else emptyList()
     }
     application.market.refresh(symbols, fxYears)
     return dbQuery {
-        val holdings = Investments.selectAll().where(filter)
-            .orderBy(Investments.name to SortOrder.ASC, Investments.id to SortOrder.ASC)
+        val holdings = Assets.selectAll().where(filter)
+            .orderBy(Assets.name to SortOrder.ASC, Assets.id to SortOrder.ASC)
             .toList()
-        val lots = InvestmentContributions.selectAll().where(contributionFilter).groupBy({ it[InvestmentContributions.investmentId] }) {
-            Lot(it[InvestmentContributions.date], it[InvestmentContributions.amountMinor], it[InvestmentContributions.quantity])
+        val lots = AssetContributions.selectAll().where(contributionFilter).groupBy({ it[AssetContributions.assetId] }) {
+            Lot(it[AssetContributions.date], it[AssetContributions.amountMinor], it[AssetContributions.quantity])
         }
-        val valuationFilter = if (investmentId == null) {
-            InvestmentValuations.householdId eq householdId
+        val valuationFilter = if (assetId == null) {
+            AssetValuations.householdId eq householdId
         } else {
-            (InvestmentValuations.householdId eq householdId) and (InvestmentValuations.investmentId eq investmentId)
+            (AssetValuations.householdId eq householdId) and (AssetValuations.assetId eq assetId)
         }
-        val valuations = InvestmentValuations.selectAll().where(valuationFilter).groupBy({ it[InvestmentValuations.investmentId] }) {
-            Dated(it[InvestmentValuations.date], it[InvestmentValuations.valueMinor])
+        val valuations = AssetValuations.selectAll().where(valuationFilter).groupBy({ it[AssetValuations.assetId] }) {
+            Dated(it[AssetValuations.date], it[AssetValuations.valueMinor])
         }
-        val feeFilter = if (investmentId == null) {
-            InvestmentFees.householdId eq householdId
+        val feeFilter = if (assetId == null) {
+            AssetFees.householdId eq householdId
         } else {
-            (InvestmentFees.householdId eq householdId) and (InvestmentFees.investmentId eq investmentId)
+            (AssetFees.householdId eq householdId) and (AssetFees.assetId eq assetId)
         }
-        val fees = InvestmentFees.selectAll().where(feeFilter)
-            .groupBy({ it[InvestmentFees.investmentId] }) { Dated(it[InvestmentFees.date], it[InvestmentFees.amountMinor]) }
+        val fees = AssetFees.selectAll().where(feeFilter)
+            .groupBy({ it[AssetFees.assetId] }) { Dated(it[AssetFees.date], it[AssetFees.amountMinor]) }
         Book(holdings, lots, valuations, fees, loadPrices(currency, symbols), today)
-    }.also { if (investmentId != null && it.holdings.isEmpty()) throw notFound("Investment") }
+    }.also { if (assetId != null && it.holdings.isEmpty()) throw notFound("Asset") }
 }
 
 /** The last day of each month from [first]'s through the one before [today]'s, then [today]. */
@@ -630,26 +634,26 @@ private fun ValidContribution.checkAccount(householdId: Uuid) {
 }
 
 private fun UpdateBuilder<*>.write(input: ValidContribution) {
-    this[InvestmentContributions.date] = input.date
-    this[InvestmentContributions.amountMinor] = input.amountMinor
-    this[InvestmentContributions.quantity] = input.quantity
-    this[InvestmentContributions.accountId] = input.accountId
-    this[InvestmentContributions.notes] = input.notes
+    this[AssetContributions.date] = input.date
+    this[AssetContributions.amountMinor] = input.amountMinor
+    this[AssetContributions.quantity] = input.quantity
+    this[AssetContributions.accountId] = input.accountId
+    this[AssetContributions.notes] = input.notes
 }
 
-private fun matchContribution(householdId: Uuid, investmentId: Uuid, id: Uuid) =
-    (InvestmentContributions.id eq id) and (InvestmentContributions.householdId eq householdId) and
-        (InvestmentContributions.investmentId eq investmentId)
+private fun matchContribution(householdId: Uuid, assetId: Uuid, id: Uuid) =
+    (AssetContributions.id eq id) and (AssetContributions.householdId eq householdId) and
+        (AssetContributions.assetId eq assetId)
 
 private fun ResultRow.toContribution() = Contribution(
-    id = this[InvestmentContributions.id].toString(),
-    investmentId = this[InvestmentContributions.investmentId].toString(),
-    date = this[InvestmentContributions.date],
-    amountMinor = this[InvestmentContributions.amountMinor],
-    quantity = this[InvestmentContributions.quantity]?.toDouble(),
-    accountId = this[InvestmentContributions.accountId]?.toString(),
-    notes = this[InvestmentContributions.notes],
-    version = this[InvestmentContributions.version],
+    id = this[AssetContributions.id].toString(),
+    assetId = this[AssetContributions.assetId].toString(),
+    date = this[AssetContributions.date],
+    amountMinor = this[AssetContributions.amountMinor],
+    quantity = this[AssetContributions.quantity]?.toDouble(),
+    accountId = this[AssetContributions.accountId]?.toString(),
+    notes = this[AssetContributions.notes],
+    version = this[AssetContributions.version],
 )
 
 // ---- Valuations ----
@@ -663,14 +667,14 @@ private fun ValuationInput.validated() = ValidValuation(
 )
 
 private fun UpdateBuilder<*>.write(input: ValidValuation) {
-    this[InvestmentValuations.date] = input.date
-    this[InvestmentValuations.valueMinor] = input.valueMinor
-    this[InvestmentValuations.notes] = input.notes
+    this[AssetValuations.date] = input.date
+    this[AssetValuations.valueMinor] = input.valueMinor
+    this[AssetValuations.notes] = input.notes
 }
 
-private fun matchValuation(householdId: Uuid, investmentId: Uuid, id: Uuid) =
-    (InvestmentValuations.id eq id) and (InvestmentValuations.householdId eq householdId) and
-        (InvestmentValuations.investmentId eq investmentId)
+private fun matchValuation(householdId: Uuid, assetId: Uuid, id: Uuid) =
+    (AssetValuations.id eq id) and (AssetValuations.householdId eq householdId) and
+        (AssetValuations.assetId eq assetId)
 
 private suspend fun <T> oneValuationPerDay(block: suspend () -> T): T =
     try {
@@ -681,10 +685,10 @@ private suspend fun <T> oneValuationPerDay(block: suspend () -> T): T =
     }
 
 private fun ResultRow.toValuation() = Valuation(
-    id = this[InvestmentValuations.id].toString(),
-    investmentId = this[InvestmentValuations.investmentId].toString(),
-    date = this[InvestmentValuations.date],
-    valueMinor = this[InvestmentValuations.valueMinor],
-    notes = this[InvestmentValuations.notes],
-    version = this[InvestmentValuations.version],
+    id = this[AssetValuations.id].toString(),
+    assetId = this[AssetValuations.assetId].toString(),
+    date = this[AssetValuations.date],
+    valueMinor = this[AssetValuations.valueMinor],
+    notes = this[AssetValuations.notes],
+    version = this[AssetValuations.version],
 )

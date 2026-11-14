@@ -4,17 +4,26 @@ import kotlinx.datetime.LocalDate
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/** What an asset is. Only the [market] kinds can follow a listed security; the rest are valued by hand. */
 @Serializable
-enum class InvestmentKind {
-    @SerialName("fund") FUND,
-    @SerialName("stock") STOCK,
-    @SerialName("bond") BOND,
-    @SerialName("crypto") CRYPTO,
-    @SerialName("other") OTHER,
+enum class AssetKind(val market: Boolean) {
+    @SerialName("fund") FUND(true),
+    @SerialName("stock") STOCK(true),
+    @SerialName("bond") BOND(true),
+    @SerialName("crypto") CRYPTO(true),
+    /** A savings account. */
+    @SerialName("savings") SAVINGS(false),
+    /** Building savings, a pension or another scheme the money is locked in. */
+    @SerialName("scheme") SCHEME(false),
+    /** Money owed to the household. */
+    @SerialName("receivable") RECEIVABLE(false),
+    @SerialName("vehicle") VEHICLE(false),
+    @SerialName("property") PROPERTY(false),
+    @SerialName("other") OTHER(false),
 }
 
 /**
- * A market holding, with its standing as of today in the household currency. A null [ownerUserId] means held jointly.
+ * Something the household owns that has a worth (a market holding, savings, a car…), with its standing as of today in the household currency. A null [ownerUserId] means held jointly.
  *
  * [contributedMinor] is everything put in less everything taken out; for a market-valued holding, its fees too, since
  * commissions are paid on top of the shares rather than out of them. A holding following a [security] whose
@@ -24,10 +33,10 @@ enum class InvestmentKind {
  * ([valuedOn] null). [gainMinor] is [valueMinor] − [contributedMinor].
  */
 @Serializable
-data class Investment(
+data class Asset(
     val id: String,
     val name: String,
-    val kind: InvestmentKind,
+    val kind: AssetKind,
     val ownerUserId: String?,
     val notes: String,
     val version: Int,
@@ -53,9 +62,9 @@ data class Investment(
  * the search (e.g. VWCE.DE), or null for a holding valued by hand.
  */
 @Serializable
-data class InvestmentInput(
+data class AssetInput(
     val name: String,
-    val kind: InvestmentKind = InvestmentKind.FUND,
+    val kind: AssetKind = AssetKind.FUND,
     val ownerUserId: String? = null,
     val notes: String = "",
     val symbol: String? = null,
@@ -79,7 +88,7 @@ data class SecurityMatch(val symbol: String, val name: String, val exchange: Str
 
 /** The household's holdings (or one of them) at the end of each month, then today. */
 @Serializable
-data class InvestmentHistory(val points: List<HistoryPoint>)
+data class AssetHistory(val points: List<HistoryPoint>)
 
 @Serializable
 data class HistoryPoint(val date: LocalDate, val contributedMinor: Long, val valueMinor: Long)
@@ -91,7 +100,7 @@ data class HistoryPoint(val date: LocalDate, val contributedMinor: Long, val val
 @Serializable
 data class Contribution(
     val id: String,
-    val investmentId: String,
+    val assetId: String,
     val date: LocalDate,
     val amountMinor: Long,
     val quantity: Double?,
@@ -114,7 +123,7 @@ data class ContributionInput(
 @Serializable
 data class Fee(
     val id: String,
-    val investmentId: String,
+    val assetId: String,
     val date: LocalDate,
     val amountMinor: Long,
     val notes: String,
@@ -133,7 +142,7 @@ data class FeeInput(
 @Serializable
 data class Valuation(
     val id: String,
-    val investmentId: String,
+    val assetId: String,
     val date: LocalDate,
     val valueMinor: Long,
     val notes: String,

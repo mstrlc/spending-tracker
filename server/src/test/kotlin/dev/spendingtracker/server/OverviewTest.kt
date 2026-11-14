@@ -6,8 +6,8 @@ import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.ContributionInput
 import dev.spendingtracker.shared.api.ExpenseInput
 import dev.spendingtracker.shared.api.IncomeInput
-import dev.spendingtracker.shared.api.Investment
-import dev.spendingtracker.shared.api.InvestmentInput
+import dev.spendingtracker.shared.api.Asset
+import dev.spendingtracker.shared.api.AssetInput
 import dev.spendingtracker.shared.api.MonthFlow
 import dev.spendingtracker.shared.api.NamedTotal
 import dev.spendingtracker.shared.api.Overview
@@ -28,17 +28,17 @@ class OverviewTest {
         val groceries = client.post("$household/categories") { setBody(CategoryInput("Food shop")) }.body<Category>()
         val produce = client.post("$household/categories") { setBody(CategoryInput("Fruit", parentId = groceries.id)) }.body<Category>()
         val etf = client.post("$household/categories") { setBody(CategoryInput("Index fund", kind = CategoryKind.INVESTMENT)) }.body<Category>()
-        val fund = client.post("$household/investments") { setBody(InvestmentInput("World ETF")) }.body<Investment>()
+        val fund = client.post("$household/assets") { setBody(AssetInput("World ETF")) }.body<Asset>()
         for (month in 7..10) {
             client.post("$household/income") { setBody(IncomeInput(LocalDate(2026, month, 15), 50_000, "Acme")) }
             client.post("$household/expenses") { setBody(ExpenseInput(LocalDate(2026, month, 2), 999, "Netflix", groceries.id)) }
             client.post("$household/expenses") { setBody(ExpenseInput(LocalDate(2026, month, 3), 10_000, "Albert", produce.id)) }
             // The transfer to the broker and the contribution it bought are the same money: only the contribution counts.
             client.post("$household/expenses") { setBody(ExpenseInput(LocalDate(2026, month, 4), 5_000, "Broker", etf.id)) }
-            client.post("$household/investments/${fund.id}/contributions") { setBody(ContributionInput(LocalDate(2026, month, 4), 5_000)) }
+            client.post("$household/assets/${fund.id}/contributions") { setBody(ContributionInput(LocalDate(2026, month, 4), 5_000)) }
         }
         client.post("$household/expenses") { setBody(ExpenseInput(LocalDate(2026, 10, 20), 30_000, "Albert", produce.id)) }
-        client.post("$household/investments/${fund.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 10, 25), -1_000)) }
+        client.post("$household/assets/${fund.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 10, 25), -1_000)) }
 
         val overview = client.get("$household/overview?month=2026-10&today=2026-10-31").body<Overview>()
 

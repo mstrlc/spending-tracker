@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Contribution, Investment, Valuation } from "../api/types";
+import type { Contribution, Asset, Valuation } from "../api/types";
 import { formatPercent, gainRatio, historyEntries, portfolioTotals } from "./holdings";
 
-const holding = (contributedMinor: number, valueMinor: number): Investment => ({
+const holding = (contributedMinor: number, valueMinor: number): Asset => ({
   id: String(contributedMinor),
   name: "Fund",
   kind: "fund",
@@ -37,8 +37,8 @@ describe("portfolioTotals", () => {
 describe("historyEntries", () => {
   it("is newest first, with a day's valuation above that day's contribution", () => {
     const contribution = (id: string, date: string): Contribution =>
-      ({ id, investmentId: "f", date, amountMinor: 100, quantity: null, accountId: null, notes: "", version: 1 });
-    const valuation = (id: string, date: string): Valuation => ({ id, investmentId: "f", date, valueMinor: 100, notes: "", version: 1 });
+      ({ id, assetId: "f", date, amountMinor: 100, quantity: null, accountId: null, notes: "", version: 1 });
+    const valuation = (id: string, date: string): Valuation => ({ id, assetId: "f", date, valueMinor: 100, notes: "", version: 1 });
 
     const order = historyEntries(
       [contribution("c1", "2026-01-15"), contribution("c2", "2026-06-30")],
@@ -55,21 +55,21 @@ describe("niceMax", () => {
   });
 });
 
-describe("formatInvestment", () => {
+describe("formatAsset", () => {
   it("rounds crowns to whole CZK and keeps other currencies' cents", async () => {
-    const { formatInvestment, formatSigned } = await import("./holdings");
-    expect(formatInvestment(20_879_414, "CZK")).toBe(new Intl.NumberFormat().format(208_794));
-    expect(formatInvestment(8_550, "CZK")).toBe("86");
+    const { formatAsset, formatSigned } = await import("./holdings");
+    expect(formatAsset(20_879_414, "CZK")).toBe(new Intl.NumberFormat().format(208_794));
+    expect(formatAsset(8_550, "CZK")).toBe("86");
     expect(formatSigned(-91_304, "CZK")).toBe("−913");
     expect(formatSigned(30, "CZK")).toBe("0");
-    expect(formatInvestment(12_345, "EUR")).toBe(new Intl.NumberFormat(undefined, { minimumFractionDigits: 2 }).format(123.45));
+    expect(formatAsset(12_345, "EUR")).toBe(new Intl.NumberFormat(undefined, { minimumFractionDigits: 2 }).format(123.45));
   });
 });
 
 describe("feesByYear", () => {
   it("measures each year's fees against its average worth, scaling part years up", async () => {
     const { feesByYear, feeSummary } = await import("./holdings");
-    const fee = (date: string, amountMinor: number) => ({ id: date + amountMinor, investmentId: "p", date, amountMinor, notes: "", version: 1 });
+    const fee = (date: string, amountMinor: number) => ({ id: date + amountMinor, assetId: "p", date, amountMinor, notes: "", version: 1 });
     const point = (date: string, valueMinor: number) => ({ date, contributedMinor: 0, valueMinor });
     const fees = [fee("2025-02-05", 10_000), fee("2025-03-05", 10_000), fee("2025-03-05", -4_000), fee("2026-01-05", 6_000)];
     // January is before the first fee, so it is left out of the averages.

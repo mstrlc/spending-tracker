@@ -1,4 +1,4 @@
-package dev.spendingtracker.server.investment
+package dev.spendingtracker.server.asset
 
 import dev.spendingtracker.server.auth.userId
 import dev.spendingtracker.server.common.checkVersioned
@@ -7,7 +7,7 @@ import dev.spendingtracker.server.common.optionalText
 import dev.spendingtracker.server.common.pathId
 import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.versionParam
-import dev.spendingtracker.server.db.InvestmentFees
+import dev.spendingtracker.server.db.AssetFees
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.shared.api.ApiError
@@ -34,24 +34,24 @@ import org.jetbrains.exposed.v1.jdbc.update
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
-/** A holding's fees, under /investments/{investmentId}/fees. */
+/** A holding's fees, under /assets/{assetId}/fees. */
 internal fun Route.feeRoutes() {
     get({
         operationId = "listFees"
         description = "The holding's fees, newest first."
-        request { pathParameter<String>("investmentId") }
+        request { pathParameter<String>("assetId") }
         response {
             code(HttpStatusCode.OK) { body<List<Fee>>() }
             code(HttpStatusCode.NotFound) { body<ApiError>() }
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val fees = dbQuery {
-            requireInvestment(householdId, investmentId)
-            InvestmentFees.selectAll()
-                .where { InvestmentFees.investmentId eq investmentId }
-                .orderBy(InvestmentFees.date to SortOrder.DESC, InvestmentFees.id to SortOrder.ASC)
+            requireAsset(householdId, assetId)
+            AssetFees.selectAll()
+                .where { AssetFees.assetId eq assetId }
+                .orderBy(AssetFees.date to SortOrder.DESC, AssetFees.id to SortOrder.ASC)
                 .map { it.toFee() }
         }
         call.respond(fees)
@@ -60,7 +60,7 @@ internal fun Route.feeRoutes() {
     post({
         operationId = "createFee"
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             body<FeeInput>()
         }
         response {
@@ -70,20 +70,20 @@ internal fun Route.feeRoutes() {
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val input = call.receive<FeeInput>().validated()
         val id = Uuid.random()
         val fee = dbQuery {
-            requireInvestment(householdId, investmentId)
-            InvestmentFees.insert {
-                it[InvestmentFees.id] = id
-                it[InvestmentFees.householdId] = householdId
-                it[InvestmentFees.investmentId] = investmentId
+            requireAsset(householdId, assetId)
+            AssetFees.insert {
+                it[AssetFees.id] = id
+                it[AssetFees.householdId] = householdId
+                it[AssetFees.assetId] = assetId
                 it.write(input)
                 it[version] = 1
                 it[createdBy] = call.userId
             }
-            InvestmentFees.selectAll().where { InvestmentFees.id eq id }.single().toFee()
+            AssetFees.selectAll().where { AssetFees.id eq id }.single().toFee()
         }
         call.respond(HttpStatusCode.Created, fee)
     }
@@ -91,7 +91,7 @@ internal fun Route.feeRoutes() {
     put("/{feeId}", {
         operationId = "updateFee"
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             pathParameter<String>("feeId")
             body<FeeInput>()
         }
@@ -103,20 +103,20 @@ internal fun Route.feeRoutes() {
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val id = call.pathId("feeId", "Fee")
         val raw = call.receive<FeeInput>()
         val version = requireVersion(raw.version)
         val input = raw.validated()
         val fee = dbQuery {
-            val match = matchFee(householdId, investmentId, id)
-            val affected = InvestmentFees.update({ match and (InvestmentFees.version eq version) }) {
+            val match = matchFee(householdId, assetId, id)
+            val affected = AssetFees.update({ match and (AssetFees.version eq version) }) {
                 it.write(input)
-                it[InvestmentFees.version] = version + 1
+                it[AssetFees.version] = version + 1
                 it[updatedAt] = Clock.System.now()
             }
-            checkVersioned(affected, { !InvestmentFees.selectAll().where(match).empty() }, "Fee")
-            InvestmentFees.selectAll().where { InvestmentFees.id eq id }.single().toFee()
+            checkVersioned(affected, { !AssetFees.selectAll().where(match).empty() }, "Fee")
+            AssetFees.selectAll().where { AssetFees.id eq id }.single().toFee()
         }
         call.respond(fee)
     }
@@ -124,7 +124,7 @@ internal fun Route.feeRoutes() {
     delete("/{feeId}", {
         operationId = "deleteFee"
         request {
-            pathParameter<String>("investmentId")
+            pathParameter<String>("assetId")
             pathParameter<String>("feeId")
             queryParameter<Int>("version") { required = true }
         }
@@ -135,13 +135,13 @@ internal fun Route.feeRoutes() {
         }
     }) {
         val householdId = call.household.id
-        val investmentId = call.investmentId()
+        val assetId = call.assetId()
         val id = call.pathId("feeId", "Fee")
         val version = call.versionParam()
         dbQuery {
-            val match = matchFee(householdId, investmentId, id)
-            val affected = InvestmentFees.deleteWhere { match and (InvestmentFees.version eq version) }
-            checkVersioned(affected, { !InvestmentFees.selectAll().where(match).empty() }, "Fee")
+            val match = matchFee(householdId, assetId, id)
+            val affected = AssetFees.deleteWhere { match and (AssetFees.version eq version) }
+            checkVersioned(affected, { !AssetFees.selectAll().where(match).empty() }, "Fee")
         }
         call.respond(HttpStatusCode.NoContent)
     }
@@ -156,19 +156,19 @@ private fun FeeInput.validated() = ValidFee(
 )
 
 private fun UpdateBuilder<*>.write(input: ValidFee) {
-    this[InvestmentFees.date] = input.date
-    this[InvestmentFees.amountMinor] = input.amountMinor
-    this[InvestmentFees.notes] = input.notes
+    this[AssetFees.date] = input.date
+    this[AssetFees.amountMinor] = input.amountMinor
+    this[AssetFees.notes] = input.notes
 }
 
-private fun matchFee(householdId: Uuid, investmentId: Uuid, id: Uuid) =
-    (InvestmentFees.id eq id) and (InvestmentFees.householdId eq householdId) and (InvestmentFees.investmentId eq investmentId)
+private fun matchFee(householdId: Uuid, assetId: Uuid, id: Uuid) =
+    (AssetFees.id eq id) and (AssetFees.householdId eq householdId) and (AssetFees.assetId eq assetId)
 
 private fun ResultRow.toFee() = Fee(
-    id = this[InvestmentFees.id].toString(),
-    investmentId = this[InvestmentFees.investmentId].toString(),
-    date = this[InvestmentFees.date],
-    amountMinor = this[InvestmentFees.amountMinor],
-    notes = this[InvestmentFees.notes],
-    version = this[InvestmentFees.version],
+    id = this[AssetFees.id].toString(),
+    assetId = this[AssetFees.assetId].toString(),
+    date = this[AssetFees.date],
+    amountMinor = this[AssetFees.amountMinor],
+    notes = this[AssetFees.notes],
+    version = this[AssetFees.version],
 )

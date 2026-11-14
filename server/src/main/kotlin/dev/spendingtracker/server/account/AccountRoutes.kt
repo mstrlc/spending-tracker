@@ -119,7 +119,7 @@ fun Route.accountRoutes() = route("/accounts") {
 
     delete("/{accountId}", {
         operationId = "deleteAccount"
-        description = "Fails with 409 account_in_use while expenses, income or investment contributions reference the account; close it instead."
+        description = "Fails with 409 account_in_use while expenses, income or asset contributions reference the account; close it instead."
         request {
             pathParameter<String>("accountId")
             queryParameter<Int>("version") { required = true }
@@ -140,7 +140,7 @@ fun Route.accountRoutes() = route("/accounts") {
             }
         } catch (e: Exception) {
             if (e.isForeignKeyViolation()) {
-                throw conflict("account_in_use", "Expenses, income or investments use this account. Close it instead of deleting it.")
+                throw conflict("account_in_use", "Expenses, income or assets use this account. Close it instead of deleting it.")
             }
             throw e
         }

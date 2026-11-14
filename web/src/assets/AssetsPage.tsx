@@ -3,12 +3,12 @@ import {
   useAccounts,
   useContributions,
   useFees,
-  useInvestmentHistory,
-  useInvestments,
+  useAssetHistory,
+  useAssets,
   useMembers,
   useValuations,
 } from "../api/hooks";
-import type { Fee, HistoryPoint, Investment, SecurityQuote } from "../api/types";
+import type { Fee, HistoryPoint, Asset, SecurityQuote } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { Plus } from "../icons";
 import { formatDay } from "../lib/dates";
@@ -19,7 +19,7 @@ import { HoldingForm } from "./HoldingForm";
 import {
   feeSummary,
   feesByYear,
-  formatInvestment,
+  formatAsset,
   formatPercent,
   formatSigned,
   gainRatio,
@@ -42,23 +42,23 @@ function formatClose(security: SecurityQuote): string {
 const formatShares = (shares: number) => `${Number(shares.toFixed(6)).toLocaleString()} ${shares === 1 ? "share" : "shares"}`;
 
 /** What a holding's figures rest on, for the line under its name. */
-function valuedBy(i: Investment): string {
+function valuedBy(i: Asset): string {
   if (i.marketValued && i.security && i.valuedOn) return `${i.security.symbol} · ${formatClose(i.security)} on ${formatDay(i.valuedOn)}`;
   if (i.security) return `${i.security.symbol} · no shares recorded`;
   return i.valuedOn ? `valued ${formatDay(i.valuedOn)}` : "not valued yet";
 }
 
-type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; investment: Investment } | { mode: "view"; id: string };
+type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; asset: Asset } | { mode: "view"; id: string };
 
-export function InvestmentsPage() {
+export function AssetsPage() {
   const household = useHousehold();
-  const investments = useInvestments(household.id);
-  const history = useInvestmentHistory(household.id);
+  const assets = useAssets(household.id);
+  const history = useAssetHistory(household.id);
   const members = useMembers(household.id).data ?? [];
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
   const [flashId, setFlashId] = useState<string | null>(null);
 
-  const rows = investments.data ?? [];
+  const rows = assets.data ?? [];
   const totals = portfolioTotals(rows);
   const ratio = gainRatio(totals);
   const showOwner = members.length > 1;
@@ -69,9 +69,9 @@ export function InvestmentsPage() {
 
   return (
     <>
-      <PageHeader title="Investments">
+      <PageHeader title="Assets">
         <button onClick={openAdd}>
-          <Plus /> Add investment
+          <Plus /> Add asset
         </button>
       </PageHeader>
 
@@ -81,14 +81,14 @@ export function InvestmentsPage() {
             <div>
               <dt>Worth</dt>
               <dd className="summary-primary">
-                {formatInvestment(totals.valueMinor, currency)}
+                {formatAsset(totals.valueMinor, currency)}
                 <span className="currency">{currency}</span>
               </dd>
             </div>
             <div>
               <dt>Put in</dt>
               <dd>
-                {formatInvestment(totals.contributedMinor, currency)}
+                {formatAsset(totals.contributedMinor, currency)}
                 <span className="currency">{currency}</span>
               </dd>
             </div>
@@ -106,7 +106,7 @@ export function InvestmentsPage() {
                   {totals.contributedMinor > 0 && ` · ${((totals.feesMinor / totals.contributedMinor) * 100).toFixed(1)}% of put in`}
                 </dt>
                 <dd>
-                  {formatInvestment(totals.feesMinor, currency)}
+                  {formatAsset(totals.feesMinor, currency)}
                   <span className="currency">{currency}</span>
                 </dd>
               </div>
@@ -117,14 +117,14 @@ export function InvestmentsPage() {
       )}
 
       <section className="surface">
-        <ErrorText error={investments.error} />
-        {investments.isPending && <SkeletonRows />}
-        {investments.data && rows.length === 0 && (
+        <ErrorText error={assets.error} />
+        {assets.isPending && <SkeletonRows />}
+        {assets.data && rows.length === 0 && (
           <div className="empty">
-            <p className="empty-title">No investments yet</p>
-            <p className="muted">Add a fund or stock, then record what you put in and what it's worth now and then.</p>
+            <p className="empty-title">No assets yet</p>
+            <p className="muted">Add a fund, savings, a car or anything else you own, then record what you put in and what it's worth now and then.</p>
             <button onClick={openAdd}>
-              <Plus /> Add investment
+              <Plus /> Add asset
             </button>
           </div>
         )}
@@ -133,7 +133,7 @@ export function InvestmentsPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Investment</th>
+                  <th>Asset</th>
                   {showOwner && <th className="hide-narrow">Held by</th>}
                   <th className="num hide-narrow">Put in</th>
                   <th className="num">Worth ({currency})</th>
@@ -170,8 +170,8 @@ export function InvestmentsPage() {
                           {members.find((m) => m.userId === i.ownerUserId)?.displayName ?? "Shared"}
                         </td>
                       )}
-                      <td className="num hide-narrow">{formatInvestment(i.contributedMinor, currency)}</td>
-                      <td className="num">{formatInvestment(i.valueMinor, currency)}</td>
+                      <td className="num hide-narrow">{formatAsset(i.contributedMinor, currency)}</td>
+                      <td className="num">{formatAsset(i.valueMinor, currency)}</td>
                       <td className="num hide-narrow">{formatSigned(i.gainMinor, currency)}</td>
                       <td className="num">{r === null ? "–" : formatPercent(r)}</td>
                     </tr>
@@ -186,43 +186,43 @@ export function InvestmentsPage() {
       <Sheet
         open={editor.mode === "add" || editor.mode === "edit"}
         onClose={close}
-        title={editor.mode === "edit" ? "Edit investment" : "Add investment"}
+        title={editor.mode === "edit" ? "Edit asset" : "Add asset"}
       >
         <HoldingForm
-          key={editor.mode === "edit" ? editor.investment.id : "new"}
-          investment={editor.mode === "edit" ? editor.investment : undefined}
+          key={editor.mode === "edit" ? editor.asset.id : "new"}
+          asset={editor.mode === "edit" ? editor.asset : undefined}
           onSaved={(saved) => {
             setFlashId(saved.id);
             // A new holding opens straight away, ready for its first contribution.
             setEditor({ mode: "view", id: saved.id });
           }}
           onDeleted={close}
-          onCancel={() => setEditor(editor.mode === "edit" ? { mode: "view", id: editor.investment.id } : { mode: "closed" })}
+          onCancel={() => setEditor(editor.mode === "edit" ? { mode: "view", id: editor.asset.id } : { mode: "closed" })}
         />
       </Sheet>
 
       <Sheet open={viewing !== undefined} onClose={close} title={viewing?.name ?? ""}>
-        {viewing && <HoldingDetail key={viewing.id} investment={viewing} onEdit={() => setEditor({ mode: "edit", investment: viewing })} />}
+        {viewing && <HoldingDetail key={viewing.id} asset={viewing} onEdit={() => setEditor({ mode: "edit", asset: viewing })} />}
       </Sheet>
     </>
   );
 }
 
 /** One holding: where it stands, a form for the next contribution or value, and its history. */
-function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit: () => void }) {
+function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) {
   const household = useHousehold();
   const { currency } = household;
-  const contributions = useContributions(household.id, investment.id);
-  const valuations = useValuations(household.id, investment.id);
-  const fees = useFees(household.id, investment.id);
-  const timeline = useInvestmentHistory(household.id, investment.id);
+  const contributions = useContributions(household.id, asset.id);
+  const valuations = useValuations(household.id, asset.id);
+  const fees = useFees(household.id, asset.id);
+  const timeline = useAssetHistory(household.id, asset.id);
   const accounts = useAccounts(household.id).data ?? [];
   // A holding with nothing in it yet starts on its first contribution.
-  const [entry, setEntry] = useState<EntryTarget | null>(investment.contributedMinor === 0 ? { type: "contribution" } : null);
+  const [entry, setEntry] = useState<EntryTarget | null>(asset.contributedMinor === 0 ? { type: "contribution" } : null);
   const [panel, setPanel] = useState<"history" | "fees">("history");
   const hasFees = (fees.data?.length ?? 0) > 0;
   const showingFees = hasFees && panel === "fees";
-  const ratio = gainRatio(investment);
+  const ratio = gainRatio(asset);
   const history = historyEntries(contributions.data ?? [], valuations.data ?? [], fees.data ?? []);
 
   return (
@@ -233,34 +233,34 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
           <div>
             <dt>Worth</dt>
             <dd className="summary-primary">
-              {formatInvestment(investment.valueMinor, currency)}
+              {formatAsset(asset.valueMinor, currency)}
               <span className="currency">{currency}</span>
             </dd>
           </div>
           <div>
             <dt>Put in</dt>
-            <dd>{formatInvestment(investment.contributedMinor, currency)}</dd>
+            <dd>{formatAsset(asset.contributedMinor, currency)}</dd>
           </div>
           <div>
             <dt>Gain{ratio !== null && ` · ${formatPercent(ratio)}`}</dt>
-            <dd>{formatSigned(investment.gainMinor, currency)}</dd>
+            <dd>{formatSigned(asset.gainMinor, currency)}</dd>
           </div>
-          {investment.feesMinor !== 0 && (
+          {asset.feesMinor !== 0 && (
             <div>
               <dt>Fees paid</dt>
-              <dd>{formatInvestment(investment.feesMinor, currency)}</dd>
+              <dd>{formatAsset(asset.feesMinor, currency)}</dd>
             </div>
           )}
         </dl>
         {/* The fee breakdown needs the room; the chart and note come back with the history. */}
-        {!entry && !showingFees && <p className="muted small">{valuationNote(investment)}</p>}
+        {!entry && !showingFees && <p className="muted small">{valuationNote(asset)}</p>}
         {!entry && !showingFees && timeline.data && <HistoryChart points={timeline.data.points} currency={currency} height={110} />}
 
         {entry ? (
           <EntryForm
             key={entryKey(entry)}
-            investmentId={investment.id}
-            security={investment.security}
+            assetId={asset.id}
+            security={asset.security}
             target={entry}
             onDone={() => setEntry(null)}
           />
@@ -270,7 +270,7 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
               <Plus /> Add contribution
             </button>
             {/* Market prices value it; a hand-entered value would be ignored. */}
-            {!investment.marketValued && (
+            {!asset.marketValued && (
               <button type="button" className="secondary" onClick={() => setEntry({ type: "valuation" })}>
                 Update value
               </button>
@@ -295,7 +295,7 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
           )}
           <ErrorText error={contributions.error ?? valuations.error ?? fees.error} />
           {showingFees && (
-            <FeeBreakdown fees={fees.data ?? []} points={timeline.data?.points ?? []} investment={investment} currency={currency} />
+            <FeeBreakdown fees={fees.data ?? []} points={timeline.data?.points ?? []} asset={asset} currency={currency} />
           )}
           {!showingFees && history.length === 0 && !contributions.isPending && (
             <p className="muted small">Nothing recorded yet.</p>
@@ -308,7 +308,7 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
               const account = h.type === "contribution" ? accounts.find((a) => a.id === h.contribution.accountId)?.name : undefined;
               // Market prices value the holding now; a value entered by hand earlier stays listed but isn't used.
               const label = isValuation
-                ? investment.marketValued ? "Worth, by hand · not used" : "Worth"
+                ? asset.marketValued ? "Worth, by hand · not used" : "Worth"
                 : h.type === "fee"
                   ? amount < 0 ? "Fee discount" : "Fee"
                   : amount < 0 ? "Took out" : "Put in";
@@ -339,7 +339,7 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
                       </span>
                     </span>
                     <span className={muted ? "num muted" : "num"}>
-                      {h.type === "contribution" ? formatSigned(amount, currency) : formatInvestment(amount, currency)}
+                      {h.type === "contribution" ? formatSigned(amount, currency) : formatAsset(amount, currency)}
                     </span>
                   </button>
                 </li>
@@ -350,7 +350,7 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
       </div>
       <div className="sheet-footer">
         <button type="button" className="secondary" onClick={onEdit}>
-          Edit investment
+          Edit asset
         </button>
       </div>
     </div>
@@ -363,23 +363,23 @@ const percent = (ratio: number | null, digits = 2) => (ratio === null ? "–" : 
 function FeeBreakdown({
   fees,
   points,
-  investment,
+  asset,
   currency,
 }: {
   fees: Fee[];
   points: HistoryPoint[];
-  investment: Investment;
+  asset: Asset;
   currency: string;
 }) {
   const years = feesByYear(fees, points);
-  const summary = feeSummary(fees, points, investment);
+  const summary = feeSummary(fees, points, asset);
   return (
     <div className="fee-breakdown">
       <dl className="fee-facts">
         <div>
           <dt>Paid in all</dt>
           <dd>
-            {formatInvestment(summary.feesMinor, currency)} <span className="currency">{currency}</span>
+            {formatAsset(summary.feesMinor, currency)} <span className="currency">{currency}</span>
           </dd>
         </div>
         <div>
@@ -408,8 +408,8 @@ function FeeBreakdown({
           {years.map((y) => (
             <tr key={y.year}>
               <td>{y.year}</td>
-              <td className="num">{formatInvestment(y.feesMinor, currency)}</td>
-              <td className="num">{y.averageWorthMinor === null ? "–" : formatInvestment(y.averageWorthMinor, currency)}</td>
+              <td className="num">{formatAsset(y.feesMinor, currency)}</td>
+              <td className="num">{y.averageWorthMinor === null ? "–" : formatAsset(y.averageWorthMinor, currency)}</td>
               <td className="num">{percent(y.yearlyRate)}</td>
             </tr>
           ))}
@@ -423,7 +423,7 @@ function FeeBreakdown({
   );
 }
 
-function valuationNote(i: Investment): string {
+function valuationNote(i: Asset): string {
   if (i.marketValued && i.security && i.shares !== null && i.valuedOn) {
     return `${formatShares(i.shares)} of ${i.security.name} at ${formatClose(i.security)}, the close on ${formatDay(i.valuedOn)}, converted at the ČNB rate. Anything put in without shares counts at cost.`;
   }
