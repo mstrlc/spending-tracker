@@ -2,13 +2,17 @@ import { useState } from "react";
 import { useAccounts, useCategories, useExpenses, useIncome, useMembers } from "../api/hooks";
 import type { Income } from "../api/types";
 import { expenseTotals } from "../expenses/ExpensesPage";
-import { Plus } from "../icons";
+import { PlusIcon } from "lucide-react";
 import { currentMonth, formatDay, formatMonth, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { rankSlices, ShareBar, type Slice } from "../shares";
-import { ErrorText, PageHeader, Sheet, SkeletonRows } from "../ui";
+import { EmptyState, ErrorText, Money, PageHeader, Sheet, SkeletonRows, Summary, Surface } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { IncomeForm } from "./IncomeForm";
 
 /** The month's income by source, largest first; clawbacks net against their source. */
@@ -51,105 +55,96 @@ export function IncomePage() {
   return (
     <>
       <PageHeader title={<MonthTitle month={month} goTo={goTo} />}>
-        <button onClick={openAdd} aria-keyshortcuts="N">
-          <Plus /> Add income <kbd>N</kbd>
-        </button>
+        <Button size="lg" onClick={openAdd} aria-keyshortcuts="N">
+          <PlusIcon /> Add income
+          <Kbd className="hidden bg-primary-foreground/15 text-primary-foreground md:inline-flex">N</Kbd>
+        </Button>
       </PageHeader>
 
-      <div className="overview">
-        <dl className="summary">
-          <div>
-            <dt>Received</dt>
-            <dd className="summary-primary">
-              {formatAmount(received, household.currency)}
-              <span className="currency">{household.currency}</span>
-            </dd>
-          </div>
-          <div>
-            <dt>Spent</dt>
-            <dd>
-              {expenses.data ? formatAmount(spent, household.currency) : "–"}
-              <span className="currency">{household.currency}</span>
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Saved
-              {expenses.data && savingsRate !== null && ` · ${savingsRate}%`}
-            </dt>
-            <dd>
-              {expenses.data ? formatAmount(saved, household.currency) : "–"}
-              <span className="currency">{household.currency}</span>
-            </dd>
-          </div>
-        </dl>
+      <div className="flex flex-col gap-5">
+        <Summary
+          items={[
+            { label: "Received", value: <Money currency={household.currency}>{formatAmount(received, household.currency)}</Money> },
+            {
+              label: "Spent",
+              value: <Money currency={household.currency}>{expenses.data ? formatAmount(spent, household.currency) : "–"}</Money>,
+            },
+            {
+              label: `Saved${expenses.data && savingsRate !== null ? ` · ${savingsRate}%` : ""}`,
+              value: <Money currency={household.currency}>{expenses.data ? formatAmount(saved, household.currency) : "–"}</Money>,
+            },
+          ]}
+        />
         <ShareBar label="Income by source" slices={incomeBySource(rows)} />
       </div>
 
-      <section className="surface">
-        <ErrorText error={income.error} />
+      <Surface>
+        <ErrorText error={income.error} className="p-4" />
         {income.isPending && <SkeletonRows />}
         {income.data && rows.length === 0 && (
-          <div className="empty">
-            <p className="empty-title">No income in {formatMonth(month)}</p>
-            <p className="muted">Add a salary or other payment, or pick another month above.</p>
-            <button onClick={openAdd}>
-              <Plus /> Add income
-            </button>
-          </div>
+          <EmptyState
+            title={`No income in ${formatMonth(month)}`}
+            action={
+              <Button onClick={openAdd}>
+                <PlusIcon /> Add income
+              </Button>
+            }
+          >
+            Add a salary or other payment, or pick another month above.
+          </EmptyState>
         )}
         {rows.length > 0 && (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="hide-narrow">Day</th>
-                  <th>Source</th>
-                  <th className="hide-narrow">Account</th>
-                  {showRecipient && <th className="hide-narrow">Received by</th>}
-                  <th className="num">Amount ({household.currency})</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((i) => (
-                  <tr
-                    key={i.id}
-                    className={i.id === flashId ? "clickable flash" : "clickable"}
-                    onClick={() => setEditor({ mode: "edit", income: i })}
-                    onAnimationEnd={() => setFlashId(null)}
-                  >
-                    <td className="nowrap muted hide-narrow">{formatDay(i.date)}</td>
-                    <td>
-                      {/* The button makes the row reachable by keyboard; the row click is a larger mouse target. */}
-                      <button
-                        className="row-link"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setEditor({ mode: "edit", income: i });
-                        }}
-                      >
-                        {i.source || "Untitled income"}
-                      </button>
-                      {i.notes && <div className="muted small">{i.notes}</div>}
-                      <div className="muted small show-narrow">{formatDay(i.date)}</div>
-                    </td>
-                    <td className="hide-narrow muted">{accounts.find((a) => a.id === i.accountId)?.name ?? ""}</td>
-                    {showRecipient && (
-                      <td className="hide-narrow muted">
-                        {members.find((m) => m.userId === i.recipientUserId)?.displayName ?? "Shared"}
-                      </td>
-                    )}
-                    <td className="num">
-                      {i.amountMinor < 0 ? "−" : ""}
-                      {formatAmount(Math.abs(i.amountMinor), household.currency)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="max-md:hidden">Day</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead className="max-md:hidden">Account</TableHead>
+                {showRecipient && <TableHead className="max-md:hidden">Received by</TableHead>}
+                <TableHead className="text-right">Amount ({household.currency})</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((i) => (
+                <TableRow
+                  key={i.id}
+                  className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
+                  onClick={() => setEditor({ mode: "edit", income: i })}
+                  onAnimationEnd={() => setFlashId(null)}
+                >
+                  <TableCell className="text-muted-foreground max-md:hidden">{formatDay(i.date)}</TableCell>
+                  <TableCell className="whitespace-normal">
+                    {/* The button makes the row reachable by keyboard; the row click is a larger mouse target. */}
+                    <button
+                      className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setEditor({ mode: "edit", income: i });
+                      }}
+                    >
+                      {i.source || "Untitled income"}
+                    </button>
+                    {i.notes && <div className="text-xs text-muted-foreground">{i.notes}</div>}
+                    <div className="text-xs text-muted-foreground md:hidden">{formatDay(i.date)}</div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground max-md:hidden">
+                    {accounts.find((a) => a.id === i.accountId)?.name ?? ""}
+                  </TableCell>
+                  {showRecipient && (
+                    <TableCell className="text-muted-foreground max-md:hidden">
+                      {members.find((m) => m.userId === i.recipientUserId)?.displayName ?? "Shared"}
+                    </TableCell>
+                  )}
+                  <TableCell className="amount text-right">
+                    {i.amountMinor < 0 ? "−" : ""}
+                    {formatAmount(Math.abs(i.amountMinor), household.currency)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </section>
+      </Surface>
 
       <Sheet
         open={editor.mode !== "closed"}

@@ -12,7 +12,11 @@ import type { Contribution, Fee, SecurityQuote, Valuation } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { todayIso } from "../lib/dates";
 import { parseMoney, toInputValue } from "../lib/money";
+import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 export type EntryTarget =
   | { type: "contribution"; contribution?: Contribution }
@@ -77,6 +81,7 @@ export function EntryForm({
   const remove = { contribution: deleteContribution, valuation: deleteValuation, fee: deleteFee }[target.type];
   const isContribution = target.type === "contribution";
   const amountRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
 
   const initialAmount =
     target.type === "valuation" ? target.valuation?.valueMinor : target.type === "fee" ? target.fee?.amountMinor : target.contribution?.amountMinor;
@@ -124,70 +129,77 @@ export function EntryForm({
     }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!existing) return;
-    if (window.confirm(`Delete this ${kind.noun}?`)) {
+    if (await confirm({ title: `Delete this ${kind.noun}?`, description: "This can't be undone." })) {
       remove.mutate({ id: existing.id, version: existing.version }, { onSuccess: onDone });
     }
   }
 
   const title = existing ? `Edit ${kind.noun}` : kind.add;
   return (
-    <form onSubmit={submit} className="entry-form" aria-label={title}>
-      <h3 className="entry-form-title">{title}</h3>
-      <div className="field-pair">
+    <form onSubmit={submit} className="flex flex-col gap-4 rounded-lg border p-4" aria-label={title}>
+      <h3 className="font-medium">{title}</h3>
+      <div className="grid grid-cols-2 gap-3">
         <Field label={`${kind.amountLabel} (${household.currency})`} name={kind.amountField} error={save.error} hint={amountError}>
-          <input
+          <Input
             ref={amountRef}
             autoFocus
             inputMode="decimal"
             required
             placeholder="0.00"
-            className="amount-input"
+            className="amount h-11 text-lg md:text-lg"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             aria-invalid={amountError !== null}
           />
         </Field>
         <Field label={target.type === "valuation" ? "On" : "Date"} name="date" error={save.error}>
-          <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+          <Input type="date" required className="h-11" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
       </div>
       {isContribution && security && (
         <Field label={`Shares of ${security.symbol}`} name="quantity" error={save.error} hint={sharesError}>
-          <input inputMode="decimal" placeholder="5" value={shares} onChange={(e) => setShares(e.target.value)} aria-invalid={sharesError !== null} />
+          <Input
+            inputMode="decimal"
+            placeholder="5"
+            className="amount"
+            value={shares}
+            onChange={(e) => setShares(e.target.value)}
+            aria-invalid={sharesError !== null}
+          />
         </Field>
       )}
       {isContribution && (
         <Field label="From account" name="accountId" error={save.error}>
-          <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-            <option value="">None</option>
+          <NativeSelect className="w-full" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <NativeSelectOption value="">None</NativeSelectOption>
             {accountOptions.map((a) => (
-              <option key={a.id} value={a.id}>
+              <NativeSelectOption key={a.id} value={a.id}>
                 {a.name}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </Field>
       )}
       <Field label="Notes" name="notes" error={save.error}>
-        <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
       <FormError error={save.error} fields={[kind.amountField, "date", "quantity", "accountId", "notes"]} />
       <ErrorText error={remove.error} />
-      <div className="entry-form-actions">
+      <div className="flex items-center gap-2">
         {existing && (
-          <button type="button" className="ghost danger" onClick={confirmDelete} disabled={remove.isPending}>
+          <Button type="button" variant="ghost" className="text-destructive" onClick={confirmDelete} disabled={remove.isPending}>
             Delete
-          </button>
+          </Button>
         )}
-        <span className="spacer" />
-        <button type="button" className="secondary" onClick={onDone}>
+        <span className="flex-1" />
+        <Button type="button" variant="outline" onClick={onDone}>
           Cancel
-        </button>
-        <button type="submit" disabled={save.isPending}>
+        </Button>
+        <Button type="submit" disabled={save.isPending}>
           {existing ? "Save" : target.type === "valuation" ? "Save value" : kind.add}
-        </button>
+        </Button>
       </div>
     </form>
   );

@@ -1,9 +1,49 @@
 import { createContext, useContext, useState, type FormEvent } from "react";
-import { Link, Navigate, NavLink, Outlet, useNavigate, useParams } from "react-router";
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
+import {
+  ChevronsUpDownIcon,
+  GaugeIcon,
+  HandCoinsIcon,
+  HistoryIcon,
+  LogOutIcon,
+  LuggageIcon,
+  PlusIcon,
+  ReceiptIcon,
+  TagIcon,
+  TrendingUpIcon,
+  UsersIcon,
+  WalletIcon,
+} from "lucide-react";
 import { useCreateHousehold, useHouseholds, useLogout, useMe } from "../api/hooks";
 import type { Household } from "../api/types";
-import { Gauge, History, Inbound, LogOut, Receipt, Tag, TrendUp, Users, Wallet, Suitcase } from "../icons";
+import { AuthShell } from "../auth/AuthShell";
 import { ErrorText, Field, FormError, Loading, SheetSlot } from "../ui";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
 const CURRENCIES = ["CZK", "EUR", "USD", "GBP", "PLN", "CHF", "SEK", "NOK", "DKK", "HUF"];
 
@@ -39,57 +79,46 @@ export function OnboardingPage() {
   }
 
   return (
-    <main className="auth">
-      <div className="auth-panel">
-        <p className="wordmark">Spending Tracker</p>
-        <h1>{hasHouseholds ? "New household" : "Set up your household"}</h1>
-        <p className="muted">A household holds the accounts and expenses you track, alone or with others.</p>
-        <form onSubmit={submit} className="stack">
-          <Field label="Household name" name="name" error={create.error}>
-            <input required placeholder="Home" value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="Currency" name="currency" error={create.error}>
-            <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-              {CURRENCIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </Field>
-          <FormError error={create.error} fields={["name", "currency"]} />
-          <button type="submit" className="block" disabled={create.isPending}>
-            Create household
-          </button>
-        </form>
-        {hasHouseholds && (
-          <p className="auth-footer">
-            <Link to="/">Back to your household</Link>
-          </p>
-        )}
-      </div>
-    </main>
+    <AuthShell
+      title={hasHouseholds ? "New household" : "Set up your household"}
+      description="A household holds the accounts and expenses you track, alone or with others."
+      footer={hasHouseholds && <Link to="/">Back to your household</Link>}
+    >
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <Field label="Household name" name="name" error={create.error}>
+          <Input required placeholder="Home" value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Currency" name="currency" error={create.error}>
+          <NativeSelect className="w-full" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => (
+              <NativeSelectOption key={c}>{c}</NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </Field>
+        <FormError error={create.error} fields={["name", "currency"]} />
+        <Button type="submit" size="lg" className="w-full" disabled={create.isPending}>
+          Create household
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
 
-const NEW_HOUSEHOLD = "__new";
-
 const SECTIONS = [
-  { to: "overview", label: "Overview", icon: <Gauge /> },
-  { to: "expenses", label: "Expenses", icon: <Receipt /> },
-  { to: "income", label: "Income", icon: <Inbound /> },
-  { to: "assets", label: "Assets", icon: <TrendUp /> },
-  { to: "trips", label: "Trips", icon: <Suitcase /> },
-  { to: "accounts", label: "Accounts", icon: <Wallet /> },
-  { to: "categories", label: "Categories", icon: <Tag /> },
-  { to: "members", label: "Members", icon: <Users /> },
-  { to: "activity", label: "Activity", icon: <History /> },
+  { to: "overview", label: "Overview", icon: <GaugeIcon /> },
+  { to: "expenses", label: "Expenses", icon: <ReceiptIcon /> },
+  { to: "income", label: "Income", icon: <HandCoinsIcon /> },
+  { to: "assets", label: "Assets", icon: <TrendingUpIcon /> },
+  { to: "trips", label: "Trips", icon: <LuggageIcon /> },
+  { to: "accounts", label: "Accounts", icon: <WalletIcon /> },
+  { to: "categories", label: "Categories", icon: <TagIcon /> },
+  { to: "members", label: "Members", icon: <UsersIcon /> },
+  { to: "activity", label: "Activity", icon: <HistoryIcon /> },
 ];
 
 export function HouseholdLayout() {
   const { householdId } = useParams();
   const households = useHouseholds();
-  const me = useMe();
-  const logout = useLogout();
-  const navigate = useNavigate();
   const [sheetSlot, setSheetSlot] = useState<HTMLElement | null>(null);
 
   if (households.isPending) return <Loading />;
@@ -97,74 +126,113 @@ export function HouseholdLayout() {
   const household = households.data.find((h) => h.id === householdId);
   if (!household) return households.isFetching ? <Loading /> : <Navigate to="/" replace />;
 
-  const switcher = (
-    <select
-      className="household-switcher"
-      aria-label="Household"
-      value={household.id}
-      onChange={(e) => navigate(e.target.value === NEW_HOUSEHOLD ? "/onboarding" : `/h/${e.target.value}/overview`)}
-    >
-      {households.data.map((h) => (
-        <option key={h.id} value={h.id}>
-          {h.name}
-        </option>
-      ))}
-      <option value={NEW_HOUSEHOLD}>New household…</option>
-    </select>
-  );
-  const logOut = () => logout.mutate(undefined, { onSuccess: () => navigate("/login") });
-  const name = me.data?.displayName ?? "";
-
   return (
     <HouseholdContext.Provider value={household}>
-      <div className="app">
-        <aside className="sidebar">
-          {switcher}
-          <nav className="side-nav" aria-label="Sections">
-            {SECTIONS.map((s) => (
-              <NavLink key={s.to} to={s.to}>
-                {s.icon}
-                {s.label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="sidebar-user">
-            <span className="avatar" aria-hidden="true">
-              {name.slice(0, 1).toUpperCase()}
-            </span>
-            <span className="sidebar-user-name">
-              <span>{name}</span>
-              <span className="muted small">{me.data?.email}</span>
-            </span>
-            <button className="icon-button" aria-label="Log out" title="Log out" onClick={logOut}>
-              <LogOut />
-            </button>
+      <SidebarProvider>
+        <AppSidebar household={household} households={households.data} />
+        <SidebarInset className="min-w-0">
+          <header className="sticky top-0 z-20 flex h-12 items-center gap-2 border-b bg-background px-3 md:hidden">
+            <SidebarTrigger />
+            <span className="truncate font-semibold">{household.name}</span>
+          </header>
+          <div className="flex min-w-0 flex-1">
+            <SheetSlot.Provider value={sheetSlot}>
+              <div className="flex min-w-0 flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-8">
+                <Outlet />
+              </div>
+            </SheetSlot.Provider>
+            <div ref={setSheetSlot} className="flex flex-col empty:hidden md:w-[440px] md:shrink-0 md:border-l" />
           </div>
-        </aside>
-
-        <header className="mobile-bar">
-          {switcher}
-          <button className="icon-button" aria-label="Log out" onClick={logOut}>
-            <LogOut />
-          </button>
-        </header>
-
-        <SheetSlot.Provider value={sheetSlot}>
-          <main className="page">
-            <Outlet />
-          </main>
-        </SheetSlot.Provider>
-        <div ref={setSheetSlot} className="sheet-slot" />
-
-        <nav className="bottom-nav" aria-label="Sections">
-          {SECTIONS.map((s) => (
-            <NavLink key={s.to} to={s.to}>
-              {s.icon}
-              <span>{s.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-      </div>
+        </SidebarInset>
+      </SidebarProvider>
     </HouseholdContext.Provider>
+  );
+}
+
+/** Household switcher on top, the sections, then who is logged in. Becomes a drawer on phones. */
+function AppSidebar({ household, households }: { household: Household; households: Household[] }) {
+  const me = useMe();
+  const logout = useLogout();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const { setOpenMobile } = useSidebar();
+  const name = me.data?.displayName ?? "";
+  const logOut = () => logout.mutate(undefined, { onSuccess: () => navigate("/login") });
+
+  return (
+    <Sidebar>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton size="lg" aria-label={`Household: ${household.name}`}>
+                  <span className="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sm font-semibold text-sidebar-primary-foreground">
+                    {household.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="grid flex-1 text-left leading-tight">
+                    <span className="truncate font-semibold">{household.name}</span>
+                    <span className="truncate text-xs text-muted-foreground">{household.currency}</span>
+                  </span>
+                  <ChevronsUpDownIcon className="ml-auto" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-56">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Households</DropdownMenuLabel>
+                {households.map((h) => (
+                  <DropdownMenuItem
+                    key={h.id}
+                    onSelect={() => {
+                      setOpenMobile(false);
+                      navigate(`/h/${h.id}/overview`);
+                    }}
+                  >
+                    <span className="truncate">{h.name}</span>
+                    {h.id === household.id && <span className="ml-auto text-xs text-muted-foreground">Current</span>}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => navigate("/onboarding")}>
+                  <PlusIcon />
+                  New household
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarMenu aria-label="Sections">
+            {SECTIONS.map((s) => (
+              <SidebarMenuItem key={s.to}>
+                <SidebarMenuButton asChild isActive={pathname.startsWith(`/h/${household.id}/${s.to}`)}>
+                  <NavLink to={s.to} onClick={() => setOpenMobile(false)}>
+                    {s.icon}
+                    <span>{s.label}</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter>
+        <div className="flex items-center gap-2 p-1">
+          <Avatar className="size-8">
+            <AvatarFallback className="text-sm">{name.slice(0, 1).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <span className="grid min-w-0 flex-1 text-sm leading-tight">
+            <span className="truncate font-medium">{name}</span>
+            <span className="truncate text-xs text-muted-foreground">{me.data?.email}</span>
+          </span>
+          <Button variant="ghost" size="icon" aria-label="Log out" title="Log out" onClick={logOut}>
+            <LogOutIcon />
+          </Button>
+        </div>
+      </SidebarFooter>
+    </Sidebar>
   );
 }

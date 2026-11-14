@@ -3,7 +3,14 @@ import { useAccounts, useDeleteAccount, useMembers, useSaveAccount } from "../ap
 import type { Account, AccountInput, AccountKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
-import { ErrorText, Field, FormError, PageHeader, SkeletonRows } from "../ui";
+import { useConfirm, usePrompt } from "../dialogs";
+import { EmptyState, ErrorText, Field, FormError, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 const KINDS: { value: AccountKind; label: string }[] = [
   { value: "bank", label: "Bank account" },
@@ -28,6 +35,8 @@ export function AccountsPage() {
   const [kind, setKind] = useState<AccountKind>("bank");
   const [iban, setIban] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
+  const confirm = useConfirm();
+  const prompt = usePrompt();
 
   function add(e: FormEvent) {
     e.preventDefault();
@@ -56,135 +65,140 @@ export function AccountsPage() {
       },
     });
 
+  async function editIban(a: Account) {
+    const next = await prompt({
+      title: `IBAN of ${a.name}`,
+      label: "IBAN",
+      description: "Leave it empty to remove it.",
+      initial: a.iban ? formatIban(a.iban) : "",
+    });
+    if (next !== null) update(a, { iban: next.trim() || null });
+  }
+
+  async function confirmDelete(a: Account) {
+    if (await confirm({ title: `Delete ${a.name}?`, description: "Only an account nothing uses can be deleted; close it to keep its history." })) {
+      remove.mutate({ id: a.id, version: a.version });
+    }
+  }
+
+  const ownerName = (a: Account) => members.find((m) => m.userId === a.ownerUserId)?.displayName ?? "Shared";
+
   return (
     <>
       <PageHeader title="Accounts" />
-      <p className="page-intro muted">
+      <PageIntro>
         The bank accounts, cards and cash you pay from. A credit card's purchases are spending; paying it off is a transfer.
         Close an account to keep its history but hide it from new expenses.
-      </p>
+      </PageIntro>
 
-      <div className="add-block">
-        <form onSubmit={add} className="toolbar-form" aria-label="Add account">
-          <Field label="Account name" name="name" error={save.error}>
-            <input required placeholder="e.g. Revolut" value={name} onChange={(e) => setName(e.target.value)} />
+      <Surface className="p-4">
+        <form onSubmit={add} className="flex flex-wrap items-end gap-3" aria-label="Add account">
+          <Field label="Account name" name="name" error={save.error} className="w-56">
+            <Input required placeholder="e.g. Revolut" value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="Owner" name="ownerUserId" error={save.error}>
-            <select value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)}>
-              <option value="">Shared</option>
+          <Field label="Owner" name="ownerUserId" error={save.error} className="w-40">
+            <NativeSelect className="w-full" value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)}>
+              <NativeSelectOption value="">Shared</NativeSelectOption>
               {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
+                <NativeSelectOption key={m.userId} value={m.userId}>
                   {m.displayName}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </Field>
-          <Field label="Kind" name="kind" error={save.error}>
-            <select value={kind} onChange={(e) => setKind(e.target.value as AccountKind)}>
+          <Field label="Kind" name="kind" error={save.error} className="w-40">
+            <NativeSelect className="w-full" value={kind} onChange={(e) => setKind(e.target.value as AccountKind)}>
               {KINDS.map((k) => (
-                <option key={k.value} value={k.value}>
+                <NativeSelectOption key={k.value} value={k.value}>
                   {k.label}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </Field>
           {(kind === "bank" || kind === "credit_card") && (
-            <Field label="IBAN" name="iban" error={save.error}>
-              <input placeholder="Optional" value={iban} onChange={(e) => setIban(e.target.value)} />
+            <Field label="IBAN" name="iban" error={save.error} className="w-64">
+              <Input placeholder="Optional" value={iban} onChange={(e) => setIban(e.target.value)} />
             </Field>
           )}
-          <button type="submit" disabled={save.isPending}>
+          <Button type="submit" disabled={save.isPending}>
             Add account
-          </button>
+          </Button>
         </form>
         <FormError error={save.error} fields={["name", "ownerUserId", "kind", "iban"]} />
-      </div>
+      </Surface>
 
-      <section className="surface">
-        <ErrorText error={remove.error} />
-        <ErrorText error={accounts.error} />
+      <Surface>
+        <ErrorText error={remove.error} className="p-4" />
+        <ErrorText error={accounts.error} className="p-4" />
         {accounts.isPending && <SkeletonRows rows={3} />}
         {accounts.data?.length === 0 && (
-          <div className="empty">
-            <p className="empty-title">No accounts yet</p>
-            <p className="muted">Add the accounts and cards you pay from to see where money goes.</p>
-          </div>
+          <EmptyState title="No accounts yet">Add the accounts and cards you pay from to see where money goes.</EmptyState>
         )}
         {accounts.data && accounts.data.length > 0 && (
-          <div className="table-wrap">
-            <table className="data-table align-middle">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th className="hide-narrow">Kind</th>
-                  <th className="hide-narrow">Owner</th>
-                  <th className="actions-col">
-                    <span className="visually-hidden">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {accounts.data.map((a) => (
-                  <tr key={a.id} className={a.status === "closed" ? "dimmed" : undefined}>
-                    <td className="strong">
-                      <span className="cell-with-badge">
-                        <InlineRename
-                          name={a.name}
-                          editing={renaming === a.id}
-                          onSave={(newName) => update(a, { name: newName })}
-                          onDone={() => setRenaming(null)}
-                        />
-                        {a.status === "closed" && <span className="badge badge-muted">Closed</span>}
-                      </span>
-                      {a.iban && <div className="muted small mono">{formatIban(a.iban)}</div>}
-                      <div className="muted small show-narrow">
-                        {kindLabel(a.kind)} · {members.find((m) => m.userId === a.ownerUserId)?.displayName ?? "Shared"}
-                      </div>
-                    </td>
-                    <td className="hide-narrow">
-                      <select
-                        aria-label={`Kind of ${a.name}`}
-                        value={a.kind}
-                        onChange={(e) => update(a, { kind: e.target.value as AccountKind })}
-                      >
-                        {KINDS.map((k) => (
-                          <option key={k.value} value={k.value}>
-                            {k.label}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="muted hide-narrow">{members.find((m) => m.userId === a.ownerUserId)?.displayName ?? "Shared"}</td>
-                    <td className="row-actions">
-                      <button className="ghost" onClick={() => setRenaming(a.id)}>
-                        Rename
-                      </button>
-                      <button
-                        className="ghost"
-                        onClick={() => {
-                          const next = window.prompt(`IBAN of ${a.name} (empty to remove)`, a.iban ? formatIban(a.iban) : "");
-                          if (next !== null) update(a, { iban: next.trim() || null });
-                        }}
-                      >
-                        IBAN
-                      </button>
-                      <button className="ghost" onClick={() => update(a, { status: a.status === "active" ? "closed" : "active" })}>
-                        {a.status === "active" ? "Close" : "Reopen"}
-                      </button>
-                      <button
-                        className="ghost danger"
-                        onClick={() => window.confirm(`Delete ${a.name}?`) && remove.mutate({ id: a.id, version: a.version })}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Name</TableHead>
+                <TableHead className="max-md:hidden">Kind</TableHead>
+                <TableHead className="max-md:hidden">Owner</TableHead>
+                <TableHead className="w-12">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {accounts.data.map((a) => (
+                <TableRow key={a.id} className={cn(a.status === "closed" && "text-muted-foreground")}>
+                  <TableCell className="whitespace-normal font-medium">
+                    <span className="flex items-center gap-2">
+                      <InlineRename
+                        name={a.name}
+                        editing={renaming === a.id}
+                        onSave={(newName) => update(a, { name: newName })}
+                        onDone={() => setRenaming(null)}
+                      />
+                      {a.status === "closed" && <Badge variant="secondary">Closed</Badge>}
+                    </span>
+                    {a.iban && <div className="amount text-xs font-normal text-muted-foreground">{formatIban(a.iban)}</div>}
+                    <div className="text-xs font-normal text-muted-foreground md:hidden">
+                      {kindLabel(a.kind)} · {ownerName(a)}
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-md:hidden">
+                    <NativeSelect
+                      size="sm"
+                      aria-label={`Kind of ${a.name}`}
+                      value={a.kind}
+                      onChange={(e) => update(a, { kind: e.target.value as AccountKind })}
+                    >
+                      {KINDS.map((k) => (
+                        <NativeSelectOption key={k.value} value={k.value}>
+                          {k.label}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground max-md:hidden">{ownerName(a)}</TableCell>
+                  <TableCell className="text-right">
+                    <RowMenu
+                      label={a.name}
+                      actions={[
+                        { label: "Rename", onSelect: () => setRenaming(a.id) },
+                        { label: a.iban ? "Edit IBAN" : "Add IBAN", onSelect: () => editIban(a) },
+                        {
+                          label: a.status === "active" ? "Close account" : "Reopen account",
+                          onSelect: () => update(a, { status: a.status === "active" ? "closed" : "active" }),
+                        },
+                        { label: "Delete", destructive: true, onSelect: () => confirmDelete(a) },
+                      ]}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </section>
+      </Surface>
     </>
   );
 }

@@ -14,6 +14,7 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
 | Auth | Own email + password (argon2), server-side sessions in httpOnly cookies; OAuth / magic link later |
 | API contract | Ktor publishes OpenAPI; web generates TS types + client with `openapi-typescript` |
 | Web frontend | TypeScript 6 (TS 7 lacks the JS API openapi-typescript needs), React, Vite, TanStack Query, React Router, pnpm |
+| Web UI | shadcn/ui (Radix, Nova style) on Tailwind CSS 4, lucide icons; components live in `web/src/components/ui` and are ours to edit. Theme tokens in `web/src/styles.css`; dark mode follows the system |
 | Money | Integer minor units + currency code (household default currency) |
 | Repo layout | Monorepo: `server/`, `shared/`, `web/`; Gradle Kotlin DSL |
 | Tests | Ktor `testApplication` + Testcontainers Postgres; Vitest for web |

@@ -10,9 +10,13 @@ import {
 } from "../api/hooks";
 import type { Fee, HistoryPoint, Asset, SecurityQuote } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
-import { Plus } from "../icons";
+import { PlusIcon } from "lucide-react";
 import { formatDay } from "../lib/dates";
-import { ErrorText, PageHeader, Sheet, SkeletonRows } from "../ui";
+import { EmptyState, ErrorText, Money, PageHeader, Sheet, SheetBody, SkeletonRows, Summary, Surface } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { EntryForm, type EntryTarget } from "./EntryForm";
 import { HistoryChart } from "./HistoryChart";
 import { HoldingForm } from "./HoldingForm";
@@ -70,118 +74,98 @@ export function AssetsPage() {
   return (
     <>
       <PageHeader title="Assets">
-        <button onClick={openAdd}>
-          <Plus /> Add asset
-        </button>
+        <Button size="lg" onClick={openAdd}>
+          <PlusIcon /> Add asset
+        </Button>
       </PageHeader>
 
       {rows.length > 0 && (
-        <div className="overview">
-          <dl className="summary">
-            <div>
-              <dt>Worth</dt>
-              <dd className="summary-primary">
-                {formatAsset(totals.valueMinor, currency)}
-                <span className="currency">{currency}</span>
-              </dd>
-            </div>
-            <div>
-              <dt>Put in</dt>
-              <dd>
-                {formatAsset(totals.contributedMinor, currency)}
-                <span className="currency">{currency}</span>
-              </dd>
-            </div>
-            <div>
-              <dt>Gain{ratio !== null && ` · ${formatPercent(ratio)}`}</dt>
-              <dd>
-                {formatSigned(totals.gainMinor, currency)}
-                <span className="currency">{currency}</span>
-              </dd>
-            </div>
-            {totals.feesMinor !== 0 && (
-              <div>
-                <dt>
-                  Fees paid
-                  {totals.contributedMinor > 0 && ` · ${((totals.feesMinor / totals.contributedMinor) * 100).toFixed(1)}% of put in`}
-                </dt>
-                <dd>
-                  {formatAsset(totals.feesMinor, currency)}
-                  <span className="currency">{currency}</span>
-                </dd>
-              </div>
-            )}
-          </dl>
+        <div className="flex flex-col gap-5">
+          <Summary
+            items={[
+              { label: "Worth", value: <Money currency={currency}>{formatAsset(totals.valueMinor, currency)}</Money> },
+              { label: "Put in", value: <Money currency={currency}>{formatAsset(totals.contributedMinor, currency)}</Money> },
+              {
+                label: `Gain${ratio !== null ? ` · ${formatPercent(ratio)}` : ""}`,
+                value: <Money currency={currency}>{formatSigned(totals.gainMinor, currency)}</Money>,
+              },
+              totals.feesMinor !== 0 && {
+                label: `Fees paid${totals.contributedMinor > 0 ? ` · ${((totals.feesMinor / totals.contributedMinor) * 100).toFixed(1)}% of put in` : ""}`,
+                value: <Money currency={currency}>{formatAsset(totals.feesMinor, currency)}</Money>,
+              },
+            ]}
+          />
           {history.data && <HistoryChart points={history.data.points} currency={currency} />}
         </div>
       )}
 
-      <section className="surface">
-        <ErrorText error={assets.error} />
+      <Surface>
+        <ErrorText error={assets.error} className="p-4" />
         {assets.isPending && <SkeletonRows />}
         {assets.data && rows.length === 0 && (
-          <div className="empty">
-            <p className="empty-title">No assets yet</p>
-            <p className="muted">Add a fund, savings, a car or anything else you own, then record what you put in and what it's worth now and then.</p>
-            <button onClick={openAdd}>
-              <Plus /> Add asset
-            </button>
-          </div>
+          <EmptyState
+            title="No assets yet"
+            action={
+              <Button onClick={openAdd}>
+                <PlusIcon /> Add asset
+              </Button>
+            }
+          >
+            Add a fund, savings, a car or anything else you own, then record what you put in and what it's worth now and then.
+          </EmptyState>
         )}
         {rows.length > 0 && (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Asset</th>
-                  {showOwner && <th className="hide-narrow">Held by</th>}
-                  <th className="num hide-narrow">Put in</th>
-                  <th className="num">Worth ({currency})</th>
-                  <th className="num hide-narrow">Gain</th>
-                  <th className="num">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((i) => {
-                  const r = gainRatio(i);
-                  return (
-                    <tr
-                      key={i.id}
-                      className={i.id === flashId ? "clickable flash" : "clickable"}
-                      onClick={() => setEditor({ mode: "view", id: i.id })}
-                      onAnimationEnd={() => setFlashId(null)}
-                    >
-                      <td>
-                        <button
-                          className="row-link"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setEditor({ mode: "view", id: i.id });
-                          }}
-                        >
-                          {i.name}
-                        </button>
-                        <div className="muted small">
-                          {kindLabel(i.kind)} · {valuedBy(i)}
-                        </div>
-                      </td>
-                      {showOwner && (
-                        <td className="hide-narrow muted">
-                          {members.find((m) => m.userId === i.ownerUserId)?.displayName ?? "Shared"}
-                        </td>
-                      )}
-                      <td className="num hide-narrow">{formatAsset(i.contributedMinor, currency)}</td>
-                      <td className="num">{formatAsset(i.valueMinor, currency)}</td>
-                      <td className="num hide-narrow">{formatSigned(i.gainMinor, currency)}</td>
-                      <td className="num">{r === null ? "–" : formatPercent(r)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Asset</TableHead>
+                {showOwner && <TableHead className="max-md:hidden">Held by</TableHead>}
+                <TableHead className="text-right max-md:hidden">Put in</TableHead>
+                <TableHead className="text-right">Worth ({currency})</TableHead>
+                <TableHead className="text-right max-md:hidden">Gain</TableHead>
+                <TableHead className="text-right">%</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((i) => {
+                const r = gainRatio(i);
+                return (
+                  <TableRow
+                    key={i.id}
+                    className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
+                    onClick={() => setEditor({ mode: "view", id: i.id })}
+                    onAnimationEnd={() => setFlashId(null)}
+                  >
+                    <TableCell className="whitespace-normal">
+                      <button
+                        className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setEditor({ mode: "view", id: i.id });
+                        }}
+                      >
+                        {i.name}
+                      </button>
+                      <div className="text-xs text-muted-foreground">
+                        {kindLabel(i.kind)} · {valuedBy(i)}
+                      </div>
+                    </TableCell>
+                    {showOwner && (
+                      <TableCell className="text-muted-foreground max-md:hidden">
+                        {members.find((m) => m.userId === i.ownerUserId)?.displayName ?? "Shared"}
+                      </TableCell>
+                    )}
+                    <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>
+                    <TableCell className="amount text-right">{formatAsset(i.valueMinor, currency)}</TableCell>
+                    <TableCell className="amount text-right max-md:hidden">{formatSigned(i.gainMinor, currency)}</TableCell>
+                    <TableCell className="amount text-right">{r === null ? "–" : formatPercent(r)}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         )}
-      </section>
+      </Surface>
 
       <Sheet
         open={editor.mode === "add" || editor.mode === "edit"}
@@ -226,34 +210,39 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
   const history = historyEntries(contributions.data ?? [], valuations.data ?? [], fees.data ?? []);
 
   return (
-    <div className="sheet-form">
-      {/* The figures, then the history in full; while an entry is open, the figures and the form. */}
-      <div className="sheet-fields holding-detail">
-        <dl className="summary">
-          <div>
-            <dt>Worth</dt>
-            <dd className="summary-primary">
-              {formatAsset(asset.valueMinor, currency)}
-              <span className="currency">{currency}</span>
+    <div className="flex flex-1 flex-col">
+      <SheetBody
+        footer={
+          <Button type="button" variant="outline" onClick={onEdit}>
+            Edit asset
+          </Button>
+        }
+      >
+        {/* The figures, then the history in full; while an entry is open, the figures and the form. */}
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+          <div className="col-span-2 flex flex-col gap-1">
+            <dt className="text-sm text-muted-foreground">Worth</dt>
+            <dd className="text-2xl font-medium">
+              <Money currency={currency}>{formatAsset(asset.valueMinor, currency)}</Money>
             </dd>
           </div>
-          <div>
-            <dt>Put in</dt>
-            <dd>{formatAsset(asset.contributedMinor, currency)}</dd>
+          <div className="flex flex-col gap-1">
+            <dt className="text-sm text-muted-foreground">Put in</dt>
+            <dd className="amount">{formatAsset(asset.contributedMinor, currency)}</dd>
           </div>
-          <div>
-            <dt>Gain{ratio !== null && ` · ${formatPercent(ratio)}`}</dt>
-            <dd>{formatSigned(asset.gainMinor, currency)}</dd>
+          <div className="flex flex-col gap-1">
+            <dt className="text-sm text-muted-foreground">Gain{ratio !== null && ` · ${formatPercent(ratio)}`}</dt>
+            <dd className="amount">{formatSigned(asset.gainMinor, currency)}</dd>
           </div>
           {asset.feesMinor !== 0 && (
-            <div>
-              <dt>Fees paid</dt>
-              <dd>{formatAsset(asset.feesMinor, currency)}</dd>
+            <div className="flex flex-col gap-1">
+              <dt className="text-sm text-muted-foreground">Fees paid</dt>
+              <dd className="amount">{formatAsset(asset.feesMinor, currency)}</dd>
             </div>
           )}
         </dl>
         {/* The fee breakdown needs the room; the chart and note come back with the history. */}
-        {!entry && !showingFees && <p className="muted small">{valuationNote(asset)}</p>}
+        {!entry && !showingFees && <p className="text-xs text-muted-foreground">{valuationNote(asset)}</p>}
         {!entry && !showingFees && timeline.data && <HistoryChart points={timeline.data.points} currency={currency} height={110} />}
 
         {entry ? (
@@ -265,42 +254,41 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
             onDone={() => setEntry(null)}
           />
         ) : (
-          <div className="entry-buttons">
-            <button type="button" onClick={() => setEntry({ type: "contribution" })}>
-              <Plus /> Add contribution
-            </button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => setEntry({ type: "contribution" })}>
+              <PlusIcon /> Add contribution
+            </Button>
             {/* Market prices value it; a hand-entered value would be ignored. */}
             {!asset.marketValued && (
-              <button type="button" className="secondary" onClick={() => setEntry({ type: "valuation" })}>
+              <Button type="button" variant="outline" onClick={() => setEntry({ type: "valuation" })}>
                 Update value
-              </button>
+              </Button>
             )}
-            <button type="button" className="secondary" onClick={() => setEntry({ type: "fee" })}>
+            <Button type="button" variant="outline" onClick={() => setEntry({ type: "fee" })}>
               Add fee
-            </button>
+            </Button>
           </div>
         )}
 
-        <div className="holding-history" hidden={entry !== null}>
+        <div className="flex flex-col gap-3" hidden={entry !== null}>
           {hasFees ? (
-            <div className="panel-tabs" role="tablist" aria-label="Show">
-              {(["history", "fees"] as const).map((p) => (
-                <button key={p} type="button" role="tab" aria-selected={panel === p} onClick={() => setPanel(p)}>
-                  {p === "history" ? "History" : "Fees"}
-                </button>
-              ))}
-            </div>
+            <Tabs value={panel} onValueChange={(v) => setPanel(v as "history" | "fees")}>
+              <TabsList aria-label="Show">
+                <TabsTrigger value="history">History</TabsTrigger>
+                <TabsTrigger value="fees">Fees</TabsTrigger>
+              </TabsList>
+            </Tabs>
           ) : (
-            <h3 className="sheet-section-title">History</h3>
+            <h3 className="text-sm font-medium">History</h3>
           )}
           <ErrorText error={contributions.error ?? valuations.error ?? fees.error} />
           {showingFees && (
             <FeeBreakdown fees={fees.data ?? []} points={timeline.data?.points ?? []} asset={asset} currency={currency} />
           )}
           {!showingFees && history.length === 0 && !contributions.isPending && (
-            <p className="muted small">Nothing recorded yet.</p>
+            <p className="text-sm text-muted-foreground">Nothing recorded yet.</p>
           )}
-          <ul className="card-list history-list" hidden={showingFees}>
+          <ul className="-mx-2 flex flex-col" hidden={showingFees}>
             {history.map((h) => {
               const isValuation = h.type === "valuation";
               const item = h.type === "valuation" ? h.valuation : h.type === "fee" ? h.fee : h.contribution;
@@ -318,7 +306,7 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
                 <li key={`${h.type}-${item.id}`}>
                   <button
                     type="button"
-                    className="history-item"
+                    className="flex w-full items-baseline justify-between gap-3 rounded-md px-2 py-2 text-left text-sm outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
                     onClick={() =>
                       setEntry(
                         h.type === "valuation"
@@ -329,16 +317,16 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
                       )
                     }
                   >
-                    <span>
-                      <span className={muted ? "muted" : undefined}>{label}</span>
-                      <span className="muted small block">
+                    <span className="min-w-0">
+                      <span className={cn("block", muted && "text-muted-foreground")}>{label}</span>
+                      <span className="block text-xs text-muted-foreground">
                         {formatDay(h.date)}
                         {h.type === "contribution" && h.contribution.quantity !== null && ` · ${formatShares(Math.abs(h.contribution.quantity))}`}
                         {account && ` · ${account}`}
                         {item.notes && ` · ${item.notes}`}
                       </span>
                     </span>
-                    <span className={muted ? "num muted" : "num"}>
+                    <span className={cn("amount", muted && "text-muted-foreground")}>
                       {h.type === "contribution" ? formatSigned(amount, currency) : formatAsset(amount, currency)}
                     </span>
                   </button>
@@ -347,12 +335,7 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
             })}
           </ul>
         </div>
-      </div>
-      <div className="sheet-footer">
-        <button type="button" className="secondary" onClick={onEdit}>
-          Edit asset
-        </button>
-      </div>
+      </SheetBody>
     </div>
   );
 }
@@ -374,48 +357,52 @@ function FeeBreakdown({
   const years = feesByYear(fees, points);
   const summary = feeSummary(fees, points, asset);
   return (
-    <div className="fee-breakdown">
-      <dl className="fee-facts">
-        <div>
-          <dt>Paid in all</dt>
+    <div className="flex flex-col gap-4">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-muted-foreground">Paid in all</dt>
           <dd>
-            {formatAsset(summary.feesMinor, currency)} <span className="currency">{currency}</span>
+            <Money currency={currency}>{formatAsset(summary.feesMinor, currency)}</Money>
           </dd>
         </div>
-        <div>
-          <dt>A year, of worth</dt>
-          <dd>{percent(summary.yearlyRate)}</dd>
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-muted-foreground">A year, of worth</dt>
+          <dd className="amount">{percent(summary.yearlyRate)}</dd>
         </div>
-        <div>
-          <dt>Of money put in</dt>
-          <dd>{percent(summary.ofContributed)}</dd>
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-muted-foreground">Of money put in</dt>
+          <dd className="amount">{percent(summary.ofContributed)}</dd>
         </div>
-        <div>
-          <dt>Of the gain before fees</dt>
-          <dd>{percent(summary.ofGainBeforeFees, 1)}</dd>
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-muted-foreground">Of the gain before fees</dt>
+          <dd className="amount">{percent(summary.ofGainBeforeFees, 1)}</dd>
         </div>
       </dl>
-      <table className="data-table fee-years">
-        <thead>
-          <tr>
-            <th>Year</th>
-            <th className="num">Fees</th>
-            <th className="num">Avg worth</th>
-            <th className="num" title="Fees as a share of average worth, scaled to a full year">A year</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="pl-0 first:pl-0">Year</TableHead>
+            <TableHead className="text-right">Fees</TableHead>
+            <TableHead className="text-right">Avg worth</TableHead>
+            <TableHead className="pr-0 text-right last:pr-0" title="Fees as a share of average worth, scaled to a full year">
+              A year
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {years.map((y) => (
-            <tr key={y.year}>
-              <td>{y.year}</td>
-              <td className="num">{formatAsset(y.feesMinor, currency)}</td>
-              <td className="num">{y.averageWorthMinor === null ? "–" : formatAsset(y.averageWorthMinor, currency)}</td>
-              <td className="num">{percent(y.yearlyRate)}</td>
-            </tr>
+            <TableRow key={y.year}>
+              <TableCell className="pl-0 first:pl-0">{y.year}</TableCell>
+              <TableCell className="amount text-right">{formatAsset(y.feesMinor, currency)}</TableCell>
+              <TableCell className="amount text-right">
+                {y.averageWorthMinor === null ? "–" : formatAsset(y.averageWorthMinor, currency)}
+              </TableCell>
+              <TableCell className="amount pr-0 text-right last:pr-0">{percent(y.yearlyRate)}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-      <p className="muted small">
+        </TableBody>
+      </Table>
+      <p className="text-xs text-muted-foreground">
         Fees are already taken out of the worth, so they don't change the gain shown above. Part years are scaled to a full
         year from the months that charged a fee.
       </p>

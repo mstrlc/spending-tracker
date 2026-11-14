@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { useAccounts, useCategories, useExpenses, useMembers } from "../api/hooks";
 import type { Category, Expense } from "../api/types";
-import { Plus } from "../icons";
+import { PlusIcon } from "lucide-react";
 import { currentMonth, formatDay, formatMonth, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { rankSlices, ShareBar, type Slice } from "../shares";
-import { ErrorText, PageHeader, Sheet, SkeletonRows } from "../ui";
+import { EmptyState, ErrorText, Money, PageHeader, Sheet, SkeletonRows, Summary, Surface } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { ExpenseForm } from "./ExpenseForm";
 
 /** Splits a month's total into spending and investing (investment categories are not consumption). */
@@ -65,116 +69,107 @@ export function ExpensesPage() {
   return (
     <>
       <PageHeader title={<MonthTitle month={month} goTo={goTo} />}>
-        <button onClick={openAdd} aria-keyshortcuts="N">
-          <Plus /> Add expense <kbd>N</kbd>
-        </button>
+        <Button size="lg" onClick={openAdd} aria-keyshortcuts="N">
+          <PlusIcon /> Add expense
+          <Kbd className="hidden bg-primary-foreground/15 text-primary-foreground md:inline-flex">N</Kbd>
+        </Button>
       </PageHeader>
 
-      <div className="overview">
-        <dl className="summary">
-          <div>
-            <dt>Spent</dt>
-            <dd className="summary-primary">
-              {formatAmount(spent, household.currency)}
-              <span className="currency">{household.currency}</span>
-            </dd>
-          </div>
-          <div>
-            <dt>Invested</dt>
-            <dd>
-              {formatAmount(invested, household.currency)}
-              <span className="currency">{household.currency}</span>
-            </dd>
-          </div>
-          <div>
-            <dt>Expenses</dt>
-            <dd>{expenses.data ? rows.length : "–"}</dd>
-          </div>
-        </dl>
+      <div className="flex flex-col gap-5">
+        <Summary
+          items={[
+            { label: "Spent", value: <Money currency={household.currency}>{formatAmount(spent, household.currency)}</Money> },
+            { label: "Invested", value: <Money currency={household.currency}>{formatAmount(invested, household.currency)}</Money> },
+            { label: "Expenses", value: <span className="amount">{expenses.data ? rows.length : "–"}</span> },
+          ]}
+        />
         <ShareBar label="Spending by category" slices={spendingByCategory(rows, categories)} />
       </div>
 
-      <section className="surface">
-        <ErrorText error={expenses.error} />
+      <Surface>
+        <ErrorText error={expenses.error} className="p-4" />
         {expenses.isPending && <SkeletonRows />}
         {expenses.data && rows.length === 0 && (
-          <div className="empty">
-            <p className="empty-title">No expenses in {formatMonth(month)}</p>
-            <p className="muted">Add an expense, or pick another month above.</p>
-            <button onClick={openAdd}>
-              <Plus /> Add expense
-            </button>
-          </div>
+          <EmptyState
+            title={`No expenses in ${formatMonth(month)}`}
+            action={
+              <Button onClick={openAdd}>
+                <PlusIcon /> Add expense
+              </Button>
+            }
+          >
+            Add an expense, or pick another month above.
+          </EmptyState>
         )}
         {rows.length > 0 && (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="hide-narrow">Day</th>
-                  <th>Merchant</th>
-                  <th className="hide-narrow">Category</th>
-                  <th className="hide-narrow">Account</th>
-                  {showPaidBy && <th className="hide-narrow">Paid by</th>}
-                  <th className="num">Amount ({household.currency})</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((e) => {
-                  const category = categories.find((c) => c.id === e.categoryId);
-                  const parent = category?.parentId ? categories.find((c) => c.id === category.parentId) : undefined;
-                  return (
-                    <tr
-                      key={e.id}
-                      className={e.id === flashId ? "clickable flash" : "clickable"}
-                      onClick={() => setEditor({ mode: "edit", expense: e })}
-                      onAnimationEnd={() => setFlashId(null)}
-                    >
-                      <td className="nowrap muted hide-narrow">{formatDay(e.date)}</td>
-                      <td>
-                        {/* The button makes the row reachable by keyboard; the row click is a larger mouse target. */}
-                        <button
-                          className="row-link"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setEditor({ mode: "edit", expense: e });
-                          }}
-                        >
-                          {e.merchant || "Untitled expense"}
-                        </button>
-                        {e.notes && <div className="muted small">{e.notes}</div>}
-                        <div className="muted small show-narrow">
-                          {formatDay(e.date)} · {category?.name ?? "Uncategorized"}
-                        </div>
-                      </td>
-                      <td className="hide-narrow">
-                        {category ? (
-                          <>
-                            {parent && <span className="muted">{parent.name} › </span>}
-                            {category.name}
-                          </>
-                        ) : (
-                          <span className="muted">Uncategorized</span>
-                        )}
-                      </td>
-                      <td className="hide-narrow muted">{accounts.find((a) => a.id === e.accountId)?.name ?? ""}</td>
-                      {showPaidBy && (
-                        <td className="hide-narrow muted">
-                          {members.find((m) => m.userId === e.paidByUserId)?.displayName ?? "Shared"}
-                        </td>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="max-md:hidden">Day</TableHead>
+                <TableHead>Merchant</TableHead>
+                <TableHead className="max-md:hidden">Category</TableHead>
+                <TableHead className="max-md:hidden">Account</TableHead>
+                {showPaidBy && <TableHead className="max-md:hidden">Paid by</TableHead>}
+                <TableHead className="text-right">Amount ({household.currency})</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((e) => {
+                const category = categories.find((c) => c.id === e.categoryId);
+                const parent = category?.parentId ? categories.find((c) => c.id === category.parentId) : undefined;
+                return (
+                  <TableRow
+                    key={e.id}
+                    className={cn("cursor-pointer", e.id === flashId && "animate-flash")}
+                    onClick={() => setEditor({ mode: "edit", expense: e })}
+                    onAnimationEnd={() => setFlashId(null)}
+                  >
+                    <TableCell className="text-muted-foreground max-md:hidden">{formatDay(e.date)}</TableCell>
+                    <TableCell className="whitespace-normal">
+                      {/* The button makes the row reachable by keyboard; the row click is a larger mouse target. */}
+                      <button
+                        className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setEditor({ mode: "edit", expense: e });
+                        }}
+                      >
+                        {e.merchant || "Untitled expense"}
+                      </button>
+                      {e.notes && <div className="text-xs text-muted-foreground">{e.notes}</div>}
+                      <div className="text-xs text-muted-foreground md:hidden">
+                        {formatDay(e.date)} · {category?.name ?? "Uncategorized"}
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-md:hidden">
+                      {category ? (
+                        <>
+                          {parent && <span className="text-muted-foreground">{parent.name} › </span>}
+                          {category.name}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">Uncategorized</span>
                       )}
-                      <td className="num">
-                        {e.amountMinor < 0 ? "+" : ""}
-                        {formatAmount(Math.abs(e.amountMinor), household.currency)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground max-md:hidden">
+                      {accounts.find((a) => a.id === e.accountId)?.name ?? ""}
+                    </TableCell>
+                    {showPaidBy && (
+                      <TableCell className="text-muted-foreground max-md:hidden">
+                        {members.find((m) => m.userId === e.paidByUserId)?.displayName ?? "Shared"}
+                      </TableCell>
+                    )}
+                    <TableCell className="amount text-right">
+                      {e.amountMinor < 0 ? "+" : ""}
+                      {formatAmount(Math.abs(e.amountMinor), household.currency)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         )}
-      </section>
+      </Surface>
 
       <Sheet
         open={editor.mode !== "closed"}

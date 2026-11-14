@@ -3,7 +3,13 @@ import { useCategories, useDeleteCategory, useSaveCategory } from "../api/hooks"
 import type { Category, CategoryInput, CategoryKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
-import { ErrorText, Field, FormError, PageHeader, SkeletonRows } from "../ui";
+import { useConfirm } from "../dialogs";
+import { ErrorText, Field, FormError, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { cn } from "@/lib/utils";
 import { categoryTree } from "./tree";
 
 export function CategoriesPage() {
@@ -15,6 +21,7 @@ export function CategoriesPage() {
   const [parentId, setParentId] = useState("");
   const [kind, setKind] = useState<CategoryKind>("consumption");
   const [renaming, setRenaming] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const tree = categoryTree(categories.data ?? []);
 
@@ -37,81 +44,88 @@ export function CategoriesPage() {
       },
     });
 
+  async function confirmDelete(category: Category) {
+    if (await confirm({ title: `Delete ${category.name}?`, description: "Only a category nothing uses can be deleted; archive it to keep its history." })) {
+      remove.mutate({ id: category.id, version: category.version });
+    }
+  }
+
   const row = (category: Category, isChild: boolean) => (
-    <li key={category.id} className={["category-row", isChild && "is-child", category.archived && "dimmed"].filter(Boolean).join(" ")}>
-      <span className="category-name">
+    <li
+      key={category.id}
+      className={cn(
+        "flex min-h-12 items-center justify-between gap-3 py-1.5 pr-4 pl-4",
+        isChild && "pl-10",
+        category.archived && "text-muted-foreground",
+      )}
+    >
+      <span className={cn("flex items-center gap-2", isChild ? "text-muted-foreground" : "font-medium")}>
         <InlineRename
           name={category.name}
           editing={renaming === category.id}
           onSave={(newName) => update(category, { name: newName })}
           onDone={() => setRenaming(null)}
         />
-        {!isChild && category.kind === "investment" && <span className="badge">Investing</span>}
-        {category.archived && <span className="badge badge-muted">Archived</span>}
+        {!isChild && category.kind === "investment" && <Badge variant="outline">Investing</Badge>}
+        {category.archived && <Badge variant="secondary">Archived</Badge>}
       </span>
-      <span className="row-actions">
-        <button className="ghost" onClick={() => setRenaming(category.id)}>
-          Rename
-        </button>
-        <button className="ghost" onClick={() => update(category, { archived: !category.archived })}>
-          {category.archived ? "Unarchive" : "Archive"}
-        </button>
-        <button
-          className="ghost danger"
-          onClick={() => window.confirm(`Delete ${category.name}?`) && remove.mutate({ id: category.id, version: category.version })}
-        >
-          Delete
-        </button>
-      </span>
+      <RowMenu
+        label={category.name}
+        actions={[
+          { label: "Rename", onSelect: () => setRenaming(category.id) },
+          { label: category.archived ? "Unarchive" : "Archive", onSelect: () => update(category, { archived: !category.archived }) },
+          { label: "Delete", destructive: true, onSelect: () => confirmDelete(category) },
+        ]}
+      />
     </li>
   );
 
   return (
     <>
       <PageHeader title="Categories" />
-      <p className="page-intro muted">
+      <PageIntro>
         Investing categories hold money moved into investments: counted as invested, not spent. Archive a category to
         hide it from new expenses while keeping its history.
-      </p>
+      </PageIntro>
 
-      <div className="add-block">
-        <form onSubmit={add} className="toolbar-form" aria-label="Add category">
-          <Field label="Category name" name="name" error={save.error}>
-            <input required value={name} onChange={(e) => setName(e.target.value)} />
+      <Surface className="p-4">
+        <form onSubmit={add} className="flex flex-wrap items-end gap-3" aria-label="Add category">
+          <Field label="Category name" name="name" error={save.error} className="w-56">
+            <Input required value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="Under" name="parentId" error={save.error}>
-            <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
-              <option value="">Top level</option>
+          <Field label="Under" name="parentId" error={save.error} className="w-48">
+            <NativeSelect className="w-full" value={parentId} onChange={(e) => setParentId(e.target.value)}>
+              <NativeSelectOption value="">Top level</NativeSelectOption>
               {tree.map((c) => (
-                <option key={c.id} value={c.id}>
+                <NativeSelectOption key={c.id} value={c.id}>
                   {c.name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </Field>
           {!parentId && (
-            <Field label="Counts as" name="kind" error={save.error}>
-              <select value={kind} onChange={(e) => setKind(e.target.value as CategoryKind)}>
-                <option value="consumption">Spending</option>
-                <option value="investment">Investing</option>
-              </select>
+            <Field label="Counts as" name="kind" error={save.error} className="w-40">
+              <NativeSelect className="w-full" value={kind} onChange={(e) => setKind(e.target.value as CategoryKind)}>
+                <NativeSelectOption value="consumption">Spending</NativeSelectOption>
+                <NativeSelectOption value="investment">Investing</NativeSelectOption>
+              </NativeSelect>
             </Field>
           )}
-          <button type="submit" disabled={save.isPending}>
+          <Button type="submit" disabled={save.isPending}>
             Add category
-          </button>
+          </Button>
         </form>
         <FormError error={save.error} fields={["name", "parentId", "kind"]} />
-      </div>
+      </Surface>
 
-      <section className="surface">
-        <ErrorText error={remove.error} />
-        <ErrorText error={categories.error} />
+      <Surface>
+        <ErrorText error={remove.error} className="p-4" />
+        <ErrorText error={categories.error} className="p-4" />
         {categories.isPending && <SkeletonRows />}
-        <ul className="category-list">
+        <ul className="divide-y text-sm">
           {tree.map((parent) => [row(parent, false), ...parent.children.map((c) => row(c, true))])}
         </ul>
-      </section>
+      </Surface>
     </>
   );
 }

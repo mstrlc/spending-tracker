@@ -2,7 +2,10 @@ import { useState } from "react";
 import { useAccounts, useActivity, useCategories, useMembers, useTrips } from "../api/hooks";
 import type { ActivityEntity, ActivityEntry } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
-import { ErrorText, PageHeader, SkeletonRows } from "../ui";
+import { EmptyState, ErrorText, PageHeader, PageIntro, SkeletonRows, Surface } from "../ui";
+import { Button } from "@/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { cn } from "@/lib/utils";
 import { describeAction, describeChanges, type Lookups } from "./describe";
 
 const FILTERS: { value: ActivityEntity | ""; label: string }[] = [
@@ -46,29 +49,26 @@ export function ActivityPage() {
   return (
     <>
       <PageHeader title="Activity">
-        <select aria-label="Show" value={entity} onChange={(e) => setEntity(e.target.value as ActivityEntity | "")}>
+        <NativeSelect aria-label="Show" value={entity} onChange={(e) => setEntity(e.target.value as ActivityEntity | "")}>
           {FILTERS.map((f) => (
-            <option key={f.value} value={f.value}>
+            <NativeSelectOption key={f.value} value={f.value}>
               {f.label}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       </PageHeader>
-      <p className="page-intro muted">Every change anyone in the household made, newest first.</p>
+      <PageIntro>Every change anyone in the household made, newest first.</PageIntro>
 
-      <section className="surface">
-        <ErrorText error={activity.error} />
+      <Surface>
+        <ErrorText error={activity.error} className="p-4" />
         {activity.isPending && <SkeletonRows />}
         {activity.data && entries.length === 0 && (
-          <div className="empty">
-            <p className="empty-title">Nothing here yet</p>
-            <p className="muted">Changes show up here as soon as someone makes them.</p>
-          </div>
+          <EmptyState title="Nothing here yet">Changes show up here as soon as someone makes them.</EmptyState>
         )}
         {byDay(entries).map(([day, dayEntries]) => (
-          <div key={day} className="activity-day">
-            <h2 className="activity-day-title">{day}</h2>
-            <ul className="activity-list">
+          <div key={day} className="border-b last:border-b-0">
+            <h2 className="bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">{day}</h2>
+            <ul className="divide-y">
               {dayEntries.map((entry) => (
                 <ActivityRow key={entry.id} entry={entry} lookups={lookups} />
               ))}
@@ -76,13 +76,13 @@ export function ActivityPage() {
           </div>
         ))}
         {activity.hasNextPage && (
-          <div className="activity-more">
-            <button className="secondary" onClick={() => activity.fetchNextPage()} disabled={activity.isFetchingNextPage}>
+          <div className="flex justify-center border-t p-3">
+            <Button variant="outline" onClick={() => activity.fetchNextPage()} disabled={activity.isFetchingNextPage}>
               {activity.isFetchingNextPage ? "Loading…" : "Show older"}
-            </button>
+            </Button>
           </div>
         )}
-      </section>
+      </Surface>
     </>
   );
 }
@@ -92,24 +92,24 @@ function ActivityRow({ entry, lookups }: { entry: ActivityEntry; lookups: Lookup
   const changes = describeChanges(entry, lookups);
   const time = new Date(entry.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   return (
-    <li className={entry.action === "delete" ? "activity-row is-delete" : "activity-row"}>
-      <time className="activity-time" dateTime={entry.at}>
+    <li className="flex gap-4 px-4 py-3 text-sm">
+      <time className="amount w-12 shrink-0 text-muted-foreground" dateTime={entry.at}>
         {time}
       </time>
-      <div className="activity-body">
-        <p>
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className={cn(entry.action === "delete" && "text-muted-foreground")}>
           {lead && `${lead} `}
-          <span className="strong">{name}</span>
+          <span className="font-medium text-foreground">{name}</span>
           {tail && ` ${tail}`}
         </p>
         {changes.length > 0 && (
-          <ul className="activity-changes">
+          <ul className="flex flex-col gap-0.5 text-xs">
             {changes.map((c) => (
               <li key={c.label}>
-                <span className="muted">{c.label}</span>{" "}
+                <span className="text-muted-foreground">{c.label}</span>{" "}
                 {c.before !== undefined && (
                   <>
-                    <del>{c.before}</del> →{" "}
+                    <del className="text-muted-foreground">{c.before}</del> →{" "}
                   </>
                 )}
                 {c.after}

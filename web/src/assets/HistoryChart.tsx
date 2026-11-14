@@ -69,20 +69,20 @@ export function HistoryChart({ points, currency, height = 160 }: { points: Histo
   const summary = `Worth ${formatAsset(last.valueMinor, currency)} against ${formatAsset(last.contributedMinor, currency)} ${currency} put in, from ${fullDate(points[0].date)}`;
 
   return (
-    <figure className="history-chart">
-      <ul className="category-legend" aria-hidden="true">
-        <li>
-          <span className="legend-line" />
+    <figure className="flex flex-col gap-3">
+      <ul className="flex gap-5 text-sm" aria-hidden="true">
+        <li className="flex items-center gap-2">
+          <span className="w-4 border-t-2 border-chart-1" />
           Worth
         </li>
-        <li>
-          <span className="legend-line dashed" />
+        <li className="flex items-center gap-2">
+          <span className="w-4 border-t-2 border-dashed border-chart-3" />
           Put in
         </li>
       </ul>
       <div
         ref={setPlot}
-        className="history-plot"
+        className="relative touch-pan-y select-none"
         style={{ height: HEIGHT }}
         role="img"
         aria-label={summary}
@@ -92,14 +92,14 @@ export function HistoryChart({ points, currency, height = 160 }: { points: Histo
       >
         {width > 0 && (
           <svg width={width} height={HEIGHT} aria-hidden="true">
-            <line className="history-grid" x1={PAD.left} x2={width - PAD.right} y1={y(max)} y2={y(max)} />
-            <line className="history-baseline" x1={PAD.left} x2={width - PAD.right} y1={y(0)} y2={y(0)} />
-            <path className="history-line contributed" d={path((p) => p.contributedMinor)} />
-            <path className="history-line worth" d={path((p) => p.valueMinor)} />
+            <line className="stroke-border" x1={PAD.left} x2={width - PAD.right} y1={y(max)} y2={y(max)} />
+            <line className="stroke-muted-foreground/40" x1={PAD.left} x2={width - PAD.right} y1={y(0)} y2={y(0)} />
+            <path className="fill-none stroke-chart-3 [stroke-dasharray:4_3]" strokeWidth={1.5} d={path((p) => p.contributedMinor)} />
+            <path className="fill-none stroke-chart-1" strokeWidth={2} strokeLinejoin="round" d={path((p) => p.valueMinor)} />
             {ticks.map((i) => (
               <text
                 key={i}
-                className="history-tick"
+                className="fill-muted-foreground text-[11px]"
                 x={x(points[i])}
                 y={HEIGHT - 6}
                 textAnchor={i === 0 ? "start" : i === points.length - 1 ? "end" : "middle"}
@@ -107,29 +107,29 @@ export function HistoryChart({ points, currency, height = 160 }: { points: Histo
                 {tick(points[i].date)}
               </text>
             ))}
-            <text className="history-tick" x={PAD.left} y={y(max) + 12}>
+            <text className="fill-muted-foreground text-[11px]" x={PAD.left} y={y(max) + 12}>
               {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(max / 10 ** fractionDigits(currency))}
             </text>
             {shown && (
               <g>
-                <line className="history-crosshair" x1={x(shown)} x2={x(shown)} y1={PAD.top} y2={y(0)} />
-                <circle className="history-dot contributed" cx={x(shown)} cy={y(shown.contributedMinor)} r={4} />
-                <circle className="history-dot worth" cx={x(shown)} cy={y(shown.valueMinor)} r={4} />
+                <line className="stroke-muted-foreground/50" x1={x(shown)} x2={x(shown)} y1={PAD.top} y2={y(0)} />
+                <circle className="fill-background stroke-chart-3" strokeWidth={2} cx={x(shown)} cy={y(shown.contributedMinor)} r={4} />
+                <circle className="fill-chart-1 stroke-background" strokeWidth={2} cx={x(shown)} cy={y(shown.valueMinor)} r={4} />
               </g>
             )}
           </svg>
         )}
         {shown && (
           <div
-            className="history-tooltip"
+            className="pointer-events-none absolute top-0 -translate-x-1/2 rounded-md border bg-popover px-2.5 py-1.5 text-xs whitespace-nowrap text-popover-foreground shadow-md"
             style={{ left: Math.min(Math.max(x(shown), 80), width - 80) }}
           >
-            <div className="muted small">{fullDate(shown.date)}</div>
+            <div className="text-muted-foreground">{fullDate(shown.date)}</div>
             <div>
-              Worth <span className="mono">{formatAsset(shown.valueMinor, currency)}</span>
+              Worth <span className="amount">{formatAsset(shown.valueMinor, currency)}</span>
             </div>
             <div>
-              Put in <span className="mono">{formatAsset(shown.contributedMinor, currency)}</span>
+              Put in <span className="amount">{formatAsset(shown.contributedMinor, currency)}</span>
             </div>
           </div>
         )}
