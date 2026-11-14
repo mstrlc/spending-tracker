@@ -443,7 +443,7 @@ function AccountTitle({
 }
 
 /**
- * Within one bank, "ČSOB Sam · Spoření s bonusem …1679" reads as "Spoření s bonusem …1679" when "ČSOB Sam" is
+ * Within one bank, "Bank · Account name …1234" reads as "Account name …1234" when "Bank" is
  * listed beside it.
  */
 function shortAccountName(name: string, siblings: AccountFeeds[]): string {

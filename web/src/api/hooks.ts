@@ -655,6 +655,31 @@ export function useExpenses(householdId: string, from: string, to: string) {
   });
 }
 
+export type SpendingReportQuery = {
+  from?: string;
+  to?: string;
+  categoryId?: string;
+  /** Categories to leave out, with their subcategories. */
+  excludeCategoryId?: string[];
+  merchantId?: string;
+  accountId?: string;
+  whose?: string;
+};
+
+/** Spending over any period and filter (`/spending-report`). Under the expenses key, so saving an expense refreshes it. */
+export function useSpendingReport(householdId: string, query: SpendingReportQuery, today: string) {
+  return useQuery({
+    queryKey: [...keys.expenses(householdId), "report", query, today] as const,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/spending-report", {
+          params: { path: { householdId }, query: { ...query, today } },
+        }),
+      ),
+    placeholderData: (previous) => previous,
+  });
+}
+
 /** The expenses at one merchant, newest first (what a refund picks its original from); idle without a merchant. */
 export function useMerchantExpenses(householdId: string, merchantId: string | undefined) {
   return useQuery({

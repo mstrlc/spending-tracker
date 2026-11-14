@@ -13,6 +13,7 @@ import { TransfersPage } from "./transfers/TransfersPage";
 import { AssetsPage } from "./assets/AssetsPage";
 import { TripsPage } from "./trips/TripsPage";
 import { RecurringPage } from "./recurring/RecurringPage";
+import { ReportsPage } from "./reports/ReportsPage";
 import { BalancesPage } from "./debts/BalancesPage";
 import { MerchantsPage } from "./merchants/MerchantsPage";
 import { ImportPage } from "./import/ImportPage";
@@ -97,6 +98,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="balances" element={<BalancesPage />} />
               <Route path="trips" element={<TripsPage />} />
               <Route path="recurring" element={<RecurringPage />} />
+              <Route path="reports" element={<ReportsPage />} />
               <Route path="accounts" element={<AccountsPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="members" element={<MembersPage />} />

@@ -151,33 +151,33 @@ class InviteTest {
         val home = alice.createHousehold()
         val base = "/api/households/${home.id}"
 
-        val sam = alice.post("$base/members") { setBody(MemberInput(" Sam ")) }.body<Member>()
-        assertEquals(Member(sam.userId, "Sam", HouseholdRole.MEMBER, hasLogin = false), sam)
+        val partner = alice.post("$base/members") { setBody(MemberInput(" Partner ")) }.body<Member>()
+        assertEquals(Member(partner.userId, "Partner", HouseholdRole.MEMBER, hasLogin = false), partner)
         assertEquals(
-            Member(sam.userId, "Sam K", HouseholdRole.MEMBER, hasLogin = false),
-            alice.put("$base/members/${sam.userId}") { setBody(MemberInput("Sam K")) }.body<Member>(),
+            Member(partner.userId, "Partner K", HouseholdRole.MEMBER, hasLogin = false),
+            alice.put("$base/members/${partner.userId}") { setBody(MemberInput("Partner K")) }.body<Member>(),
         )
         alice.put("$base/members/${aliceMe.id}") { setBody(MemberInput("Al")) }.assertError(HttpStatusCode.Conflict, "member_has_login")
-        val coffee = alice.post("$base/expenses") { setBody(ExpenseInput(LocalDate(2026, 11, 1), 80_00, "Café", paidByUserId = sam.userId)) }
+        val coffee = alice.post("$base/expenses") { setBody(ExpenseInput(LocalDate(2026, 11, 1), 80_00, "Café", paidByUserId = partner.userId)) }
             .body<Expense>()
 
         // Can't claim someone who has a login.
         alice.post("$base/invites") { setBody(CreateInviteRequest("x@example.com", claimUserId = aliceMe.id)) }
             .assertError(HttpStatusCode.BadRequest, "invalid_claim")
-        val invite = alice.post("$base/invites") { setBody(CreateInviteRequest("sam@example.com", claimUserId = sam.userId)) }.body<Invite>()
-        assertEquals("Sam K", invite.claimName)
-        assertEquals("Sam K", newClient().get("/api/invites/${invite.token}").body<InvitePreview>().claimName)
+        val invite = alice.post("$base/invites") { setBody(CreateInviteRequest("partner@example.com", claimUserId = partner.userId)) }.body<Invite>()
+        assertEquals("Partner K", invite.claimName)
+        assertEquals("Partner K", newClient().get("/api/invites/${invite.token}").body<InvitePreview>().claimName)
 
-        val samClient = newClient()
-        val samMe = samClient.signup("sam@example.com", "Sam")
-        samClient.post("/api/invites/${invite.token}/accept").body<Household>()
+        val partnerClient = newClient()
+        val partnerMe = partnerClient.signup("partner@example.com", "Pat")
+        partnerClient.post("/api/invites/${invite.token}/accept").body<Household>()
 
         // She took the stand-in's place: same expenses, one member fewer, and the stand-in is gone.
         assertEquals(
-            listOf(Member(aliceMe.id, "Alice", HouseholdRole.OWNER, hasLogin = true), Member(samMe.id, "Sam", HouseholdRole.MEMBER, hasLogin = true)),
+            listOf(Member(aliceMe.id, "Alice", HouseholdRole.OWNER, hasLogin = true), Member(partnerMe.id, "Pat", HouseholdRole.MEMBER, hasLogin = true)),
             alice.get("$base/members").body<List<Member>>(),
         )
-        assertEquals(samMe.id, samClient.get("$base/expenses").body<List<Expense>>().single { it.id == coffee.id }.paidByUserId)
+        assertEquals(partnerMe.id, partnerClient.get("$base/expenses").body<List<Expense>>().single { it.id == coffee.id }.paidByUserId)
     }
 
     @Test

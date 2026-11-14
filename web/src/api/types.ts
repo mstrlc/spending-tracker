@@ -104,3 +104,6 @@ export type RuleOutcome = Schemas["RuleOutcome"];
 export type RuleDirection = Schemas["RuleDirection"];
 export type ApplyRulesResult = Schemas["ApplyRulesResult"];
 export type HouseholdSettings = Schemas["HouseholdSettings"];
+export type SpendingReport = Schemas["SpendingReport"];
+export type ReportMonth = Schemas["ReportMonth"];
+export type ReportExpense = Schemas["ReportExpense"];

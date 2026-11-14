@@ -1362,6 +1362,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/spending-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Spending over a period, optionally narrowed to a category (subcategories included), merchant, account and whose: the total, each month, the same dates a year earlier, and breakdowns by category and merchant. */
+        get: operations["getSpendingReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/securities/search": {
         parameters: {
             query?: never;
@@ -4007,6 +4024,129 @@ export interface components {
             topSources: components["schemas"]["NamedTotal"][];
             netWorth: components["schemas"]["NetWorth"];
             freshness: components["schemas"]["Freshness"];
+        };
+        /** ReportMonth */
+        ReportMonth: {
+            /** String */
+            month: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            count: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            investedMinor: number;
+        };
+        /** ReportPeriod */
+        ReportPeriod: {
+            /** LocalDate */
+            from: string;
+            /** LocalDate */
+            to: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            totalMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            count: number;
+        };
+        /** ReportCategory */
+        ReportCategory: {
+            /** String */
+            categoryId: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            count: number;
+        };
+        /** ReportMerchant */
+        ReportMerchant: {
+            /** String */
+            merchantId: null | string;
+            /** String */
+            name: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            count: number;
+        };
+        /** ReportExpense */
+        ReportExpense: {
+            /** String */
+            expenseId: string;
+            /** LocalDate */
+            date: string;
+            /** String */
+            merchant: string;
+            /** ArrayList<String> */
+            categoryIds: string[];
+            /** String */
+            accountId: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+        };
+        /** SpendingReport */
+        SpendingReport: {
+            /** LocalDate */
+            from: string;
+            /** LocalDate */
+            to: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            totalMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            count: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            averageMonthMinor: number;
+            /** ArrayList<ReportMonth> */
+            months: components["schemas"]["ReportMonth"][];
+            /**
+             * Long
+             * Format: int64
+             */
+            investedMinor: null | number;
+            previous: null | components["schemas"]["ReportPeriod"];
+            /** ArrayList<ReportCategory> */
+            categories: components["schemas"]["ReportCategory"][];
+            /** ArrayList<ReportMerchant> */
+            merchants: components["schemas"]["ReportMerchant"][];
+            /** ArrayList<ReportExpense> */
+            expenses: components["schemas"]["ReportExpense"][];
         };
         /** SecurityMatch */
         SecurityMatch: {
@@ -9002,6 +9142,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Overview"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getSpendingReport: {
+        parameters: {
+            query?: {
+                /** @description Inclusive start, YYYY-MM-DD; defaults to where the ledger starts */
+                from?: string;
+                /** @description Inclusive end, YYYY-MM-DD; defaults to today */
+                to?: string;
+                /** @description The caller's date, YYYY-MM-DD; defaults to the server's */
+                today?: string;
+                /** @description A category's id, or `none` for uncategorized spending */
+                categoryId?: string;
+                /** @description Categories to leave out, their subcategories with them (repeatable), e.g. a subcategory of [categoryId] */
+                excludeCategoryId?: string[];
+                /** @description A merchant's id, or `none` for expenses without one */
+                merchantId?: string;
+                accountId?: string;
+                /** @description `joint` or a member's user id, by whose each expense or line is */
+                whose?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpendingReport"];
                 };
             };
             400: {

@@ -55,7 +55,15 @@ fun spreadByWeight(amountMinor: Long, weights: List<Long>): List<Long> {
  * One slice of spending as reports count it: on [date] (its original's, for a refund), in [categoryId], whose it is
  * [ownerUserId] (the expense's or its line's; null for joint).
  */
-data class SpendingPart(val date: LocalDate, val merchantId: Uuid?, val categoryId: Uuid?, val amountMinor: Long, val ownerUserId: Uuid? = null)
+data class SpendingPart(
+    val date: LocalDate,
+    val merchantId: Uuid?,
+    val categoryId: Uuid?,
+    val amountMinor: Long,
+    val ownerUserId: Uuid? = null,
+    val expenseId: Uuid? = null,
+    val accountId: Uuid? = null,
+)
 
 /**
  * The spending between [from] and [to] (inclusive) as reports count it: one part per expense, or per line of a split
@@ -83,7 +91,7 @@ fun loadSpendingParts(householdId: Uuid, from: LocalDate, to: LocalDate): List<S
         }
         val back = spreadByWeight(-(refunded[id] ?: 0L), parts.map { it.second })
         parts.mapIndexed { index, (categoryId, amount, owner) ->
-            SpendingPart(row[Expenses.date], row[Expenses.merchantId], categoryId, amount + back[index], owner)
+            SpendingPart(row[Expenses.date], row[Expenses.merchantId], categoryId, amount + back[index], owner, id, row[Expenses.accountId])
         }
     }
 }

@@ -12,14 +12,14 @@ const connection = (id: string, institutionName: string) => ({ id, institutionNa
 
 describe("groupFeeds", () => {
   const accounts = [
-    account("kb", "KB Sam", "sam"),
-    account("kb-savings", "KB Sam · Spoření", "sam", "savings"),
-    account("csob", "ČSOB Sam", "sam"),
-    account("old", "Old card", "sam", "credit_card", "closed"),
+    account("kb", "KB Partner", "partner"),
+    account("kb-savings", "KB Partner · Spořicí", "partner", "savings"),
+    account("csob", "ČSOB Partner", "partner"),
+    account("old", "Old card", "partner", "credit_card", "closed"),
     account("joint", "Revolut Joint", null),
-    account("rb", "RB Robin", "robin"),
+    account("rb", "RB Alex", "alex"),
   ];
-  const members = [{ userId: "robin" }, { userId: "sam" }];
+  const members = [{ userId: "alex" }, { userId: "partner" }];
   const connections = [connection("c-kb", "Komerční banka"), connection("c-rev", "Revolut"), connection("c-new", "Fio")];
   const feeds = [
     feed("joint-eur", "joint", "revolut", "EUR", "c-rev"),
@@ -34,13 +34,13 @@ describe("groupFeeds", () => {
   const { people, unlinked } = groupFeeds(feeds, accounts, members, connections, "CZK", label as never);
 
   it("groups by person in household order, joint last", () => {
-    expect(people.map((p) => p.userId)).toEqual(["robin", "sam", null]);
+    expect(people.map((p) => p.userId)).toEqual(["alex", "partner", null]);
   });
 
   it("splits a person's feeds by connection or statement bank, by name", () => {
-    const sam = people[1];
-    expect(sam.banks.map((b) => b.key)).toEqual(["statements:csob", "statements:kb", "connection:c-kb"]);
-    expect(sam.banks[2].accounts.map((a) => a.accountId)).toEqual(["kb", "kb-savings"]);
+    const partner = people[1];
+    expect(partner.banks.map((b) => b.key)).toEqual(["statements:csob", "statements:kb", "connection:c-kb"]);
+    expect(partner.banks[2].accounts.map((a) => a.accountId)).toEqual(["kb", "kb-savings"]);
   });
 
   it("puts the household currency first within an account", () => {

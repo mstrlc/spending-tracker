@@ -25,6 +25,7 @@ import dev.spendingtracker.server.debt.debtRoutes
 import dev.spendingtracker.server.trip.tripRoutes
 import dev.spendingtracker.server.recurring.recurringRoutes
 import dev.spendingtracker.server.overview.overviewRoutes
+import dev.spendingtracker.server.overview.spendingReportRoutes
 import dev.spendingtracker.server.order.orderRoutes
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.CreateHouseholdRequest
@@ -293,6 +294,7 @@ fun Route.householdRoutes() = route("/households") {
         bankRoutes()
         activityRoutes()
         overviewRoutes()
+        spendingReportRoutes()
     }
 }
 
