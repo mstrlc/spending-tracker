@@ -138,3 +138,18 @@ and accounts. Not verified: signup and onboarding renders.
   whole screen.
 - Nothing in the panel scrolls on its own: a long panel (a holding's full history) scrolls with the page,
   its header and footer sticking to the window's top and bottom.
+
+---
+
+# Rebuild on shadcn/ui (2026-11-14)
+
+The hand-written stylesheet and components were replaced by shadcn/ui (Radix, Nova style) on Tailwind CSS 4.
+The design rules above still hold and now live in the theme tokens of `web/src/styles.css`.
+
+- Kept: monochrome palette with a near-black accent, red only for destructive actions and errors, Geist with
+  Geist Mono amounts, the category bar shaded by rank, the editor as a column beside the page, the `N` and `←`/`→`
+  shortcuts, the saved-row highlight.
+- Changed: the sidebar is shadcn's Sidebar, so phones get a drawer behind a menu button instead of the bottom tab bar;
+  the household switcher is a dropdown menu; row actions on accounts, categories and trips sit behind a "⋯" menu
+  instead of hover buttons; browser confirm and prompt boxes became dialogs; icons are lucide.
+- Radii follow shadcn's scale from `--radius: 0.5rem` rather than the fixed 6px / 10px pair.

@@ -6,7 +6,7 @@ Multi-tenant spending tracker. See [ARCHITECTURE.md](ARCHITECTURE.md) for decisi
 
 - `server/`: Ktor API (Kotlin, JVM 21 bytecode), Flyway migrations in `src/main/resources/db/migration`
 - `shared/`: Kotlin Multiplatform domain code for server and future mobile apps
-- `web/`: React + Vite frontend; API types generated from the server's OpenAPI spec
+- `web/`: React + Vite frontend with shadcn/ui and Tailwind CSS; API types generated from the server's OpenAPI spec
 
 ## Running locally
 
