@@ -14,11 +14,13 @@ import { Kbd } from "@/components/ui/kbd";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { IncomeForm } from "./IncomeForm";
+import { incomeTotals, netAmount } from "./net";
 
-/** The month's income by source, largest first; clawbacks net against their source. */
+/** The month's earnings by source, largest first; clawbacks net against their source, deductions aren't sources. */
 export function incomeBySource(income: Income[]): Slice[] {
   const sums = new Map<string, number>();
   for (const i of income) {
+    if (i.kind === "deduction") continue;
     const name = i.source || "No source";
     sums.set(name, (sums.get(name) ?? 0) + i.amountMinor);
   }
@@ -40,11 +42,17 @@ export function IncomePage() {
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
 
   const rows = income.data ?? [];
-  const received = rows.reduce((sum, i) => sum + i.amountMinor, 0);
+  const { earned, deducted, net } = incomeTotals(rows);
   const { spent } = expenseTotals(expenses.data ?? [], categories);
-  // Investing counts as saved, not spent.
-  const saved = received - spent;
-  const savingsRate = received > 0 ? Math.round((saved / received) * 100) : null;
+  // Investing counts as saved, not spent; deductions are neither.
+  const saved = net - spent;
+  const savingsRate = net > 0 ? Math.round((saved / net) * 100) : null;
+  const money = (amountMinor: number) => (
+    <Money currency={household.currency}>
+      {amountMinor < 0 ? "−" : ""}
+      {formatAmount(Math.abs(amountMinor), household.currency)}
+    </Money>
+  );
   const showRecipient = members.length > 1;
   const defaultDate = month === currentMonth() ? todayIso() : from;
   const openAdd = () => setEditor({ mode: "add" });
@@ -64,7 +72,10 @@ export function IncomePage() {
       <div className="flex flex-col gap-5">
         <Summary
           items={[
-            { label: "Received", value: <Money currency={household.currency}>{formatAmount(received, household.currency)}</Money> },
+            // Gross and deductions only add something once there's a deduction; until then net is what was earned.
+            { label: deducted !== 0 ? "Net" : "Earned", value: money(net) },
+            deducted !== 0 && { label: "Earned", value: money(earned) },
+            deducted !== 0 && { label: "Deducted", value: money(-deducted) },
             {
               label: "Spent",
               value: <Money currency={household.currency}>{expenses.data ? formatAmount(spent, household.currency) : "–"}</Money>,
@@ -90,7 +101,7 @@ export function IncomePage() {
               </Button>
             }
           >
-            Add a salary or other payment, or pick another month above.
+            Add a salary or other payment, or a deduction such as an insurance advance, or pick another month above.
           </EmptyState>
         )}
         {rows.length > 0 && (
@@ -124,6 +135,7 @@ export function IncomePage() {
                     >
                       {i.source || "Untitled income"}
                     </button>
+                    {i.kind === "deduction" && <div className="text-xs text-muted-foreground">Deduction</div>}
                     {i.notes && <div className="text-xs text-muted-foreground">{i.notes}</div>}
                     <div className="text-xs text-muted-foreground md:hidden">{formatDay(i.date)}</div>
                   </TableCell>
@@ -135,8 +147,8 @@ export function IncomePage() {
                       {members.find((m) => m.userId === i.recipientUserId)?.displayName ?? "Shared"}
                     </TableCell>
                   )}
-                  <TableCell className="amount text-right">
-                    {i.amountMinor < 0 ? "−" : ""}
+                  <TableCell className={cn("amount text-right", i.kind === "deduction" && "text-muted-foreground")}>
+                    {netAmount(i) < 0 ? "−" : ""}
                     {formatAmount(Math.abs(i.amountMinor), household.currency)}
                   </TableCell>
                 </TableRow>
@@ -149,7 +161,7 @@ export function IncomePage() {
       <Sheet
         open={editor.mode !== "closed"}
         onClose={() => setEditor({ mode: "closed" })}
-        title={editor.mode === "edit" ? "Edit income" : "Add income"}
+        title={editor.mode === "edit" ? (editor.income.kind === "deduction" ? "Edit deduction" : "Edit income") : "Add income"}
       >
         <IncomeForm
           key={editor.mode === "edit" ? editor.income.id : "new"}

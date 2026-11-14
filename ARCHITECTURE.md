@@ -80,7 +80,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 
 ### Income
 
-- **Gross lines and deductions**: income is recorded gross; health and social insurance advances (ZPMV, OSSZ) are deductions, so earned, deducted and net are all visible. Neither counts as spending.
+- ~~**Gross lines and deductions**~~ (done 2026-11-14): income is recorded gross; health and social insurance advances (ZPMV, OSSZ) are deductions, so earned, deducted and net are all visible. Neither counts as spending.
 - ~~**Two dates**~~ (done 2026-11-14): the month it was earned (what reports use) and the date it arrived (what links it to the bank row). A salary paid on 2 November counts for October.
 - **Costs netted against an invoice** (the old "(odpočet z faktury)") are expenses paid out of that income, with no bank account; the income stays gross.
 - Income can be joint.
@@ -131,5 +131,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
      Not yet: other apps' formats (CSV), undoing an import as a whole.
    - ~~**Debts and split ratios**~~ (done 2026-11-14): split rules (`/split-rules`) give members weights for joint spending from a valid-from date: the household default, a category's override (a subcategory without its own uses its parent's), or one expense's own split (`split` on the expense). Without a rule, everyone shares equally. Debts aren't stored but worked out on request from each expense's account (who paid) against whose it is (`paidByUserId`, null for joint): a joint expense on a member's account makes the others owe the payer their share; a member's expense from a joint account makes them owe the others their share of the pot (by the household split, ignoring category rules); a member's expense on another member's account makes them owe all of it. No account, or `createsDebt` off, means no debt. Shares are split in whole minor units by largest remainder. Settlements (`/settlements`) are what members pay each other back; they're neither income nor spending. `/balances` nets everything into one line per pair and lists a date range's entries. Each expense carries its `debts`. The Balances page shows the balance, the month's entries and the split rules (with "Split by income" from the previous 12 months); the expense form gained the debt switch, its own split and what it makes someone owe, and "Paid by" became "Whose".
      Not yet: top-ups of joint accounts (need transfers), settlements matched from bank rows, the old app's import carrying splits.
-3. **Next**: split lines, income deductions, inbox (bank import), budget.
+   - ~~**Income deductions**~~ (done 2026-11-14): an income line is an earning or a deduction (`kind`). A deduction (health and social insurance advances, income tax) has who took it as its source, a positive amount (negative for an overpaid advance refunded), the month it's for and whose it is. Net income is earnings less deductions: the Overview, Saved and "Split by income" count net, and deductions are never a top source or spending. The Income page shows net, earned and deducted once a month has a deduction; the form switches between income and deduction. The old app's negative ZPMV and OSSZ lines became deductions (migration and import script).
+     Not yet: linking a deduction to the gross line it came off (payslips), deduction rules for the inbox.
+3. **Next**: split lines, inbox (bank import), budget.
 4. **Later**: net worth, forecast, MCP server, mobile apps, hosting, goals, wishlist.

@@ -153,6 +153,8 @@ object Income : Table("income") {
     val date = date("date")
     /** First day of the month the income was earned in (V14). */
     val earnedMonth = date("earned_month")
+    /** earning or deduction (V17). */
+    val kind = text("kind")
     val amountMinor = long("amount_minor")
     // Not `source`: that name is taken by Table.source.
     val sourceName = text("source")

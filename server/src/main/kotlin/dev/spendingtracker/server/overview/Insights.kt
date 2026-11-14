@@ -25,7 +25,8 @@ import kotlin.uuid.Uuid
  */
 data class Spend(val date: LocalDate, val amountMinor: Long, val merchant: String, val topCategoryId: Uuid?, val investment: Boolean)
 
-data class Earning(val date: LocalDate, val amountMinor: Long, val source: String)
+/** An income line counted in its month: [amountMinor] is negative for a [deduction], so the month sums to net income. */
+data class Earning(val date: LocalDate, val amountMinor: Long, val source: String, val deduction: Boolean = false)
 
 const val TYPICAL_WINDOW = 6
 const val BASELINE_MONTHS = 12
@@ -165,7 +166,7 @@ fun topMerchants(spends: List<Spend>, month: YearMonth): List<NamedTotal> =
     ranked(spends.filter { !it.investment && it.date.yearMonth == month }.map { it.merchant to it.amountMinor })
 
 fun topSources(earnings: List<Earning>, month: YearMonth): List<NamedTotal> =
-    ranked(earnings.filter { it.date.yearMonth == month }.map { it.source to it.amountMinor })
+    ranked(earnings.filter { !it.deduction && it.date.yearMonth == month }.map { it.source to it.amountMinor })
 
 /** Sums by name (ignoring case, blank names left out), largest [TOP_LIMIT] first, named as most recently written. */
 private fun ranked(rows: List<Pair<String, Long>>): List<NamedTotal> =

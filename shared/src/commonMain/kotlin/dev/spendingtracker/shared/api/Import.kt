@@ -73,7 +73,7 @@ data class ImportExpense(
     val originalCurrency: String? = null,
 )
 
-/** [earnedMonth] (YYYY-MM) defaults to the month of [date]; [recipient] null is joint. */
+/** [earnedMonth] (YYYY-MM) defaults to the month of [date]; [recipient] null is joint. A deduction's amount is positive. */
 @Serializable
 data class ImportIncome(
     val externalRef: String,
@@ -84,6 +84,7 @@ data class ImportIncome(
     val account: String? = null,
     val recipient: String? = null,
     val notes: String = "",
+    val kind: IncomeKind = IncomeKind.EARNING,
 )
 
 /** Matched by name; a new one is created with [kind] and [owner]. Contributions already recorded (same date and amount) are skipped. */

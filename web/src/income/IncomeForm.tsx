@@ -10,11 +10,14 @@ import { Button } from "@/components/ui/button";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const FIELDS = ["date", "earnedMonth", "amountMinor", "source", "accountId", "recipientUserId", "notes"];
+type Kind = Income["kind"];
+
+const FIELDS = ["kind", "date", "earnedMonth", "amountMinor", "source", "accountId", "recipientUserId", "notes"];
 
 /**
- * Adds income (staying open for the next line) or edits [income]. Lives in a side sheet;
+ * Adds income or a deduction (staying open for the next line) or edits [income]. Lives in a side sheet;
  * [onSaved] reports each saved row, [onDone] closes the sheet.
  */
 export function IncomeForm({
@@ -36,6 +39,8 @@ export function IncomeForm({
   const amountRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
 
+  const [kind, setKind] = useState<Kind>(income?.kind ?? "earning");
+  const deduction = kind === "deduction";
   const [date, setDate] = useState(income?.date ?? defaultDate ?? todayIso());
   const [amount, setAmount] = useState(income ? toInputValue(income.amountMinor, household.currency) : "");
   const [source, setSource] = useState(income?.source ?? "");
@@ -56,7 +61,11 @@ export function IncomeForm({
     e.preventDefault();
     const amountMinor = parseMoney(amount, household.currency);
     if (amountMinor === null || amountMinor === 0) {
-      setAmountError("Enter an amount like 45000. Use a minus sign for money paid back.");
+      setAmountError(
+        deduction
+          ? "Enter what was taken off, like 3143. Use a minus sign for an overpayment refunded."
+          : "Enter an amount like 45000. Use a minus sign for money paid back.",
+      );
       amountRef.current?.focus();
       return;
     }
@@ -65,6 +74,7 @@ export function IncomeForm({
       {
         id: income?.id,
         input: {
+          kind,
           date,
           amountMinor,
           source,
@@ -83,7 +93,8 @@ export function IncomeForm({
             return;
           }
           // Stay open for the next line, keeping date, account and recipient.
-          setLastAdded(`Added ${saved.source || "income"} · ${formatMoney(saved.amountMinor, household.currency)}`);
+          const what = saved.source || (saved.kind === "deduction" ? "deduction" : "income");
+          setLastAdded(`Added ${what} · ${formatMoney(saved.amountMinor, household.currency)}`);
           setAmount("");
           setSource("");
           setNotes("");
@@ -95,7 +106,8 @@ export function IncomeForm({
 
   async function confirmDelete() {
     if (!income) return;
-    if (await confirm({ title: `Delete ${income.source || "this income"}?`, description: "This can't be undone." })) {
+    const what = income.source || (income.kind === "deduction" ? "this deduction" : "this income");
+    if (await confirm({ title: `Delete ${what}?`, description: "This can't be undone." })) {
       remove.mutate({ id: income.id, version: income.version }, { onSuccess: onDone });
     }
   }
@@ -115,13 +127,26 @@ export function IncomeForm({
               {income ? "Cancel" : "Done"}
             </Button>
             <Button type="submit" disabled={save.isPending}>
-              {income ? "Save" : "Add income"}
+              {income ? "Save" : deduction ? "Add deduction" : "Add income"}
             </Button>
           </>
         }
       >
+        <div className="flex flex-col gap-1.5">
+          <Tabs value={kind} onValueChange={(v) => setKind(v as Kind)}>
+            <TabsList aria-label="Kind" className="w-full">
+              <TabsTrigger value="earning">Income</TabsTrigger>
+              <TabsTrigger value="deduction">Deduction</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {deduction && (
+            <FieldDescription>
+              Taken off income, such as health and social insurance advances or income tax. Not spending.
+            </FieldDescription>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label={`Amount (${household.currency})`} name="amountMinor" error={save.error} hint={amountError}>
+          <Field label={`${deduction ? "Deducted" : "Amount"} (${household.currency})`} name="amountMinor" error={save.error} hint={amountError}>
             <Input
               ref={amountRef}
               data-autofocus
@@ -134,12 +159,12 @@ export function IncomeForm({
               aria-invalid={amountError !== null}
             />
           </Field>
-          <Field label="Arrived" name="date" error={save.error}>
+          <Field label={deduction ? "Paid" : "Arrived"} name="date" error={save.error}>
             <Input type="date" required className="h-11" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Field label="Earned in" name="earnedMonth" error={save.error}>
+          <Field label={deduction ? "For" : "Earned in"} name="earnedMonth" error={save.error}>
             <Input
               type="month"
               required
@@ -147,10 +172,18 @@ export function IncomeForm({
               onChange={(e) => setEarnedMonth(e.target.value && e.target.value !== date.slice(0, 7) ? e.target.value : null)}
             />
           </Field>
-          <FieldDescription>The month this pay is for: October's salary paid on 2 November counts for October.</FieldDescription>
+          <FieldDescription>
+            {deduction
+              ? "The month it's taken off: October's advance paid on 8 November counts for October."
+              : "The month this pay is for: October's salary paid on 2 November counts for October."}
+          </FieldDescription>
         </div>
-        <Field label="Source" name="source" error={save.error}>
-          <Input value={source} placeholder="Employer, client, who paid" onChange={(e) => setSource(e.target.value)} />
+        <Field label={deduction ? "Paid to" : "Source"} name="source" error={save.error}>
+          <Input
+            value={source}
+            placeholder={deduction ? "Health insurer, social security, tax office" : "Employer, client, who paid"}
+            onChange={(e) => setSource(e.target.value)}
+          />
         </Field>
         <Field label="Account" name="accountId" error={save.error}>
           <NativeSelect className="w-full" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
@@ -163,7 +196,7 @@ export function IncomeForm({
           </NativeSelect>
         </Field>
         {members.length > 1 && (
-          <Field label="Received by" name="recipientUserId" error={save.error}>
+          <Field label={deduction ? "Whose" : "Received by"} name="recipientUserId" error={save.error}>
             <NativeSelect className="w-full" value={recipientUserId} onChange={(e) => setRecipientUserId(e.target.value)}>
               <NativeSelectOption value="">Shared</NativeSelectOption>
               {members.map((m) => (

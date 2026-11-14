@@ -31,6 +31,7 @@ data class Overview(
     val topSources: List<NamedTotal>,
 )
 
+/** [incomeMinor] is net: earnings less deductions, counted in the month they were earned. */
 @Serializable
 data class MonthFlow(val month: String, val incomeMinor: Long, val spendingMinor: Long, val investedMinor: Long)
 

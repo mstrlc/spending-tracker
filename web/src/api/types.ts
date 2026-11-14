@@ -23,6 +23,7 @@ export type Expense = Schemas["Expense"];
 export type ExpenseInput = Schemas["ExpenseInput"];
 export type Income = Schemas["Income"];
 export type IncomeInput = Schemas["IncomeInput"];
+export type IncomeKind = Schemas["IncomeKind"];
 export type Asset = Schemas["Asset"];
 export type AssetInput = Schemas["AssetInput"];
 export type AssetKind = Schemas["AssetKind"];

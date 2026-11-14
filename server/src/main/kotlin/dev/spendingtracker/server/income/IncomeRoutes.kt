@@ -17,6 +17,7 @@ import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.IncomeInput
+import dev.spendingtracker.shared.api.IncomeKind
 import io.github.smiley4.ktoropenapi.delete
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
@@ -50,7 +51,7 @@ private const val LIST_LIMIT = 5_000
 fun Route.incomeRoutes() = route("/income") {
     get({
         operationId = "listIncome"
-        description = "Income newest first, filtered by inclusive date range, account and recipient."
+        description = "Income and deductions newest first, filtered by inclusive date range, account and recipient."
         request {
             queryParameter<String>("from") { description = "Inclusive start date, YYYY-MM-DD; matched against the month earned" }
             queryParameter<String>("to") { description = "Inclusive end date, YYYY-MM-DD; matched against the month earned" }
@@ -170,6 +171,7 @@ private data class ValidIncome(
     val recipientUserId: Uuid?,
     val notes: String,
     val earnedMonth: LocalDate,
+    val kind: IncomeKind,
 )
 
 private fun IncomeInput.validated() = ValidIncome(
@@ -182,6 +184,7 @@ private fun IncomeInput.validated() = ValidIncome(
     earnedMonth = earnedMonth?.trim()?.takeIf { it.isNotEmpty() }?.let {
         runCatching { YearMonth.parse(it) }.getOrElse { throw badRequest("invalid_month", "earnedMonth must be YYYY-MM", "earnedMonth") }
     }?.firstDay ?: date.yearMonth.firstDay,
+    kind = kind,
 )
 
 /** Field-level errors for references the composite foreign keys would otherwise reject opaquely. */
@@ -204,7 +207,16 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[Income.recipientUserId] = input.recipientUserId
     this[Income.notes] = input.notes
     this[Income.earnedMonth] = input.earnedMonth
+    this[Income.kind] = input.kind.dbValue
 }
+
+val IncomeKind.dbValue get() = name.lowercase()
+
+fun incomeKind(dbValue: String) = IncomeKind.entries.first { it.dbValue == dbValue }
+
+/** Positive for what was earned, negative for what was deducted: what the line adds to net income. */
+fun ResultRow.netIncomeMinor() =
+    if (this[Income.kind] == IncomeKind.DEDUCTION.dbValue) -this[Income.amountMinor] else this[Income.amountMinor]
 
 private fun match(householdId: Uuid, id: Uuid) = (Income.id eq id) and (Income.householdId eq householdId)
 
@@ -220,4 +232,5 @@ private fun ResultRow.toIncome() = IncomeDto(
     notes = this[Income.notes],
     version = this[Income.version],
     earnedMonth = this[Income.earnedMonth].yearMonth.toString(),
+    kind = incomeKind(this[Income.kind]),
 )

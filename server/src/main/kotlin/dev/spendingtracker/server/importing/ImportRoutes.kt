@@ -14,6 +14,7 @@ import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.HouseholdMembers
 import dev.spendingtracker.server.db.Income
+import dev.spendingtracker.server.income.dbValue
 import dev.spendingtracker.server.db.Merchants
 import dev.spendingtracker.server.db.Trips
 import dev.spendingtracker.server.db.Users
@@ -346,6 +347,7 @@ private class Importer(private val householdId: Uuid, private val userId: Uuid) 
                 it[accountId] = account(line.account, "$path.account")
                 it[recipientUserId] = person(line.recipient, "$path.recipient")
                 it[notes] = optionalText(line.notes, "$path.notes")
+                it[kind] = line.kind.dbValue
                 it[externalRef] = ref
                 it[version] = 1
                 it[createdBy] = userId

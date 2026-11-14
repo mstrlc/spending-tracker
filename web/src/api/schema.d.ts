@@ -313,7 +313,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Income newest first, filtered by inclusive date range, account and recipient. */
+        /** @description Income and deductions newest first, filtered by inclusive date range, account and recipient. */
         get: operations["listIncome"];
         put?: never;
         post: operations["createIncome"];
@@ -1072,7 +1072,13 @@ export interface components {
             version: number;
             /** String */
             earnedMonth: string;
+            kind: components["schemas"]["IncomeKind"];
         };
+        /**
+         * IncomeKind
+         * @enum {string}
+         */
+        IncomeKind: "earning" | "deduction";
         /** IncomeInput */
         IncomeInput: {
             /** LocalDate */
@@ -1097,6 +1103,7 @@ export interface components {
             version?: null | number;
             /** String */
             earnedMonth?: null | string;
+            kind?: components["schemas"]["IncomeKind"];
         };
         /** Asset */
         Asset: {
@@ -1621,6 +1628,7 @@ export interface components {
             recipient?: null | string;
             /** String */
             notes?: string;
+            kind?: components["schemas"]["IncomeKind"];
         };
         /** ImportAsset */
         ImportAsset: {

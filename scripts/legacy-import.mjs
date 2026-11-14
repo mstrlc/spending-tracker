@@ -74,17 +74,24 @@ const expenses = spending
     trip: blank(r.trip),
   }));
 
-const incomeLines = income.map((r) => ({
-  externalRef: `legacy:income:${r.id}`,
-  // The old app only knew the month (when it was earned); the day it arrived isn't recorded.
-  date: `${r.month}-01`,
-  earnedMonth: r.month,
-  amountMinor: r.amount_halere,
-  source: r.source,
-  account: null,
-  recipient: person(r.recipient),
-  notes: r.notes,
-}));
+// The old app recorded health and social insurance advances as negative income; here they're deductions.
+const DEDUCTION_SOURCES = new Set(["ZPMV", "OSSZ"]);
+
+const incomeLines = income.map((r) => {
+  const deduction = DEDUCTION_SOURCES.has(r.source) && r.amount_halere < 0;
+  return {
+    externalRef: `legacy:income:${r.id}`,
+    // The old app only knew the month (when it was earned); the day it arrived isn't recorded.
+    date: `${r.month}-01`,
+    earnedMonth: r.month,
+    kind: deduction ? "deduction" : "earning",
+    amountMinor: deduction ? -r.amount_halere : r.amount_halere,
+    source: r.source,
+    account: null,
+    recipient: person(r.recipient),
+    notes: r.notes,
+  };
+});
 
 const usedAccounts = new Set([
   ...expenses.map((e) => e.account),

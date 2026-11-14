@@ -30,6 +30,18 @@ test("income splits into whole percent that add up to 100, ignoring joint income
   expect(weightsFromIncome([{ amountMinor: 5, recipientUserId: null }], members)).toBeNull();
 });
 
+test("income splits by what each member earned net of deductions", () => {
+  const income = [
+    { amountMinor: 300, recipientUserId: "a" },
+    { amountMinor: 100, recipientUserId: "a", kind: "deduction" as const },
+    { amountMinor: 200, recipientUserId: "b" },
+  ];
+  expect(weightsFromIncome(income, members)).toEqual([
+    { userId: "a", weight: 50 },
+    { userId: "b", weight: 50 },
+  ]);
+});
+
 test("shares read as percent in the household's order", () => {
   expect(describeShares([{ userId: "b", weight: 1 }, { userId: "a", weight: 3 }], members)).toBe("Alice 75 % · Bob 25 %");
 });

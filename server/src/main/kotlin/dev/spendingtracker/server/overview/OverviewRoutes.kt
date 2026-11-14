@@ -5,12 +5,15 @@ import dev.spendingtracker.server.common.dateParam
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Income
+import dev.spendingtracker.server.income.dbValue
+import dev.spendingtracker.server.income.netIncomeMinor
 import dev.spendingtracker.server.db.AssetContributions
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.merchant.merchantNames
 import dev.spendingtracker.server.asset.Dated
 import dev.spendingtracker.shared.api.ApiError
+import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.Overview
 import io.github.smiley4.ktoropenapi.get
 import io.ktor.http.HttpStatusCode
@@ -76,7 +79,10 @@ fun Route.overviewRoutes() = route("/overview") {
                 .where { (Income.householdId eq householdId) and (Income.earnedMonth.between(windowStart.firstDay, month.lastDay)) }
                 .orderBy(Income.earnedMonth to SortOrder.DESC)
                 // Counted in the month it was earned, whenever it arrived.
-                .map { Earning(it[Income.earnedMonth], it[Income.amountMinor], it[Income.sourceName]) }
+                .map {
+                    val deduction = it[Income.kind] == IncomeKind.DEDUCTION.dbValue
+                    Earning(it[Income.earnedMonth], it.netIncomeMinor(), it[Income.sourceName], deduction)
+                }
             val contributions = AssetContributions.selectAll()
                 .where {
                     (AssetContributions.householdId eq householdId) and

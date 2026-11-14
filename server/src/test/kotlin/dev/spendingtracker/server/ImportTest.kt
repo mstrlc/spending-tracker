@@ -20,6 +20,7 @@ import dev.spendingtracker.shared.api.ImportPerson
 import dev.spendingtracker.shared.api.ImportResult
 import dev.spendingtracker.shared.api.ImportTrip
 import dev.spendingtracker.shared.api.Income
+import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.Merchant
 import dev.spendingtracker.shared.api.Trip
@@ -52,7 +53,10 @@ class ImportTest {
             ImportExpense("old:2", LocalDate(2026, 8, 3), 300_00, "omv", "Groceries", account = "Joint"),
             ImportExpense("old:3", LocalDate(2026, 8, 4), 500_00, "OMV", "Car", "Gas", "Joint", "ali", notes = "full tank"),
         ),
-        income = listOf(ImportIncome("old:i1", LocalDate(2026, 9, 1), 50_000_00, "Employer", "2026-08", recipient = "Bob")),
+        income = listOf(
+            ImportIncome("old:i1", LocalDate(2026, 9, 1), 50_000_00, "Employer", "2026-08", recipient = "Bob"),
+            ImportIncome("old:i2", LocalDate(2026, 8, 8), 3_143_00, "ZPMV", recipient = "Bob", kind = IncomeKind.DEDUCTION),
+        ),
         assets = listOf(
             ImportAsset(
                 "Pension · Bob", AssetKind.SCHEME, owner = "Bob",
@@ -73,7 +77,7 @@ class ImportTest {
         val preview = client.post("$base/import?dryRun=true") { setBody(file) }.body<ImportResult>()
         assertTrue(preview.dryRun)
         val expected = ImportCounts(
-            members = 1, accounts = 2, categories = 2, trips = 1, merchants = 1, expenses = 3, income = 1, assets = 1, contributions = 2,
+            members = 1, accounts = 2, categories = 2, trips = 1, merchants = 1, expenses = 3, income = 2, assets = 1, contributions = 2,
         )
         assertEquals(expected, preview.created)
         assertEquals(emptyList(), client.get("$base/expenses").body<List<Expense>>())
@@ -107,8 +111,10 @@ class ImportTest {
         // A new merchant is filed under the category its expenses use most.
         assertEquals(gas.id, client.get("$base/merchants").body<List<Merchant>>().single().defaultCategoryId)
 
-        val income = client.get("$base/income").body<List<Income>>().single()
-        assertEquals("2026-08" to bob.userId, income.earnedMonth to income.recipientUserId)
+        val income = client.get("$base/income").body<List<Income>>().associateBy { it.kind }
+        val salary = income.getValue(IncomeKind.EARNING)
+        assertEquals("2026-08" to bob.userId, salary.earnedMonth to salary.recipientUserId)
+        assertEquals("ZPMV", income.getValue(IncomeKind.DEDUCTION).source)
 
         val asset = client.get("$base/assets").body<List<Asset>>().single()
         assertEquals(Triple(AssetKind.SCHEME, bob.userId, 3_400_00L), Triple(asset.kind, asset.ownerUserId, asset.contributedMinor))

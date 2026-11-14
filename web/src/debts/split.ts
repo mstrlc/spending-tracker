@@ -1,4 +1,5 @@
-import type { Debt, Member, Share } from "../api/types";
+import type { Debt, Income, Member, Share } from "../api/types";
+import { netAmount } from "../income/net";
 
 /** Weights as typed into the split editor, by member. */
 export type WeightDraft = Record<string, string>;
@@ -36,14 +37,17 @@ export function describeShares(shares: Share[], members: Member[]): string {
 }
 
 /**
- * Weights in proportion to what each member earned: whole percent that add up to 100. Joint income doesn't count
+ * Weights in proportion to what each member earned, net of deductions: whole percent that add up to 100. Joint income doesn't count
  * towards anyone. Null when nobody earned anything.
  */
-export function weightsFromIncome(income: { amountMinor: number; recipientUserId?: string | null }[], members: Member[]): Share[] | null {
+export function weightsFromIncome(
+  income: { amountMinor: number; kind?: Income["kind"]; recipientUserId?: string | null }[],
+  members: Member[],
+): Share[] | null {
   const earned = new Map<string, number>();
   for (const i of income) {
     if (!i.recipientUserId) continue;
-    earned.set(i.recipientUserId, (earned.get(i.recipientUserId) ?? 0) + i.amountMinor);
+    earned.set(i.recipientUserId, (earned.get(i.recipientUserId) ?? 0) + netAmount(i));
   }
   const positive = members.map((m) => ({ userId: m.userId, amount: Math.max(0, earned.get(m.userId) ?? 0) }));
   const total = positive.reduce((sum, p) => sum + p.amount, 0);

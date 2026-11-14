@@ -137,9 +137,10 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
     case "createsDebt":
       return value === "true" ? "Yes" : "No";
     case "kind":
-      // Category kinds; asset kinds (fund, stock, …) read as they are.
+      // Category and income kinds; asset kinds (fund, stock, …) read as they are.
       if (value === "investment") return "Investing";
       if (value === "consumption") return "Spending";
+      if (value === "earning") return "Income";
       return value === null ? "–" : value.charAt(0).toUpperCase() + value.slice(1);
     default:
       return value === null || value === "" ? "–" : value;

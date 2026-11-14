@@ -5,7 +5,9 @@ import dev.spendingtracker.shared.api.AccountInput
 import dev.spendingtracker.shared.api.CreateInviteRequest
 import dev.spendingtracker.shared.api.Income
 import dev.spendingtracker.shared.api.IncomeInput
+import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.Invite
+import dev.spendingtracker.shared.api.NamedTotal
 import dev.spendingtracker.shared.api.Overview
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -131,5 +133,29 @@ class IncomeTest {
         assertEquals(listOf("Gift"), client.get("$base?from=2026-11-01&to=2026-11-30").body<List<Income>>().map { it.source })
         val history = client.get("$household/overview?month=2026-11").body<Overview>().history.associate { it.month to it.incomeMinor }
         assertEquals(50_000_00L to 1_000_00L, history["2026-10"] to history["2026-11"])
+    }
+
+    @Test
+    fun deductionsLowerNetIncomeWithoutBeingASource() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+        val base = "$household/income"
+
+        val salary = client.add(base, IncomeInput(LocalDate(2026, 10, 10), 60_000_00, "Initech"))
+        assertEquals(IncomeKind.EARNING, salary.kind)
+        val health = client.add(base, IncomeInput(LocalDate(2026, 10, 8), 3_143_00, "ZPMV", kind = IncomeKind.DEDUCTION))
+        assertEquals(IncomeKind.DEDUCTION, health.kind)
+        assertEquals(3_143_00, health.amountMinor)
+        // An overpaid advance refunded is a negative deduction.
+        client.add(base, IncomeInput(LocalDate(2026, 10, 20), -143_00, "ZPMV", kind = IncomeKind.DEDUCTION))
+
+        val overview = client.get("$household/overview?month=2026-10").body<Overview>()
+        assertEquals(60_000_00L - 3_000_00L, overview.history.single { it.month == "2026-10" }.incomeMinor)
+        assertEquals(listOf(NamedTotal("Initech", 60_000_00)), overview.topSources)
+
+        val asEarning = client.put("$base/${health.id}") {
+            setBody(IncomeInput(health.date, health.amountMinor, "ZPMV", version = health.version))
+        }.body<Income>()
+        assertEquals(IncomeKind.EARNING, asEarning.kind)
     }
 }
