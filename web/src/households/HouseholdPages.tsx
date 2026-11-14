@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type FormEvent } from "react";
 import { Link, Navigate, NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useCreateHousehold, useHouseholds, useLogout, useMe } from "../api/hooks";
 import type { Household } from "../api/types";
-import { Gauge, History, Inbound, LogOut, Receipt, Tag, TrendUp, Users, Wallet } from "../icons";
+import { Gauge, History, Inbound, LogOut, Receipt, Tag, TrendUp, Users, Wallet, Suitcase } from "../icons";
 import { ErrorText, Field, FormError, Loading, SheetSlot } from "../ui";
 
 const CURRENCIES = ["CZK", "EUR", "USD", "GBP", "PLN", "CHF", "SEK", "NOK", "DKK", "HUF"];
@@ -77,6 +77,7 @@ const SECTIONS = [
   { to: "expenses", label: "Expenses", icon: <Receipt /> },
   { to: "income", label: "Income", icon: <Inbound /> },
   { to: "assets", label: "Assets", icon: <TrendUp /> },
+  { to: "trips", label: "Trips", icon: <Suitcase /> },
   { to: "accounts", label: "Accounts", icon: <Wallet /> },
   { to: "categories", label: "Categories", icon: <Tag /> },
   { to: "members", label: "Members", icon: <Users /> },

@@ -1,9 +1,9 @@
-import type { Account, ActivityEntry, Category, FieldChange, Member } from "../api/types";
+import type { Account, ActivityEntry, Category, FieldChange, Member, Trip } from "../api/types";
 import { formatDay } from "../lib/dates";
 import { formatMoney } from "../lib/money";
 
 /** What the activity log needs to turn ids and minor units back into names and amounts. */
-export type Lookups = { currency: string; categories: Category[]; accounts: Account[]; members: Member[] };
+export type Lookups = { currency: string; categories: Category[]; accounts: Account[]; members: Member[]; trips: Trip[] };
 
 const NOUNS: Record<ActivityEntry["entity"], string> = {
   household: "household",
@@ -17,6 +17,7 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   asset_contribution: "contribution to",
   asset_valuation: "value of",
   asset_fee: "fee on",
+  trip: "trip",
 };
 
 const LABELS: Record<string, string> = {
@@ -34,6 +35,13 @@ const LABELS: Record<string, string> = {
   accountId: "Account",
   paidByUserId: "Paid by",
   recipientUserId: "Received by",
+  tripId: "Trip",
+  originalAmountMinor: "Amount paid",
+  originalCurrency: "Paid in",
+  earnedMonth: "Earned in",
+  startDate: "From",
+  endDate: "To",
+  iban: "IBAN",
   ownerUserId: "Owner",
   currency: "Currency",
   status: "Status",
@@ -89,7 +97,12 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
     case "ownerUserId":
       if (value === null) return "Shared";
       return lookups.members.find((m) => m.userId === value)?.displayName ?? "a former member";
+    case "tripId":
+      if (value === null) return "No trip";
+      return lookups.trips.find((t) => t.id === value)?.name ?? "a deleted trip";
     case "date":
+    case "startDate":
+    case "endDate":
       return value === null ? "–" : formatDay(value);
     case "expiresAt":
     case "acceptedAt":

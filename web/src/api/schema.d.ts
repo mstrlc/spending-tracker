@@ -110,7 +110,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Joins the household. The logged-in user's email must match the invite's. */
+        /** @description Joins the household. The logged-in user's email must match the invite's. An invite that claims a member without a login puts the user in that member's place: everything that belonged to the member is theirs. */
         post: operations["acceptInvite"];
         delete?: never;
         options?: never;
@@ -145,7 +145,8 @@ export interface paths {
         };
         get: operations["listMembers"];
         put?: never;
-        post?: never;
+        /** @description Adds a member without a login: someone things can belong to, who can't sign in. An invite with claimUserId hands their place over to a real account later. Owners only. */
+        post: operations["addMemberWithoutLogin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -160,9 +161,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /** @description Renames a member without a login (people with a login name themselves). Owners only. */
+        put: operations["renameMemberWithoutLogin"];
         post?: never;
-        /** @description Owners can remove anyone; members can remove only themselves (leave). The last owner can't be removed. Their accounts and expenses become shared. */
+        /** @description Owners can remove anyone; members can remove only themselves (leave). The last owner can't be removed. Their accounts and expenses become shared. A member without a login is deleted altogether. */
         delete: operations["removeMember"];
         options?: never;
         head?: never;
@@ -179,7 +181,7 @@ export interface paths {
         /** @description Invites not yet accepted, including expired ones. Owners only. */
         get: operations["listInvites"];
         put?: never;
-        /** @description Invites an email address to the household. Replaces any open invite for the same address. The response's token is shown only once; share it as a link. */
+        /** @description Invites an email address to the household. Replaces any open invite for the same address. With claimUserId (a member without a login), whoever accepts takes that member's place. The response's token is shown only once; share it as a link. */
         post: operations["createInvite"];
         delete?: never;
         options?: never;
@@ -488,6 +490,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/trips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The household's trips, latest first (undated ones last), each with what its expenses add up to. */
+        get: operations["listTrips"];
+        put?: never;
+        post: operations["createTrip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/trips/{tripId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateTrip"];
+        post?: never;
+        /** @description Fails with 409 trip_in_use while expenses belong to the trip. */
+        delete: operations["deleteTrip"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/activity": {
         parameters: {
             query?: never;
@@ -600,6 +636,8 @@ export interface components {
             role: components["schemas"]["HouseholdRole"];
             /** String */
             expiresAt: string;
+            /** String */
+            claimName?: null | string;
         };
         /** Household */
         Household: {
@@ -625,6 +663,13 @@ export interface components {
             /** String */
             displayName: string;
             role: components["schemas"]["HouseholdRole"];
+            /** Boolean */
+            hasLogin: boolean;
+        };
+        /** MemberInput */
+        MemberInput: {
+            /** String */
+            displayName: string;
         };
         /** Invite */
         Invite: {
@@ -641,12 +686,18 @@ export interface components {
             expiresAt: string;
             /** String */
             token?: null | string;
+            /** String */
+            claimUserId?: null | string;
+            /** String */
+            claimName?: null | string;
         };
         /** CreateInviteRequest */
         CreateInviteRequest: {
             /** String */
             email: string;
             role?: components["schemas"]["HouseholdRole"];
+            /** String */
+            claimUserId?: null | string;
         };
         /** Account */
         Account: {
@@ -662,12 +713,20 @@ export interface components {
              * Format: int32
              */
             version: number;
+            kind: components["schemas"]["AccountKind"];
+            /** String */
+            iban: null | string;
         };
         /**
          * AccountStatus
          * @enum {string}
          */
         AccountStatus: "active" | "closed";
+        /**
+         * AccountKind
+         * @enum {string}
+         */
+        AccountKind: "bank" | "credit_card" | "cash" | "other";
         /** AccountInput */
         AccountInput: {
             /** String */
@@ -680,6 +739,9 @@ export interface components {
              * Format: int32
              */
             version?: null | number;
+            kind?: components["schemas"]["AccountKind"];
+            /** String */
+            iban?: null | string;
         };
         /** Category */
         Category: {
@@ -754,6 +816,15 @@ export interface components {
              * Format: int32
              */
             version: number;
+            /** String */
+            tripId: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            originalAmountMinor: null | number;
+            /** String */
+            originalCurrency: null | string;
         };
         /** ExpenseInput */
         ExpenseInput: {
@@ -779,6 +850,15 @@ export interface components {
              * Format: int32
              */
             version?: null | number;
+            /** String */
+            tripId?: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            originalAmountMinor?: null | number;
+            /** String */
+            originalCurrency?: null | string;
         };
         /** Income */
         Income: {
@@ -804,6 +884,8 @@ export interface components {
              * Format: int32
              */
             version: number;
+            /** String */
+            earnedMonth: string;
         };
         /** IncomeInput */
         IncomeInput: {
@@ -827,6 +909,8 @@ export interface components {
              * Format: int32
              */
             version?: null | number;
+            /** String */
+            earnedMonth?: null | string;
         };
         /** Asset */
         Asset: {
@@ -1065,11 +1149,55 @@ export interface components {
              */
             version?: null | number;
         };
+        /** Trip */
+        Trip: {
+            /** String */
+            id: string;
+            /** String */
+            name: string;
+            /** LocalDate */
+            startDate: null | string;
+            /** LocalDate */
+            endDate: null | string;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            spentMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            expenseCount: number;
+        };
+        /** TripInput */
+        TripInput: {
+            /** String */
+            name: string;
+            /** LocalDate */
+            startDate?: null | string;
+            /** LocalDate */
+            endDate?: null | string;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
         /**
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -1562,6 +1690,112 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    addMemberWithoutLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MemberInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    renameMemberWithoutLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MemberInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2245,9 +2479,9 @@ export interface operations {
     listIncome: {
         parameters: {
             query?: {
-                /** @description Inclusive start date, YYYY-MM-DD */
+                /** @description Inclusive start date, YYYY-MM-DD; matched against the month earned */
                 from?: string;
-                /** @description Inclusive end date, YYYY-MM-DD */
+                /** @description Inclusive end date, YYYY-MM-DD; matched against the month earned */
                 to?: string;
                 accountId?: string;
                 recipientUserId?: string;
@@ -3073,6 +3307,170 @@ export interface operations {
                 householdId: string;
                 assetId: string;
                 feeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listTrips: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trip"][];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createTrip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TripInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trip"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateTrip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                tripId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TripInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trip"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteTrip: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                tripId: string;
             };
             cookie?: never;
         };

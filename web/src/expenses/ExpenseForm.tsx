@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
-import { useAccounts, useCategories, useDeleteExpense, useMembers, useSaveExpense } from "../api/hooks";
+import { useAccounts, useCategories, useDeleteExpense, useMembers, useSaveExpense, useTrips } from "../api/hooks";
 import type { Expense } from "../api/types";
 import { categoryTree } from "../categories/tree";
 import { todayIso } from "../lib/dates";
@@ -7,7 +7,18 @@ import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { ErrorText, Field, FormError } from "../ui";
 
-const FIELDS = ["date", "amountMinor", "merchant", "categoryId", "accountId", "paidByUserId", "notes"];
+const FIELDS = [
+  "date",
+  "amountMinor",
+  "merchant",
+  "categoryId",
+  "accountId",
+  "paidByUserId",
+  "tripId",
+  "originalAmountMinor",
+  "originalCurrency",
+  "notes",
+];
 
 /**
  * Adds expenses (staying open for the next one) or edits [expense]. Lives in a side sheet;
@@ -28,6 +39,7 @@ export function ExpenseForm({
   const categories = useCategories(household.id).data ?? [];
   const accounts = useAccounts(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
+  const trips = useTrips(household.id).data ?? [];
   const save = useSaveExpense(household.id);
   const remove = useDeleteExpense(household.id);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -39,6 +51,14 @@ export function ExpenseForm({
   const [accountId, setAccountId] = useState(expense?.accountId ?? "");
   const [paidByUserId, setPaidByUserId] = useState(expense?.paidByUserId ?? "");
   const [notes, setNotes] = useState(expense?.notes ?? "");
+  const [tripId, setTripId] = useState(expense?.tripId ?? "");
+  const [foreign, setForeign] = useState(expense?.originalCurrency != null);
+  const [originalCurrency, setOriginalCurrency] = useState(expense?.originalCurrency ?? "EUR");
+  const [originalAmount, setOriginalAmount] = useState(
+    expense?.originalAmountMinor != null && expense.originalCurrency
+      ? toInputValue(expense.originalAmountMinor, expense.originalCurrency)
+      : "",
+  );
   const [amountError, setAmountError] = useState<string | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
 
@@ -54,6 +74,12 @@ export function ExpenseForm({
       amountRef.current?.focus();
       return;
     }
+    const currency = originalCurrency.trim().toUpperCase();
+    const originalAmountMinor = foreign ? parseMoney(originalAmount, /^[A-Z]{3}$/.test(currency) ? currency : "EUR") : null;
+    if (foreign && (originalAmountMinor === null || originalAmountMinor === 0)) {
+      setAmountError(`Enter what it cost in ${currency || "the other currency"}, or untick "Paid in another currency".`);
+      return;
+    }
     setAmountError(null);
     save.mutate(
       {
@@ -65,6 +91,9 @@ export function ExpenseForm({
           categoryId: categoryId || null,
           accountId: accountId || null,
           paidByUserId: paidByUserId || null,
+          tripId: tripId || null,
+          originalAmountMinor: foreign ? originalAmountMinor : null,
+          originalCurrency: foreign ? currency : null,
           notes,
           version: expense?.version,
         },
@@ -79,6 +108,7 @@ export function ExpenseForm({
           // Stay open for the next expense, keeping date, category, account and payer.
           setLastAdded(`Added ${saved.merchant || "expense"} · ${formatMoney(saved.amountMinor, household.currency)}`);
           setAmount("");
+          setOriginalAmount("");
           setMerchant("");
           setNotes("");
           amountRef.current?.focus();
@@ -154,6 +184,37 @@ export function ExpenseForm({
               ))}
             </select>
           </Field>
+        )}
+        {(trips.length > 0 || tripId) && (
+          <Field label="Trip" name="tripId" error={save.error}>
+            <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
+              <option value="">None</option>
+              {trips.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <label className="check-row">
+          <input type="checkbox" checked={foreign} onChange={(e) => setForeign(e.target.checked)} />
+          Paid in another currency
+        </label>
+        {foreign && (
+          <div className="field-pair">
+            <Field label="Amount paid" name="originalAmountMinor" error={save.error}>
+              <input inputMode="decimal" placeholder="0.00" value={originalAmount} onChange={(e) => setOriginalAmount(e.target.value)} />
+            </Field>
+            <Field label="Currency" name="originalCurrency" error={save.error}>
+              <input
+                maxLength={3}
+                placeholder="EUR"
+                value={originalCurrency}
+                onChange={(e) => setOriginalCurrency(e.target.value.toUpperCase())}
+              />
+            </Field>
+          </div>
         )}
         <Field label="Notes" name="notes" error={save.error}>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} />

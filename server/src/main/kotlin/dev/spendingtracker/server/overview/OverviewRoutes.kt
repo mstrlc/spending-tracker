@@ -71,9 +71,10 @@ fun Route.overviewRoutes() = route("/overview") {
                     )
                 }
             val earnings = Income.selectAll()
-                .where { (Income.householdId eq householdId) and (Income.date.between(windowStart.firstDay, month.lastDay)) }
-                .orderBy(Income.date to SortOrder.DESC)
-                .map { Earning(it[Income.date], it[Income.amountMinor], it[Income.sourceName]) }
+                .where { (Income.householdId eq householdId) and (Income.earnedMonth.between(windowStart.firstDay, month.lastDay)) }
+                .orderBy(Income.earnedMonth to SortOrder.DESC)
+                // Counted in the month it was earned, whenever it arrived.
+                .map { Earning(it[Income.earnedMonth], it[Income.amountMinor], it[Income.sourceName]) }
             val contributions = AssetContributions.selectAll()
                 .where {
                     (AssetContributions.householdId eq householdId) and
@@ -82,7 +83,7 @@ fun Route.overviewRoutes() = route("/overview") {
                 .map { Dated(it[AssetContributions.date], it[AssetContributions.amountMinor]) }
             // Where the ledger starts: months before it are unknown, not empty.
             val firstExpense = Expenses.select(Expenses.date.min()).where { Expenses.householdId eq householdId }.single()[Expenses.date.min()]
-            val firstIncome = Income.select(Income.date.min()).where { Income.householdId eq householdId }.single()[Income.date.min()]
+            val firstIncome = Income.select(Income.earnedMonth.min()).where { Income.householdId eq householdId }.single()[Income.earnedMonth.min()]
             val firstContribution = AssetContributions.select(AssetContributions.date.min())
                 .where { AssetContributions.householdId eq householdId }.single()[AssetContributions.date.min()]
             Flows(spends, earnings, contributions) to listOfNotNull(firstExpense, firstIncome, firstContribution).minOrNull()?.yearMonth

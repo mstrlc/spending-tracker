@@ -9,7 +9,9 @@ import dev.spendingtracker.server.common.ApiException
 import dev.spendingtracker.server.common.conflict
 import dev.spendingtracker.server.common.forbidden
 import dev.spendingtracker.server.common.notFound
+import dev.spendingtracker.server.common.parseId
 import dev.spendingtracker.server.common.pathId
+import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.db.HouseholdInvites
 import dev.spendingtracker.server.db.HouseholdMembers
 import dev.spendingtracker.server.db.Households
@@ -36,6 +38,7 @@ import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.alias
 import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -46,6 +49,14 @@ import kotlin.time.Duration.Companion.days
 import kotlin.uuid.Uuid
 
 val INVITE_LIFETIME = 7.days
+
+/** The member without a login an invite hands over, joined for their name. */
+private val Claimed = Users.alias("claimed")
+
+/** Invites with their inviter and claimed member, for [toInvite]. */
+private fun invitesWithPeople() = HouseholdInvites
+    .join(Users, JoinType.LEFT, HouseholdInvites.invitedBy, Users.id)
+    .join(Claimed, JoinType.LEFT, HouseholdInvites.claimUserId, Claimed[Users.id])
 
 /** Owner-side invite management. Must be inside a HouseholdAccess scope. */
 fun Route.householdInviteRoutes() = route("/invites") {
@@ -59,8 +70,7 @@ fun Route.householdInviteRoutes() = route("/invites") {
     }) {
         call.requireOwner()
         val invites = dbQuery {
-            HouseholdInvites
-                .join(Users, JoinType.LEFT, HouseholdInvites.invitedBy, Users.id)
+            invitesWithPeople()
                 .selectAll()
                 .where { (HouseholdInvites.householdId eq call.household.id) and HouseholdInvites.acceptedAt.isNull() }
                 .orderBy(HouseholdInvites.createdAt to SortOrder.DESC)
@@ -72,6 +82,7 @@ fun Route.householdInviteRoutes() = route("/invites") {
     post({
         operationId = "createInvite"
         description = "Invites an email address to the household. Replaces any open invite for the same address. " +
+            "With claimUserId (a member without a login), whoever accepts takes that member's place. " +
             "The response's token is shown only once; share it as a link."
         request { body<CreateInviteRequest>() }
         response {
@@ -84,6 +95,7 @@ fun Route.householdInviteRoutes() = route("/invites") {
         call.requireOwner()
         val body = call.receive<CreateInviteRequest>()
         val email = normalizeEmail(body.email)
+        val claimUserId = parseId(body.claimUserId, "claimUserId")
         val householdId = call.household.id
         val (token, hash) = Tokens.generate()
         val id = Uuid.random()
@@ -94,6 +106,14 @@ fun Route.householdInviteRoutes() = route("/invites") {
                 .where { (HouseholdMembers.householdId eq householdId) and (Users.email eq email) }
                 .empty()
             if (alreadyMember) throw conflict("already_member", "$email is already a member", "email")
+            if (claimUserId != null) {
+                val claimable = !HouseholdMembers
+                    .join(Users, JoinType.INNER, HouseholdMembers.userId, Users.id)
+                    .selectAll()
+                    .where { (HouseholdMembers.householdId eq householdId) and (HouseholdMembers.userId eq claimUserId) and Users.email.isNull() }
+                    .empty()
+                if (!claimable) throw badRequest("invalid_claim", "Pick a member without a login", "claimUserId")
+            }
             HouseholdInvites.deleteWhere {
                 (HouseholdInvites.householdId eq householdId) and (HouseholdInvites.email eq email) and acceptedAt.isNull()
             }
@@ -105,9 +125,9 @@ fun Route.householdInviteRoutes() = route("/invites") {
                 it[role] = body.role.dbValue()
                 it[invitedBy] = call.userId
                 it[expiresAt] = Clock.System.now() + INVITE_LIFETIME
+                it[HouseholdInvites.claimUserId] = claimUserId
             }
-            HouseholdInvites
-                .join(Users, JoinType.LEFT, HouseholdInvites.invitedBy, Users.id)
+            invitesWithPeople()
                 .selectAll()
                 .where { HouseholdInvites.id eq id }
                 .single()
@@ -158,6 +178,7 @@ fun Route.inviteLinkRoutes() = route("/invites/{token}", {
                     email = row[HouseholdInvites.email],
                     role = roleFrom(row[HouseholdInvites.role]),
                     expiresAt = row[HouseholdInvites.expiresAt].toString(),
+                    claimName = row.getOrNull(Claimed[Users.displayName]),
                 )
             }
             call.respond(preview)
@@ -167,7 +188,9 @@ fun Route.inviteLinkRoutes() = route("/invites/{token}", {
     authenticate(SESSION_AUTH) {
         post("/accept", {
             operationId = "acceptInvite"
-            description = "Joins the household. The logged-in user's email must match the invite's."
+            description = "Joins the household. The logged-in user's email must match the invite's. " +
+                "An invite that claims a member without a login puts the user in that member's place: " +
+                "everything that belonged to the member is theirs."
             response {
                 code(HttpStatusCode.OK) { body<Household>() }
                 code(HttpStatusCode.Forbidden) { body<ApiError>() }
@@ -180,10 +203,21 @@ fun Route.inviteLinkRoutes() = route("/invites/{token}", {
                 val row = openInvite(call)
                 val householdId = row[HouseholdInvites.householdId]
                 val email = Users.selectAll().where { Users.id eq userId }.single()[Users.email]
-                if (!email.equals(row[HouseholdInvites.email], ignoreCase = true)) {
+                if (email == null || !email.equals(row[HouseholdInvites.email], ignoreCase = true)) {
                     throw forbidden("invite_email_mismatch", "This invite is for ${row[HouseholdInvites.email]}. Log in with that address to accept it.")
                 }
-                if (!isMember(householdId, userId)) {
+                val claim = row[HouseholdInvites.claimUserId]
+                if (claim != null) {
+                    if (isMember(householdId, userId)) {
+                        throw conflict("already_member", "You're already in this household, so you can't take another member's place.")
+                    }
+                    // Every reference to the member cascades to the new user id (V10), then the stand-in goes.
+                    HouseholdMembers.update({ (HouseholdMembers.householdId eq householdId) and (HouseholdMembers.userId eq claim) }) {
+                        it[HouseholdMembers.userId] = userId
+                        it[role] = row[HouseholdInvites.role]
+                    }
+                    Users.deleteWhere { (Users.id eq claim) and Users.email.isNull() }
+                } else if (!isMember(householdId, userId)) {
                     HouseholdMembers.insert {
                         it[HouseholdMembers.householdId] = householdId
                         it[HouseholdMembers.userId] = userId
@@ -210,6 +244,7 @@ private fun openInvite(call: RoutingCall): ResultRow {
     val row = HouseholdInvites
         .join(Households, JoinType.INNER, HouseholdInvites.householdId, Households.id)
         .join(Users, JoinType.LEFT, HouseholdInvites.invitedBy, Users.id)
+        .join(Claimed, JoinType.LEFT, HouseholdInvites.claimUserId, Claimed[Users.id])
         .selectAll()
         .where { (HouseholdInvites.tokenHash eq hash) and HouseholdInvites.acceptedAt.isNull() }
         .singleOrNull() ?: throw inviteNotFound()
@@ -229,4 +264,6 @@ private fun ResultRow.toInvite() = Invite(
     invitedBy = getOrNull(Users.displayName),
     createdAt = this[HouseholdInvites.createdAt].toString(),
     expiresAt = this[HouseholdInvites.expiresAt].toString(),
+    claimUserId = this[HouseholdInvites.claimUserId]?.toString(),
+    claimName = getOrNull(Claimed[Users.displayName]),
 )

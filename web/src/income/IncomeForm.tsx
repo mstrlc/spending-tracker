@@ -6,7 +6,7 @@ import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { ErrorText, Field, FormError } from "../ui";
 
-const FIELDS = ["date", "amountMinor", "source", "accountId", "recipientUserId", "notes"];
+const FIELDS = ["date", "earnedMonth", "amountMinor", "source", "accountId", "recipientUserId", "notes"];
 
 /**
  * Adds income (staying open for the next line) or edits [income]. Lives in a side sheet;
@@ -36,6 +36,10 @@ export function IncomeForm({
   const [accountId, setAccountId] = useState(income?.accountId ?? "");
   const [recipientUserId, setRecipientUserId] = useState(income?.recipientUserId ?? "");
   const [notes, setNotes] = useState(income?.notes ?? "");
+  // The month it was earned; null follows the date (most income is earned the month it arrives).
+  const [earnedMonth, setEarnedMonth] = useState<string | null>(
+    income && income.earnedMonth !== income.date.slice(0, 7) ? income.earnedMonth : null,
+  );
   const [amountError, setAmountError] = useState<string | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
 
@@ -60,6 +64,7 @@ export function IncomeForm({
           source,
           accountId: accountId || null,
           recipientUserId: recipientUserId || null,
+          earnedMonth: earnedMonth ?? date.slice(0, 7),
           notes,
           version: income?.version,
         },
@@ -106,10 +111,19 @@ export function IncomeForm({
               aria-invalid={amountError !== null}
             />
           </Field>
-          <Field label="Date" name="date" error={save.error}>
+          <Field label="Arrived" name="date" error={save.error}>
             <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
         </div>
+        <Field label="Earned in" name="earnedMonth" error={save.error}>
+          <input
+            type="month"
+            required
+            value={earnedMonth ?? date.slice(0, 7)}
+            onChange={(e) => setEarnedMonth(e.target.value && e.target.value !== date.slice(0, 7) ? e.target.value : null)}
+          />
+        </Field>
+        <p className="muted small field-note">The month this pay is for: October's salary paid on 2 November counts for October.</p>
         <Field label="Source" name="source" error={save.error}>
           <input value={source} placeholder="Employer, client, who paid" onChange={(e) => setSource(e.target.value)} />
         </Field>

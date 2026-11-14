@@ -16,6 +16,7 @@ import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.shared.api.Account
 import dev.spendingtracker.shared.api.AccountInput
+import dev.spendingtracker.shared.api.AccountKind
 import dev.spendingtracker.shared.api.AccountStatus
 import dev.spendingtracker.shared.api.ApiError
 import io.github.smiley4.ktoropenapi.delete
@@ -74,6 +75,8 @@ fun Route.accountRoutes() = route("/accounts") {
                     it[name] = input.name
                     it[ownerUserId] = input.owner
                     it[status] = input.status.dbValue
+                    it[kind] = input.kind.dbValue
+                    it[iban] = input.iban
                     it[version] = 1
                 }
                 Accounts.selectAll().where { Accounts.id eq id }.single().toAccount()
@@ -107,6 +110,8 @@ fun Route.accountRoutes() = route("/accounts") {
                     it[name] = input.name
                     it[ownerUserId] = input.owner
                     it[status] = input.status.dbValue
+                    it[kind] = input.kind.dbValue
+                    it[iban] = input.iban
                     it[Accounts.version] = version + 1
                     it[updatedAt] = Clock.System.now()
                 }
@@ -148,10 +153,22 @@ fun Route.accountRoutes() = route("/accounts") {
     }
 }
 
-private data class ValidAccount(val name: String, val owner: Uuid?, val status: AccountStatus)
+private data class ValidAccount(val name: String, val owner: Uuid?, val status: AccountStatus, val kind: AccountKind, val iban: String?)
 
 private fun AccountInput.validated() =
-    ValidAccount(requiredText(name, "name", max = 100), parseId(ownerUserId, "ownerUserId"), status)
+    ValidAccount(requiredText(name, "name", max = 100), parseId(ownerUserId, "ownerUserId"), status, kind, normalizeIban(iban))
+
+/** [raw] without spaces, upper case, checked against the IBAN format and its check digits; blank is none. */
+internal fun normalizeIban(raw: String?): String? {
+    val iban = raw?.filterNot { it.isWhitespace() }?.uppercase()?.takeIf { it.isNotEmpty() } ?: return null
+    val valid = Regex("^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$").matches(iban) &&
+        (iban.drop(4) + iban.take(4)).fold(0) { acc, c ->
+            val digits = if (c.isDigit()) c.digitToInt() else c - 'A' + 10
+            (if (digits >= 10) acc * 100 + digits else acc * 10 + digits) % 97
+        } == 1
+    if (!valid) throw badRequest("invalid_iban", "This isn't a valid IBAN", "iban")
+    return iban
+}
 
 private fun ValidAccount.checkOwner(householdId: Uuid) {
     if (owner != null && !isMember(householdId, owner)) {
@@ -163,6 +180,7 @@ private suspend fun <T> uniqueName(block: suspend () -> T): T =
     try {
         block()
     } catch (e: Exception) {
+        if (e.isUniqueViolation("accounts_iban")) throw conflict("iban_taken", "Another account has this IBAN", "iban")
         if (e.isUniqueViolation()) throw conflict("name_taken", "An account with this name already exists", "name")
         throw e
     }
@@ -173,10 +191,14 @@ private fun exists(householdId: Uuid, id: Uuid) = !Accounts.selectAll().where { 
 
 private val AccountStatus.dbValue get() = if (this == AccountStatus.ACTIVE) "active" else "closed"
 
+private val AccountKind.dbValue get() = name.lowercase()
+
 private fun ResultRow.toAccount() = Account(
     id = this[Accounts.id].toString(),
     name = this[Accounts.name],
     ownerUserId = this[Accounts.ownerUserId]?.toString(),
     status = if (this[Accounts.status] == "active") AccountStatus.ACTIVE else AccountStatus.CLOSED,
     version = this[Accounts.version],
+    kind = AccountKind.entries.first { it.dbValue == this[Accounts.kind] },
+    iban = this[Accounts.iban],
 )

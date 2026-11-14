@@ -10,6 +10,7 @@ import { CategoriesPage } from "./categories/CategoriesPage";
 import { ExpensesPage } from "./expenses/ExpensesPage";
 import { IncomePage } from "./income/IncomePage";
 import { AssetsPage } from "./assets/AssetsPage";
+import { TripsPage } from "./trips/TripsPage";
 import { HomeRedirect, HouseholdLayout, OnboardingPage } from "./households/HouseholdPages";
 import { InvitePage } from "./households/InvitePage";
 import { OverviewPage } from "./overview/OverviewPage";
@@ -39,6 +40,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="expenses" element={<ExpensesPage />} />
               <Route path="income" element={<IncomePage />} />
               <Route path="assets" element={<AssetsPage />} />
+              <Route path="trips" element={<TripsPage />} />
               <Route path="accounts" element={<AccountsPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="members" element={<MembersPage />} />

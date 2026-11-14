@@ -2,6 +2,7 @@ package dev.spendingtracker.server
 
 import dev.spendingtracker.shared.api.Account
 import dev.spendingtracker.shared.api.AccountInput
+import dev.spendingtracker.shared.api.AccountKind
 import dev.spendingtracker.shared.api.AccountStatus
 import dev.spendingtracker.shared.api.Expense
 import dev.spendingtracker.shared.api.ExpenseInput
@@ -25,7 +26,7 @@ class AccountTest {
         val base = "/api/households/${client.createHousehold().id}/accounts"
 
         val created = client.post(base) { setBody(AccountInput("Revolut", ownerUserId = me.id)) }.body<Account>()
-        assertEquals(Account(created.id, "Revolut", me.id, AccountStatus.ACTIVE, 1), created)
+        assertEquals(Account(created.id, "Revolut", me.id, AccountStatus.ACTIVE, 1, AccountKind.BANK, null), created)
 
         val closed = client.put("$base/${created.id}") {
             setBody(AccountInput("Revolut", ownerUserId = null, status = AccountStatus.CLOSED, version = 1))
@@ -52,6 +53,26 @@ class AccountTest {
             .assertError(HttpStatusCode.BadRequest, "version_required")
         alice.post(base) { setBody(AccountInput("Bob's", ownerUserId = bob.id)) }
             .assertError(HttpStatusCode.BadRequest, "invalid_owner")
+    }
+
+    @Test
+    fun accountsHaveAKindAndAnIban() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}/accounts"
+
+        val card = client.post(base) {
+            setBody(AccountInput("RB Kreditka", kind = AccountKind.CREDIT_CARD, iban = " cz65 0800 0000 1920 0014 5399 "))
+        }.body<Account>()
+        assertEquals(AccountKind.CREDIT_CARD to "CZ6508000000192000145399", card.kind to card.iban)
+        assertEquals(AccountKind.BANK to null, client.post(base) { setBody(AccountInput("Bank")) }.body<Account>().let { it.kind to it.iban })
+
+        client.post(base) { setBody(AccountInput("Typo", iban = "CZ6508000000192000145398")) }.assertError(HttpStatusCode.BadRequest, "invalid_iban")
+        client.post(base) { setBody(AccountInput("Twin", iban = "CZ6508000000192000145399")) }.assertError(HttpStatusCode.Conflict, "iban_taken")
+
+        val cash = client.put("$base/${card.id}") {
+            setBody(AccountInput("Wallet", kind = AccountKind.CASH, iban = "", version = card.version))
+        }.body<Account>()
+        assertEquals(AccountKind.CASH to null, cash.kind to cash.iban)
     }
 
     @Test

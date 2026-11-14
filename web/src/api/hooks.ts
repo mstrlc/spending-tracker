@@ -12,6 +12,7 @@ import type {
   HouseholdRole,
   IncomeInput,
   AssetInput,
+  TripInput,
   ValuationInput,
 } from "./types";
 
@@ -29,6 +30,7 @@ export const keys = {
   income: (id: string, from?: string, to?: string) =>
     from === undefined ? (["households", id, "income"] as const) : (["households", id, "income", from, to] as const),
   assets: (id: string) => ["households", id, "assets"] as const,
+  trips: (id: string) => ["households", id, "trips"] as const,
   contributions: (id: string, assetId: string) => ["households", id, "assets", assetId, "contributions"] as const,
   valuations: (id: string, assetId: string) => ["households", id, "assets", assetId, "valuations"] as const,
   fees: (id: string, assetId: string) => ["households", id, "assets", assetId, "fees"] as const,
@@ -124,6 +126,18 @@ export function useMembers(householdId: string) {
   });
 }
 
+/** Adds a member without a login: someone things can belong to, who can't sign in. */
+export function useAddMember(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (displayName: string) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/members", { params: { path: { householdId } }, body: { displayName } }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.members(householdId) }),
+  });
+}
+
 /** Removes a member; with leaving, the current user leaves and the household drops out of their list. */
 export function useRemoveMember(householdId: string) {
   const qc = useQueryClient();
@@ -156,7 +170,7 @@ export function useInvites(householdId: string, enabled = true) {
 export function useCreateInvite(householdId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { email: string; role: HouseholdRole }) =>
+    mutationFn: async (body: { email: string; role: HouseholdRole; claimUserId?: string | null }) =>
       unwrap(await api.POST("/api/households/{householdId}/invites", { params: { path: { householdId } }, body })),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.invites(householdId) }),
   });
@@ -232,6 +246,44 @@ export function useDeleteAccount(householdId: string) {
         }),
       ),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.accounts(householdId) }),
+  });
+}
+
+// ---- Trips ----
+
+export function useTrips(householdId: string) {
+  return useQuery({
+    queryKey: keys.trips(householdId),
+    queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/trips", { params: { path: { householdId } } })),
+  });
+}
+
+export function useSaveTrip(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: TripInput }) =>
+      id === undefined
+        ? unwrap(await api.POST("/api/households/{householdId}/trips", { params: { path: { householdId } }, body: input }))
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/trips/{tripId}", {
+              params: { path: { householdId, tripId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.trips(householdId) }),
+  });
+}
+
+export function useDeleteTrip(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/trips/{tripId}", {
+          params: { path: { householdId, tripId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.trips(householdId) }),
   });
 }
 

@@ -9,8 +9,9 @@ import org.jetbrains.exposed.v1.datetime.timestamp
 
 object Users : Table("users") {
     val id = uuid("id")
-    val email = text("email")
-    val passwordHash = text("password_hash")
+    /** Both null for a member without a login (V10). */
+    val email = text("email").nullable()
+    val passwordHash = text("password_hash").nullable()
     val displayName = text("display_name")
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
@@ -45,6 +46,8 @@ object Accounts : Table("accounts") {
     val name = text("name")
     val ownerUserId = uuid("owner_user_id").nullable()
     val status = text("status")
+    val kind = text("kind")
+    val iban = text("iban").nullable()
     val version = integer("version")
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
@@ -73,8 +76,24 @@ object Expenses : Table("expenses") {
     val accountId = uuid("account_id").nullable()
     val paidByUserId = uuid("paid_by_user_id").nullable()
     val notes = text("notes")
+    val tripId = uuid("trip_id").nullable()
+    val originalAmountMinor = long("original_amount_minor").nullable()
+    val originalCurrency = text("original_currency").nullable()
     val externalRef = text("external_ref").nullable()
     val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Trips : Table("trips") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val name = text("name")
+    val startDate = date("start_date").nullable()
+    val endDate = date("end_date").nullable()
+    val notes = text("notes")
+    val version = integer("version").default(1)
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
@@ -84,6 +103,8 @@ object Income : Table("income") {
     val id = uuid("id")
     val householdId = uuid("household_id")
     val date = date("date")
+    /** First day of the month the income was earned in (V14). */
+    val earnedMonth = date("earned_month")
     val amountMinor = long("amount_minor")
     // Not `source`: that name is taken by Table.source.
     val sourceName = text("source")
@@ -193,6 +214,7 @@ object HouseholdInvites : Table("household_invites") {
     val expiresAt = timestamp("expires_at")
     val acceptedAt = timestamp("accepted_at").nullable()
     val acceptedBy = uuid("accepted_by").nullable()
+    val claimUserId = uuid("claim_user_id").nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

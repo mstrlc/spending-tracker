@@ -6,6 +6,7 @@ import dev.spendingtracker.shared.api.CreateInviteRequest
 import dev.spendingtracker.shared.api.Income
 import dev.spendingtracker.shared.api.IncomeInput
 import dev.spendingtracker.shared.api.Invite
+import dev.spendingtracker.shared.api.Overview
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.delete
@@ -110,5 +111,25 @@ class IncomeTest {
 
         alice.delete("/api/households/${home.id}/members/${bobMe.id}")
         assertEquals(null, alice.get(base).body<List<Income>>().single().recipientUserId)
+    }
+
+    @Test
+    fun incomeCountsInTheMonthItWasEarned() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+        val base = "$household/income"
+
+        // October's salary, paid on 2 November.
+        val salary = client.post(base) { setBody(IncomeInput(LocalDate(2026, 11, 2), 50_000_00, "Initech", earnedMonth = "2026-10")) }
+            .body<Income>()
+        assertEquals("2026-10", salary.earnedMonth)
+        assertEquals("2026-11", client.post(base) { setBody(IncomeInput(LocalDate(2026, 11, 5), 1_000_00, "Gift")) }.body<Income>().earnedMonth)
+        client.post(base) { setBody(IncomeInput(LocalDate(2026, 11, 5), 1_00, earnedMonth = "October")) }
+            .assertError(HttpStatusCode.BadRequest, "invalid_month")
+
+        assertEquals(listOf("Initech"), client.get("$base?from=2026-10-01&to=2026-10-31").body<List<Income>>().map { it.source })
+        assertEquals(listOf("Gift"), client.get("$base?from=2026-11-01&to=2026-11-30").body<List<Income>>().map { it.source })
+        val history = client.get("$household/overview?month=2026-11").body<Overview>().history.associate { it.month to it.incomeMinor }
+        assertEquals(50_000_00L to 1_000_00L, history["2026-10"] to history["2026-11"])
     }
 }

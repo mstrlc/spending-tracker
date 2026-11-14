@@ -6,6 +6,12 @@ import dev.spendingtracker.shared.api.HouseholdRole
 import dev.spendingtracker.shared.api.Invite
 import dev.spendingtracker.shared.api.InvitePreview
 import dev.spendingtracker.shared.api.Member
+import dev.spendingtracker.shared.api.MemberInput
+import dev.spendingtracker.shared.api.Expense
+import dev.spendingtracker.shared.api.ExpenseInput
+import dev.spendingtracker.shared.api.LoginRequest
+import io.ktor.client.request.put
+import kotlinx.datetime.LocalDate
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.delete
@@ -48,7 +54,7 @@ class InviteTest {
         assertEquals(Household(home.id, "Home", "CZK", HouseholdRole.MEMBER), joined)
         assertEquals(listOf(joined), bob.get("/api/households").body<List<Household>>())
         assertEquals(
-            listOf(Member(aliceMe.id, "Alice", HouseholdRole.OWNER), Member(bobMe.id, "Bob", HouseholdRole.MEMBER)),
+            listOf(Member(aliceMe.id, "Alice", HouseholdRole.OWNER, hasLogin = true), Member(bobMe.id, "Bob", HouseholdRole.MEMBER, hasLogin = true)),
             bob.get("/api/households/${home.id}/members").body<List<Member>>(),
         )
         // Single use, and gone from the owner's list.
@@ -135,5 +141,53 @@ class InviteTest {
         assertEquals(HttpStatusCode.NoContent, bob.delete("$members/${bobMe.id}").status)
         bob.get(members).assertError(HttpStatusCode.NotFound, "not_found")
         assertEquals(listOf(aliceMe.id), alice.get(members).body<List<Member>>().map { it.userId })
+    }
+
+    @Test
+    fun memberWithoutLoginIsClaimedByInvite() = apiTest {
+        val alice = newClient()
+        val aliceMe = alice.signup("alice@example.com", "Alice")
+        val home = alice.createHousehold()
+        val base = "/api/households/${home.id}"
+
+        val sam = alice.post("$base/members") { setBody(MemberInput(" Sam ")) }.body<Member>()
+        assertEquals(Member(sam.userId, "Sam", HouseholdRole.MEMBER, hasLogin = false), sam)
+        assertEquals(
+            Member(sam.userId, "Sam K", HouseholdRole.MEMBER, hasLogin = false),
+            alice.put("$base/members/${sam.userId}") { setBody(MemberInput("Sam K")) }.body<Member>(),
+        )
+        alice.put("$base/members/${aliceMe.id}") { setBody(MemberInput("Al")) }.assertError(HttpStatusCode.Conflict, "member_has_login")
+        val coffee = alice.post("$base/expenses") { setBody(ExpenseInput(LocalDate(2026, 11, 1), 80_00, "Café", paidByUserId = sam.userId)) }
+            .body<Expense>()
+
+        // Can't claim someone who has a login.
+        alice.post("$base/invites") { setBody(CreateInviteRequest("x@example.com", claimUserId = aliceMe.id)) }
+            .assertError(HttpStatusCode.BadRequest, "invalid_claim")
+        val invite = alice.post("$base/invites") { setBody(CreateInviteRequest("sam@example.com", claimUserId = sam.userId)) }.body<Invite>()
+        assertEquals("Sam K", invite.claimName)
+        assertEquals("Sam K", newClient().get("/api/invites/${invite.token}").body<InvitePreview>().claimName)
+
+        val samClient = newClient()
+        val samMe = samClient.signup("sam@example.com", "Sam")
+        samClient.post("/api/invites/${invite.token}/accept").body<Household>()
+
+        // She took the stand-in's place: same expenses, one member fewer, and the stand-in is gone.
+        assertEquals(
+            listOf(Member(aliceMe.id, "Alice", HouseholdRole.OWNER, hasLogin = true), Member(samMe.id, "Sam", HouseholdRole.MEMBER, hasLogin = true)),
+            alice.get("$base/members").body<List<Member>>(),
+        )
+        assertEquals(samMe.id, samClient.get("$base/expenses").body<List<Expense>>().single { it.id == coffee.id }.paidByUserId)
+    }
+
+    @Test
+    fun removingAMemberWithoutLoginDeletesThem() = apiTest {
+        val alice = newClient().also { it.signup("alice@example.com", "Alice") }
+        val base = "/api/households/${alice.createHousehold().id}"
+        val kid = alice.post("$base/members") { setBody(MemberInput("Kid")) }.body<Member>()
+        assertEquals(HttpStatusCode.NoContent, alice.delete("$base/members/${kid.userId}").status)
+        assertEquals(listOf("Alice"), alice.get("$base/members").body<List<Member>>().map { it.displayName })
+
+        // A member without a login can't sign in, whatever is typed.
+        newClient().post("/api/auth/login") { setBody(LoginRequest("", "")) }.assertError(HttpStatusCode.Unauthorized, "invalid_credentials")
     }
 }

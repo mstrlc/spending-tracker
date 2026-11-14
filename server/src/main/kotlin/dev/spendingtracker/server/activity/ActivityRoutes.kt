@@ -127,7 +127,8 @@ private fun ResultRow.toEntry(names: Map<Uuid, String>, holdings: Map<String, St
         ActivityEntity.MEMBER -> names[this[AuditLog.entityId]]
         ActivityEntity.ASSET_CONTRIBUTION, ActivityEntity.ASSET_VALUATION, ActivityEntity.ASSET_FEE ->
             current.text("asset_id")?.let(holdings::get)
-        ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET -> current.text("name")
+        ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET,
+        ActivityEntity.TRIP -> current.text("name")
     }
     val actor = this[AuditLog.actorUserId]
     return ActivityEntry(

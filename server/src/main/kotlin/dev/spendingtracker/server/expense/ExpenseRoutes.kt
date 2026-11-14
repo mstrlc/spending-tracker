@@ -13,6 +13,7 @@ import dev.spendingtracker.server.common.versionParam
 import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
+import dev.spendingtracker.server.db.Trips
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.household.isMember
@@ -175,6 +176,9 @@ private data class ValidExpense(
     val accountId: Uuid?,
     val paidByUserId: Uuid?,
     val notes: String,
+    val tripId: Uuid?,
+    val originalAmountMinor: Long?,
+    val originalCurrency: String?,
 )
 
 private fun ExpenseInput.validated(): ValidExpense {
@@ -186,7 +190,17 @@ private fun ExpenseInput.validated(): ValidExpense {
         accountId = parseId(accountId, "accountId"),
         paidByUserId = parseId(paidByUserId, "paidByUserId"),
         notes = optionalText(notes, "notes", max = 2000),
-    )
+        tripId = parseId(tripId, "tripId"),
+        originalAmountMinor = originalAmountMinor?.let { nonZeroAmount(it, "originalAmountMinor") },
+        originalCurrency = originalCurrency?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }?.also {
+            if (!Regex("^[A-Z]{3}$").matches(it)) throw badRequest("invalid_currency", "Use a 3-letter currency code", "originalCurrency")
+        },
+    ).also {
+        if ((it.originalAmountMinor == null) != (it.originalCurrency == null)) {
+            val field = if (it.originalAmountMinor == null) "originalAmountMinor" else "originalCurrency"
+            throw badRequest("original_incomplete", "Give both the original amount and its currency, or neither", field)
+        }
+    }
 }
 
 /** Field-level errors for references the composite foreign keys would otherwise reject opaquely. */
@@ -201,6 +215,9 @@ private fun ValidExpense.checkReferences(householdId: Uuid) {
     ) {
         throw badRequest("invalid_account", "Unknown account", "accountId")
     }
+    if (tripId != null && Trips.selectAll().where { (Trips.id eq tripId) and (Trips.householdId eq householdId) }.empty()) {
+        throw badRequest("invalid_trip", "Unknown trip", "tripId")
+    }
     if (paidByUserId != null && !isMember(householdId, paidByUserId)) {
         throw badRequest("invalid_member", "Paid by must be a member of the household", "paidByUserId")
     }
@@ -214,6 +231,9 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[Expenses.accountId] = input.accountId
     this[Expenses.paidByUserId] = input.paidByUserId
     this[Expenses.notes] = input.notes
+    this[Expenses.tripId] = input.tripId
+    this[Expenses.originalAmountMinor] = input.originalAmountMinor
+    this[Expenses.originalCurrency] = input.originalCurrency
 }
 
 private fun match(householdId: Uuid, id: Uuid) = (Expenses.id eq id) and (Expenses.householdId eq householdId)
@@ -230,4 +250,7 @@ private fun ResultRow.toExpense() = Expense(
     paidByUserId = this[Expenses.paidByUserId]?.toString(),
     notes = this[Expenses.notes],
     version = this[Expenses.version],
+    tripId = this[Expenses.tripId]?.toString(),
+    originalAmountMinor = this[Expenses.originalAmountMinor],
+    originalCurrency = this[Expenses.originalCurrency],
 )

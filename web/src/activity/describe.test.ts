@@ -6,7 +6,8 @@ const lookups: Lookups = {
   currency: "CZK",
   categories: [{ id: "c1", parentId: null, name: "Food", kind: "consumption", archived: false, sortOrder: 0, version: 1 }],
   accounts: [],
-  members: [{ userId: "u1", displayName: "Alice", role: "owner" }],
+  members: [{ userId: "u1", displayName: "Alice", role: "owner", hasLogin: true }],
+  trips: [],
 };
 
 const entry = (overrides: Partial<ActivityEntry>): ActivityEntry => ({

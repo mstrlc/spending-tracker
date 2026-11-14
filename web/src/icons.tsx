@@ -107,3 +107,12 @@ export const TrendUp = () => (
     <path d="M15 7h6v6" />
   </Icon>
 );
+
+/** A suitcase, for trips. */
+export const Suitcase = () => (
+  <Icon>
+    <rect x="3.5" y="7" width="17" height="13" rx="2" />
+    <path d="M9 7V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v2" />
+    <path d="M8 7v13M16 7v13" />
+  </Icon>
+);

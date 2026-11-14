@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccounts, useActivity, useCategories, useMembers } from "../api/hooks";
+import { useAccounts, useActivity, useCategories, useMembers, useTrips } from "../api/hooks";
 import type { ActivityEntity, ActivityEntry } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { ErrorText, PageHeader, SkeletonRows } from "../ui";
@@ -13,6 +13,7 @@ const FILTERS: { value: ActivityEntity | ""; label: string }[] = [
   { value: "asset_contribution", label: "Contributions" },
   { value: "asset_valuation", label: "Asset values" },
   { value: "asset_fee", label: "Asset fees" },
+  { value: "trip", label: "Trips" },
   { value: "account", label: "Accounts" },
   { value: "category", label: "Categories" },
   { value: "member", label: "Members" },
@@ -38,6 +39,7 @@ export function ActivityPage() {
     categories: useCategories(household.id).data ?? [],
     accounts: useAccounts(household.id).data ?? [],
     members: useMembers(household.id).data ?? [],
+    trips: useTrips(household.id).data ?? [],
   };
   const entries = activity.data?.pages.flatMap((p) => p.entries) ?? [];
 

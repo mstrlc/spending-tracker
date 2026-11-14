@@ -28,7 +28,7 @@ class HouseholdTest {
         assertEquals(HouseholdRole.OWNER, household.role)
         assertEquals(listOf(household), client.get("/api/households").body<List<Household>>())
         assertEquals(
-            listOf(Member(me.id, "Alice", HouseholdRole.OWNER)),
+            listOf(Member(me.id, "Alice", HouseholdRole.OWNER, hasLogin = true)),
             client.get("/api/households/${household.id}/members").body<List<Member>>(),
         )
         val categories = client.get("/api/households/${household.id}/categories").body<List<Category>>()

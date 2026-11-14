@@ -36,6 +36,9 @@ export function InvitePage() {
         <p className="muted">
           {invite.invitedBy ?? "Someone"} invited <span className="strong">{invite.email}</span> to share this household's
           accounts and expenses{invite.role === "owner" ? " as an owner" : ""}.
+          {invite.claimName && (
+            <> You'll take over {invite.claimName}'s place: whatever is theirs in the household becomes yours.</>
+          )}
         </p>
       </>
     );

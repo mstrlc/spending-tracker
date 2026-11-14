@@ -27,6 +27,8 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.route
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.YearMonth
+import kotlinx.datetime.yearMonth
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
@@ -50,8 +52,8 @@ fun Route.incomeRoutes() = route("/income") {
         operationId = "listIncome"
         description = "Income newest first, filtered by inclusive date range, account and recipient."
         request {
-            queryParameter<String>("from") { description = "Inclusive start date, YYYY-MM-DD" }
-            queryParameter<String>("to") { description = "Inclusive end date, YYYY-MM-DD" }
+            queryParameter<String>("from") { description = "Inclusive start date, YYYY-MM-DD; matched against the month earned" }
+            queryParameter<String>("to") { description = "Inclusive end date, YYYY-MM-DD; matched against the month earned" }
             queryParameter<String>("accountId")
             queryParameter<String>("recipientUserId")
         }
@@ -67,13 +69,14 @@ fun Route.incomeRoutes() = route("/income") {
         val recipientUserId = parseId(call.request.queryParameters["recipientUserId"], "recipientUserId")
         val income = dbQuery {
             var filter: Op<Boolean> = Income.householdId eq householdId
-            if (from != null) filter = filter and (Income.date greaterEq from)
-            if (to != null) filter = filter and (Income.date lessEq to)
+            // Income belongs to the month it was earned in, whenever it arrived.
+            if (from != null) filter = filter and (Income.earnedMonth greaterEq from.yearMonth.firstDay)
+            if (to != null) filter = filter and (Income.earnedMonth lessEq to)
             if (accountId != null) filter = filter and (Income.accountId eq accountId)
             if (recipientUserId != null) filter = filter and (Income.recipientUserId eq recipientUserId)
             Income.selectAll()
                 .where(filter)
-                .orderBy(Income.date to SortOrder.DESC, Income.id to SortOrder.ASC)
+                .orderBy(Income.earnedMonth to SortOrder.DESC, Income.date to SortOrder.DESC, Income.id to SortOrder.ASC)
                 .limit(LIST_LIMIT)
                 .map { it.toIncome() }
         }
@@ -166,6 +169,7 @@ private data class ValidIncome(
     val accountId: Uuid?,
     val recipientUserId: Uuid?,
     val notes: String,
+    val earnedMonth: LocalDate,
 )
 
 private fun IncomeInput.validated() = ValidIncome(
@@ -175,6 +179,9 @@ private fun IncomeInput.validated() = ValidIncome(
     accountId = parseId(accountId, "accountId"),
     recipientUserId = parseId(recipientUserId, "recipientUserId"),
     notes = optionalText(notes, "notes", max = 2000),
+    earnedMonth = earnedMonth?.trim()?.takeIf { it.isNotEmpty() }?.let {
+        runCatching { YearMonth.parse(it) }.getOrElse { throw badRequest("invalid_month", "earnedMonth must be YYYY-MM", "earnedMonth") }
+    }?.firstDay ?: date.yearMonth.firstDay,
 )
 
 /** Field-level errors for references the composite foreign keys would otherwise reject opaquely. */
@@ -196,6 +203,7 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[Income.accountId] = input.accountId
     this[Income.recipientUserId] = input.recipientUserId
     this[Income.notes] = input.notes
+    this[Income.earnedMonth] = input.earnedMonth
 }
 
 private fun match(householdId: Uuid, id: Uuid) = (Income.id eq id) and (Income.householdId eq householdId)
@@ -211,4 +219,5 @@ private fun ResultRow.toIncome() = IncomeDto(
     recipientUserId = this[Income.recipientUserId]?.toString(),
     notes = this[Income.notes],
     version = this[Income.version],
+    earnedMonth = this[Income.earnedMonth].yearMonth.toString(),
 )

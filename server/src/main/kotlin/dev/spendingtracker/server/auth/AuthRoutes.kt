@@ -120,4 +120,5 @@ internal fun normalizeEmail(raw: String): String {
     return email
 }
 
-private fun ResultRow.toMe() = Me(this[Users.id].toString(), this[Users.email], this[Users.displayName])
+// Only users with a login have sessions, so the email is there.
+private fun ResultRow.toMe() = Me(this[Users.id].toString(), this[Users.email]!!, this[Users.displayName])

@@ -25,7 +25,8 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
 - Editable rows carry `version`; updates send it in the body, deletes as `?version=`. A stale version is a 409 `version_conflict`.
 - Rows still referenced can't be deleted (409 `*_in_use`); close accounts and archive categories instead.
 - Every insert, update and delete of household data lands in `audit_log` (before/after JSON, actor) via Postgres triggers, so routes don't record anything themselves. The actor comes from `app.actor_id`, which `dbQuery` sets from the request's session user; new household tables need an `audit` trigger in their migration.
-- API request/response models live in `shared` (`dev.spendingtracker.shared.api`) so mobile clients can reuse them.
+- API request/response models live in `shared` (`dev.spendingtracker.shared.api`) so mobile clients can reuse them. Response models have no default values: the JSON leaves out fields equal to their default, which would reach the web as `undefined`. Request models may have defaults.
+- New references to a member are `(household_id, user_id) REFERENCES household_members ... ON UPDATE CASCADE`: claiming a member without a login moves the membership to another user id, and everything follows it.
 
 ## Data model decisions (2026-11-14)
 
@@ -33,7 +34,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 
 ### People, ownership and debts
 
-- **Members don't need a login.** A household member can exist without a user account and claim it later through an invite.
+- ~~**Members don't need a login.**~~ (done 2026-11-14) A household member can exist without a user account and claim it later through an invite.
 - **No person means joint**, everywhere a row can belong to someone: expenses, income, accounts, assets. There is no "unknown".
 - **Who paid and whose it is are separate.** The account says whose money left; the expense says whose spending it is. A joint 10k IKEA purchase on one person's credit card is one joint 10k expense, never two halves.
 - **Joint or personal is filled in** from the account (joint account → joint, personal account → that person), overridden by category or merchant rules (groceries always joint), and editable per expense.
@@ -47,7 +48,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 
 ### Accounts, bank feeds and transfers
 
-- **Accounts have a kind**: bank, credit card, cash, other. They can carry an IBAN.
+- ~~**Accounts have a kind**~~ (done 2026-11-14): bank, credit card, cash, other. They can carry an IBAN.
 - **A bank feed is not an account.** One account can have several feeds (Revolut Joint has CZK, EUR, HUF and DKK pockets), so feeds link many-to-one to accounts.
 - **Feed sources sit behind one interface**: GoCardless Bank Account Data and statement-file upload to start, others later.
 - **Bank rows keep** the bank's raw JSON, the booking and transaction dates, the native amount and currency, and what was decided about each: expense, income, transfer, settlement, duplicate or skipped, with links to what it became. Several bank rows can point at one expense.
@@ -60,21 +61,21 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 - **Merchants are records** with a name, a default category and the bank texts that map to them, so top merchants and subscriptions don't split on spelling.
 - **Split lines**: an expense can have lines with their own category and amount that add up to its total. E-shop orders can fill them in later.
 - **Refunds attach to the original expense**, so it shows net in its own category and month.
-- **Foreign currency**: an expense can store the original amount and currency next to the household-currency amount everything adds up in.
-- **Trips**: a trips table, and an expense can belong to a trip (including a single lump sum booked for the whole trip).
+- ~~**Foreign currency**~~ (done 2026-11-14): an expense can store the original amount and currency next to the household-currency amount everything adds up in.
+- ~~**Trips**~~ (done 2026-11-14): a trips table, and an expense can belong to a trip (including a single lump sum booked for the whole trip).
 - **Business**: business money counts in the household, but business items are tagged so they can be shown or hidden.
 - **Recurring payments** are detected from history. Confirming one makes it a known recurring item with an expected amount and day, and the app flags when it changes or is missed.
 
 ### Income
 
 - **Gross lines and deductions**: income is recorded gross; health and social insurance advances (ZPMV, OSSZ) are deductions, so earned, deducted and net are all visible. Neither counts as spending.
-- **Two dates**: the month it was earned (what reports use) and the date it arrived (what links it to the bank row). A salary paid on 2 November counts for October.
+- ~~**Two dates**~~ (done 2026-11-14): the month it was earned (what reports use) and the date it arrived (what links it to the bank row). A salary paid on 2 November counts for October.
 - **Costs netted against an invoice** (the old "(odpočet z faktury)") are expenses paid out of that income, with no bank account; the income stays gross.
 - Income can be joint.
 
 ### Assets and net worth
 
-- ~~**Investments become assets**~~ (done 2026-11-14) with a kind: market (priced from closing prices), savings, building savings or pension, receivable, vehicle. They share contributions and valuations.
+- ~~**Investments become assets**~~ (done 2026-11-14) with a kind: market (fund, stock, bond, crypto; can be priced from closing prices), savings, savings scheme (building savings, pension), receivable, vehicle, property, other (valued by hand). They share contributions, valuations and fees. Still to come: liabilities (loans, what's owed on a credit card) and savings balances read from bank feeds.
 
 ### Reporting and planning
 
@@ -107,5 +108,11 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
      Fees (2026-11-03): a holding records the fees its provider charged (discounts negative), shown as a running total and in its history. On a holding valued by hand they're informational: the provider already took them out of the value, so they change neither worth nor money put in. On a market-valued holding they're broker commissions paid on top of the shares, so they count as money put in and lower the gain. Each holding breaks them down by year against its average worth (a yearly rate, part years scaled up), and overall against money put in and the gain before fees. Investments show CZK in whole crowns.
      Assets (2026-11-14): investments became assets (tables, API `/assets`, the Assets page). Besides the market kinds (fund, stock, bond, crypto), an asset can be savings, a savings scheme (building savings, pension), money owed to the household, a vehicle, property or other; only market kinds can follow a security, the rest are valued by hand. Past activity entries were renamed with them.
      Not yet: loans and other liabilities, savings balances from bank feeds, money-weighted return, entering a buy in the security's currency.
-3. **Next**: the data model changes above (members without login, debts and split ratios, account kinds, merchants, split lines, trips, income deductions), the old-app import, inbox (bank import), budget.
+   - ~~**Model for the import**~~ (done 2026-11-14):
+     - Members without a login: owners add them by name, and they can't sign in. An invite can name one to claim, and whoever accepts takes their place, with everything that was theirs moving across through cascading references.
+     - Accounts have a kind (bank, credit card, cash, other) and an optional IBAN, checked and unique per household.
+     - Trips have optional dates and a Trips page with what each cost. An expense can belong to a trip.
+     - An expense can record what it cost in another currency.
+     - Income carries the month it was earned, which the Income page and Overview count it in, as well as the date it arrived.
+3. **Next**: merchants, the old-app import, debts and split ratios, split lines, income deductions, inbox (bank import), budget.
 4. **Later**: net worth, forecast, MCP server, mobile apps, hosting, goals, wishlist.
