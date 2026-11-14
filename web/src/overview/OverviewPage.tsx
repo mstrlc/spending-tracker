@@ -76,6 +76,7 @@ export function OverviewPage() {
           categories={categories}
           currency={household.currency}
           inboxPath={`/h/${household.id}/inbox`}
+          recurringPath={`/h/${household.id}/recurring`}
           filtered={whose !== undefined}
         />
       )}
@@ -142,12 +143,14 @@ function OverviewBody({
   categories,
   currency,
   inboxPath,
+  recurringPath,
   filtered,
 }: {
   data: Overview;
   categories: Category[];
   currency: string;
   inboxPath: string;
+  recurringPath: string;
   /** Showing joint or one member's figures: net worth and bank data stay the household's. */
   filtered: boolean;
 }) {
@@ -263,6 +266,9 @@ function OverviewBody({
               }))}
             />
           )}
+          <Link to={recurringPath} className="mt-4 inline-block text-sm font-medium underline underline-offset-4">
+            Track recurring payments
+          </Link>
         </OverviewCard>
 
         <TopList title="Top merchants" rows={data.topMerchants} currency={currency} empty="No spending this month." />

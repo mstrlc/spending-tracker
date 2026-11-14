@@ -15,6 +15,7 @@ import dev.spendingtracker.server.common.versionParam
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Merchants
+import dev.spendingtracker.server.db.RecurringPayments
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.db.isForeignKeyViolation
 import dev.spendingtracker.server.db.isUniqueViolation
@@ -166,6 +167,18 @@ fun Route.merchantRoutes() = route("/merchants") {
                     it[defaultCategoryId] = source[Merchants.defaultCategoryId]
                     it[version] = target[Merchants.version] + 1
                     it[updatedAt] = now
+                }
+            }
+            // A recurring payment moves along unless the merchant merged into has its own; then the source's goes
+            // with it (cascading delete).
+            val targetHasRecurring = !RecurringPayments.selectAll()
+                .where { (RecurringPayments.householdId eq householdId) and (RecurringPayments.merchantId eq intoId) }
+                .empty()
+            if (!targetHasRecurring) {
+                RecurringPayments.update({ (RecurringPayments.householdId eq householdId) and (RecurringPayments.merchantId eq id) }) {
+                    it[RecurringPayments.merchantId] = intoId
+                    it[RecurringPayments.version] = RecurringPayments.version + 1
+                    it[RecurringPayments.updatedAt] = now
                 }
             }
             Merchants.deleteWhere { match(householdId, id) }

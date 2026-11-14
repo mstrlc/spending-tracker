@@ -23,6 +23,7 @@ import dev.spendingtracker.server.bank.bankRoutes
 import dev.spendingtracker.server.inbox.inboxRoutes
 import dev.spendingtracker.server.debt.debtRoutes
 import dev.spendingtracker.server.trip.tripRoutes
+import dev.spendingtracker.server.recurring.recurringRoutes
 import dev.spendingtracker.server.overview.overviewRoutes
 import dev.spendingtracker.server.order.orderRoutes
 import dev.spendingtracker.shared.api.ApiError
@@ -283,6 +284,7 @@ fun Route.householdRoutes() = route("/households") {
         incomeRoutes()
         assetRoutes()
         tripRoutes()
+        recurringRoutes()
         debtRoutes()
         merchantRoutes()
         importRoutes()

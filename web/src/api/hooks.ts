@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import { ApiFailure, unwrap } from "./errors";
+import { todayIso } from "../lib/dates";
 import type {
   AccountInput,
   ActivityEntity,
@@ -19,6 +20,7 @@ import type {
   IncomeInput,
   InboxRuleInput,
   AssetInput,
+  RecurringPaymentInput,
   MerchantInput,
   OrderItemAssignment,
   SettlementInput,
@@ -50,6 +52,7 @@ export const keys = {
   assets: (id: string) => ["households", id, "assets"] as const,
   trips: (id: string) => ["households", id, "trips"] as const,
   merchants: (id: string) => ["households", id, "merchants"] as const,
+  recurring: (id: string) => ["households", id, "recurring"] as const,
   contributions: (id: string, assetId: string) => ["households", id, "assets", assetId, "contributions"] as const,
   valuations: (id: string, assetId: string) => ["households", id, "assets", assetId, "valuations"] as const,
   fees: (id: string, assetId: string) => ["households", id, "assets", assetId, "fees"] as const,
@@ -496,6 +499,51 @@ export function useDeleteTrip(householdId: string) {
 
 export function useMerchants(householdId: string) {
   return useQuery({
+// ---- Recurring payments ----
+
+/** Recurring payments as they stand on [today], and merchants that look recurring. */
+export function useRecurring(householdId: string, today: string) {
+  return useQuery({
+    queryKey: [...keys.recurring(householdId), today],
+    queryFn: async () =>
+      unwrap(await api.GET("/api/households/{householdId}/recurring", { params: { path: { householdId }, query: { today } } })),
+  });
+}
+
+export function useSaveRecurring(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: RecurringPaymentInput }) =>
+      id === undefined
+        ? unwrap(
+            await api.POST("/api/households/{householdId}/recurring", {
+              params: { path: { householdId }, query: { today: todayIso() } },
+              body: input,
+            }),
+          )
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/recurring/{recurringId}", {
+              params: { path: { householdId, recurringId: id }, query: { today: todayIso() } },
+              body: input,
+            }),
+          ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.recurring(householdId) }),
+  });
+}
+
+export function useDeleteRecurring(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/recurring/{recurringId}", {
+          params: { path: { householdId, recurringId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.recurring(householdId) }),
+  });
+}
+
     queryKey: keys.merchants(householdId),
     queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/merchants", { params: { path: { householdId } } })),
   });

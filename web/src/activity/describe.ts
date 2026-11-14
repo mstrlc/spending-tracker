@@ -34,6 +34,7 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   bank_row: "bank row",
   import: "import",
 };
+  recurring_payment: "recurring payment",
 
 const LABELS: Record<string, string> = {
   name: "Name",
@@ -59,6 +60,9 @@ const LABELS: Record<string, string> = {
   startDate: "From",
   endDate: "To",
   iban: "IBAN",
+  expectedAmountMinor: "Expected",
+  intervalMonths: "Every",
+  anchorDate: "Due from",
   ownerUserId: "Owner",
   currency: "Currency",
   status: "Status",
@@ -115,6 +119,7 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
     case "amountMinor":
     case "valueMinor":
       return value === null ? "–" : formatMoney(Number(value), lookups.currency);
+    case "expectedAmountMinor":
     case "categoryId":
     case "parentId":
     case "defaultCategoryId":

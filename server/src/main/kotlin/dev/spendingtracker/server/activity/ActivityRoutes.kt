@@ -202,6 +202,7 @@ private fun ResultRow.toEntry(
             ?: current.text("message")?.takeIf { it.isNotBlank() }
         ActivityEntity.IMPORT -> "household data"
         ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET,
+        ActivityEntity.RECURRING_PAYMENT -> current.text("merchant_id")?.let(Uuid::parse)?.let(merchants::get)
         ActivityEntity.TRIP, ActivityEntity.MERCHANT -> current.text("name")
     }
     val actor = this[AuditLog.actorUserId]

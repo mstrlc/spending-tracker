@@ -12,6 +12,7 @@ import { IncomePage } from "./income/IncomePage";
 import { TransfersPage } from "./transfers/TransfersPage";
 import { AssetsPage } from "./assets/AssetsPage";
 import { TripsPage } from "./trips/TripsPage";
+import { RecurringPage } from "./recurring/RecurringPage";
 import { BalancesPage } from "./debts/BalancesPage";
 import { MerchantsPage } from "./merchants/MerchantsPage";
 import { ImportPage } from "./import/ImportPage";
@@ -44,6 +45,7 @@ const PAGE_TITLES: Record<string, string> = {
   merchants: "Merchants",
   balances: "Balances",
   trips: "Trips",
+  recurring: "Recurring",
   accounts: "Accounts",
   categories: "Categories",
   members: "Members",
@@ -94,6 +96,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="merchants" element={<MerchantsPage />} />
               <Route path="balances" element={<BalancesPage />} />
               <Route path="trips" element={<TripsPage />} />
+              <Route path="recurring" element={<RecurringPage />} />
               <Route path="accounts" element={<AccountsPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="members" element={<MembersPage />} />

@@ -25,6 +25,7 @@ const FILTERS: { value: ActivityEntity | ""; label: string }[] = [
   { value: "split_share", label: "Split shares" },
   { value: "trip", label: "Trips" },
   { value: "merchant", label: "Merchants" },
+  { value: "recurring_payment", label: "Recurring" },
   { value: "account", label: "Accounts" },
   { value: "category", label: "Categories" },
   { value: "member", label: "Members" },

@@ -523,3 +523,22 @@ object OrderItems : Table("order_items") {
     val assigned = bool("assigned").default(false)
     override val primaryKey = PrimaryKey(id)
 }
+
+/** V45: a merchant charged on a schedule (see recurring/Recurring.kt). */
+object RecurringPayments : Table("recurring_payments") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val merchantId = uuid("merchant_id")
+    val status = text("status")
+    val expectedAmountMinor = long("expected_amount_minor")
+    val intervalMonths = integer("interval_months")
+    val anchorDate = date("anchor_date")
+    val categoryId = uuid("category_id").nullable()
+    val accountId = uuid("account_id").nullable()
+    val paidByUserId = uuid("paid_by_user_id").nullable()
+    val notes = text("notes")
+    val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}

@@ -17,6 +17,7 @@ import {
   TagIcon,
   ScaleIcon,
   TrendingUpIcon,
+  RepeatIcon,
   UsersIcon,
   WalletIcon,
 } from "lucide-react";
@@ -132,6 +133,7 @@ const SECTION_GROUPS: { label?: string; sections: Section[] }[] = [
       { to: "transfers", label: "Transfers", icon: <ArrowLeftRightIcon /> },
       { to: "balances", label: "Balances", icon: <ScaleIcon /> },
       { to: "assets", label: "Assets", icon: <TrendingUpIcon /> },
+      { to: "recurring", label: "Recurring", icon: <RepeatIcon /> },
     ],
   },
   {

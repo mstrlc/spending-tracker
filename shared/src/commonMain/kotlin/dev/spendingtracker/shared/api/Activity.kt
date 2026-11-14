@@ -27,6 +27,7 @@ enum class ActivityEntity {
     @SerialName("bank_row") BANK_ROW,
     @SerialName("import") IMPORT,
 }
+    @SerialName("recurring_payment") RECURRING_PAYMENT,
 
 @Serializable
 enum class ActivityAction {
