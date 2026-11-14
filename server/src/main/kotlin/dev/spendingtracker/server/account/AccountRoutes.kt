@@ -158,6 +158,8 @@ fun Route.accountRoutes() = route("/accounts") {
         }
         call.respond(HttpStatusCode.NoContent)
     }
+
+    route("/{accountId}/balances") { accountBalanceRoutes() }
 }
 
 private data class ValidAccount(

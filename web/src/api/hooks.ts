@@ -3,6 +3,7 @@ import { api } from "./client";
 import { ApiFailure, unwrap } from "./errors";
 import { todayIso } from "../lib/dates";
 import type {
+  AccountBalanceInput,
   AccountInput,
   ActivityEntity,
   BankFeedInput,
@@ -19,8 +20,8 @@ import type {
   HouseholdSettings,
   IncomeInput,
   InboxRuleInput,
-  AssetInput,
   RecurringPaymentInput,
+  AssetInput,
   MerchantInput,
   OrderItemAssignment,
   SettlementInput,
@@ -51,13 +52,16 @@ export const keys = {
       : (["households", id, "transfers", from, to, accountId ?? ""] as const),
   assets: (id: string) => ["households", id, "assets"] as const,
   trips: (id: string) => ["households", id, "trips"] as const,
-  merchants: (id: string) => ["households", id, "merchants"] as const,
   recurring: (id: string) => ["households", id, "recurring"] as const,
+  merchants: (id: string) => ["households", id, "merchants"] as const,
   contributions: (id: string, assetId: string) => ["households", id, "assets", assetId, "contributions"] as const,
   valuations: (id: string, assetId: string) => ["households", id, "assets", assetId, "valuations"] as const,
   fees: (id: string, assetId: string) => ["households", id, "assets", assetId, "fees"] as const,
   assetHistory: (id: string, assetId?: string) => ["households", id, "assets", "history", assetId ?? "all"] as const,
   assetSummary: (id: string) => ["households", id, "assets", "summary"] as const,
+  // Under "assets", so anything that refreshes the holdings refreshes the account values too.
+  accountValues: (id: string) => ["households", id, "assets", "accounts"] as const,
+  accountBalances: (id: string, accountId: string) => ["households", id, "assets", "accounts", accountId, "balances"] as const,
   securitySearch: (query: string) => ["securities", query] as const,
   activity: (id: string, entity?: ActivityEntity) => ["households", id, "activity", entity ?? "all"] as const,
   overview: (id: string, month: string, whose?: string) => ["households", id, "overview", month, whose ?? "all"] as const,
@@ -495,10 +499,6 @@ export function useDeleteTrip(householdId: string) {
   });
 }
 
-// ---- Merchants ----
-
-export function useMerchants(householdId: string) {
-  return useQuery({
 // ---- Recurring payments ----
 
 /** Recurring payments as they stand on [today], and merchants that look recurring. */
@@ -544,6 +544,10 @@ export function useDeleteRecurring(householdId: string) {
   });
 }
 
+// ---- Merchants ----
+
+export function useMerchants(householdId: string) {
+  return useQuery({
     queryKey: keys.merchants(householdId),
     queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/merchants", { params: { path: { householdId } } })),
   });
@@ -806,6 +810,60 @@ export function useAssetSummary(householdId: string) {
 }
 
 /** Put in and worth at each month end, then today: all holdings, or only [assetId]. */
+/** Every account's value today: read from the bank or worked out from a balance check. */
+export function useAccountValues(householdId: string) {
+  return useQuery({
+    queryKey: keys.accountValues(householdId),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/households/{householdId}/assets/accounts", { params: { path: { householdId } } })),
+  });
+}
+
+export function useAccountBalances(householdId: string, accountId: string) {
+  return useQuery({
+    queryKey: keys.accountBalances(householdId, accountId),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/accounts/{accountId}/balances", {
+          params: { path: { householdId, accountId } },
+        }),
+      ),
+  });
+}
+
+// A balance check moves net worth, so the holdings' totals and the overview refetch too.
+function invalidateBalanceChecks(qc: ReturnType<typeof useQueryClient>, householdId: string) {
+  qc.invalidateQueries({ queryKey: keys.assets(householdId) });
+  qc.invalidateQueries({ queryKey: ["households", householdId, "overview"] });
+}
+
+export function useAddAccountBalance(householdId: string, accountId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: AccountBalanceInput) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/accounts/{accountId}/balances", {
+          params: { path: { householdId, accountId } },
+          body: input,
+        }),
+      ),
+    onSettled: () => invalidateBalanceChecks(qc, householdId),
+  });
+}
+
+export function useDeleteAccountBalance(householdId: string, accountId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/accounts/{accountId}/balances/{balanceId}", {
+          params: { path: { householdId, accountId, balanceId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => invalidateBalanceChecks(qc, householdId),
+  });
+}
+
 export function useAssetHistory(householdId: string, assetId?: string) {
   return useQuery({
     queryKey: keys.assetHistory(householdId, assetId),

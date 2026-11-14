@@ -225,7 +225,7 @@ export function EntryForm({
       {fromTransfer && (
         <p className="text-xs text-muted-foreground">
           This entry came from a transfer and is read-only.{" "}
-          <Link to={`/households/${household.id}/transfers`} className="font-medium text-foreground underline">
+          <Link to={`/h/${household.id}/transfers`} className="font-medium text-foreground underline">
             Edit or delete the transfer
           </Link>{" "}
           instead.

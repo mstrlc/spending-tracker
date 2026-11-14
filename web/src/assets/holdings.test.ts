@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Contribution, Asset, Valuation } from "../api/types";
-import { formatPercent, gainRatio, historyEntries, portfolioTotals } from "./holdings";
+import { formatPercent, gainRatio, groupByKind, groupByOwner, historyEntries, portfolioTotals } from "./holdings";
 
 const holding = (contributedMinor: number, valueMinor: number): Asset => ({
   id: String(contributedMinor),
@@ -43,6 +43,49 @@ describe("portfolioTotals", () => {
     expect(gainRatio({ contributedMinor: 0, gainMinor: 0 })).toBeNull();
     expect(formatPercent(-0.02)).toBe("−2.0%");
     expect(formatPercent(0.00001)).toBe("0.0%");
+  });
+});
+
+describe("groupByKind", () => {
+  it("groups by kind in KINDS order with each group's totals, leaving empty kinds out", () => {
+    const loan: Asset = { ...holding(0, -80_000), id: "l1", name: "Loan", kind: "loan", valueSource: "valuation", gainMinor: 0 };
+    const groups = groupByKind([
+      { ...holding(48_000, 50_000), id: "s1", name: "Spoření", kind: "savings" },
+      loan,
+      holding(100_000, 112_000),
+      { ...holding(10_000, 11_000), id: "f2", name: "Stock", kind: "stock" },
+    ]);
+    expect(groups.map((g) => [g.label, g.valueMinor, g.contributedMinor, g.gainMinor, g.rows.map((r) => r.id)])).toEqual([
+      ["Fund", 112_000, 100_000, 12_000, ["100000"]],
+      ["Stock", 11_000, 10_000, 1_000, ["f2"]],
+      ["Savings", 50_000, 48_000, 2_000, ["s1"]],
+      ["Loan", -80_000, 0, 0, ["l1"]],
+    ]);
+  });
+
+  it("has no gain when none of the group's rows has one, so no percentage is shown", () => {
+    const savings: Asset = { ...holding(0, 350_000), id: "s", name: "Spoření", kind: "savings", valueSource: "bank", gainMinor: null };
+    const [group] = groupByKind([savings]);
+    expect(group.valueMinor).toBe(350_000);
+    expect(group.gainMinor).toBeNull();
+    expect(gainRatio(group)).toBeNull();
+  });
+});
+
+describe("groupByOwner", () => {
+  it("groups in member order with shared last, owners outside the household counting as shared", () => {
+    const a = (id: string, ownerUserId: string | null, valueMinor: number, gainMinor: number | null = null): Asset => ({
+      ...holding(0, valueMinor),
+      id,
+      ownerUserId,
+      gainMinor,
+    });
+    const groups = groupByOwner([a("x", "u2", 10), a("y", "u1", 20, 5), a("z", null, 30), a("w", "gone", 40)], ["u1", "u2"]);
+    expect(groups.map((g) => [g.key, g.ownerUserId, g.valueMinor, g.gainMinor, g.rows.map((r) => r.id)])).toEqual([
+      ["u1", "u1", 20, 5, ["y"]],
+      ["u2", "u2", 10, null, ["x"]],
+      ["shared", null, 70, null, ["z", "w"]],
+    ]);
   });
 });
 

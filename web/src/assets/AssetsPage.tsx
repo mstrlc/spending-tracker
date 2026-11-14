@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "react-router";
-import { AssetIcon, PersonLabel, gainClass } from "../chips";
+import { AssetIcon, PersonLabel, assetKindTone, gainClass, memberTone, type Tone } from "../chips";
 import {
   useAccounts,
+  useAccountValues,
   useAssetHistory,
   useAssets,
   useAssetSummary,
@@ -15,12 +16,15 @@ import type { Fee, HistoryPoint, Asset, SecurityQuote } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { PlusIcon } from "lucide-react";
 import { formatDay } from "../lib/dates";
+import { rankSlices, ShareBar } from "../shares";
+import { EmptyFilterRow, SortableHead, sortRows, useTableSortAndFilter, type SortValue } from "../sorting";
 import { EmptyState, ErrorText, Money, PageHeader, Sheet, SheetBody, SkeletonRows, Summary, Surface } from "../ui";
 import { usePendingDeleteIds } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { AccountsSection } from "./AccountsSection";
 import { EntryForm, type EntryTarget } from "./EntryForm";
 import { HistoryChart } from "./HistoryChart";
 import { HoldingForm } from "./HoldingForm";
@@ -31,11 +35,18 @@ import {
   formatPercent,
   formatSigned,
   gainRatio,
+  groupByKind,
+  groupByOwner,
   historyEntries,
   isLiabilityKind,
-  kindLabel,
   portfolioTotals,
+  type AssetGroup,
 } from "./holdings";
+
+type OwnedKey = "name" | "owner" | "putIn" | "worth" | "gain" | "pct";
+type OwedKey = "name" | "owner" | "repaid" | "owed";
+/** What the tables and the bar group the holdings by; person only makes sense with more than one member. */
+type GroupBy = "kind" | "person";
 
 /** "€168.06" in the security's own currency. */
 function formatClose(security: SecurityQuote): string {
@@ -72,8 +83,11 @@ export function AssetsPage() {
   const summaryQuery = useAssetSummary(household.id);
   const history = useAssetHistory(household.id);
   const members = useMembers(household.id).data ?? [];
+  const accountList = useAccounts(household.id).data ?? [];
+  const accountValues = useAccountValues(household.id).data ?? [];
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
   const [flashId, setFlashId] = useState<string | null>(null);
+  const [groupBy, setGroupBy] = useState<GroupBy>("kind");
 
   const pendingDeletes = usePendingDeleteIds();
   const rows = (assets.data ?? []).filter((a) => !pendingDeletes.has(a.id));
@@ -83,6 +97,7 @@ export function AssetsPage() {
   const summary = summaryQuery.data ?? {
     assetsMinor: totals.valueMinor,
     liabilitiesMinor: owed.reduce((s, i) => s + i.valueMinor, 0),
+    accountsMinor: 0,
     netMinor: totals.valueMinor + owed.reduce((s, i) => s + i.valueMinor, 0),
     contributedMinor: totals.contributedMinor,
     gainMinor: totals.gainMinor,
@@ -90,11 +105,86 @@ export function AssetsPage() {
     annualReturn: null,
   };
   const ratio = gainRatio(summary);
+  const accountsMinor = summary.accountsMinor ?? 0;
   const showOwner = members.length > 1;
+  const { currency } = household;
+  const ownerName = (i: Asset) => members.find((m) => m.userId === i.ownerUserId)?.displayName ?? "Shared";
+  const ownedSortValues: Record<OwnedKey, (i: Asset) => SortValue> = {
+    name: (i) => i.name,
+    owner: ownerName,
+    putIn: (i) => i.contributedMinor,
+    worth: (i) => i.valueMinor,
+    gain: (i) => i.gainMinor,
+    pct: (i) => gainRatio(i),
+  };
+  const ownedFilterValues: Record<OwnedKey, (i: Asset) => SortValue> = {
+    name: (i) => i.name,
+    owner: ownerName,
+    putIn: (i) => formatAsset(i.contributedMinor, currency),
+    worth: (i) => formatAsset(i.valueMinor, currency),
+    gain: (i) => (i.gainMinor === null ? "" : formatSigned(i.gainMinor, currency)),
+    pct: (i) => {
+      const r = gainRatio(i);
+      return r === null ? "" : formatPercent(r);
+    },
+  };
+  // Biggest holdings first within each kind, so the table reads like the summary above it.
+  const { sort, onSort, clearFilters, filtered, filterFor } = useTableSortAndFilter<Asset, OwnedKey>(owned, ownedSortValues, ownedFilterValues, {
+    key: "worth",
+    dir: "desc",
+  });
+  const owedSortValues: Record<OwedKey, (i: Asset) => SortValue> = {
+    name: (i) => i.name,
+    owner: ownerName,
+    repaid: (i) => i.repaidMinor ?? 0,
+    owed: (i) => -i.valueMinor,
+  };
+  const owedFilterValues: Record<OwedKey, (i: Asset) => SortValue> = {
+    name: (i) => i.name,
+    owner: ownerName,
+    repaid: (i) => formatAsset(i.repaidMinor ?? 0, currency),
+    owed: (i) => formatAsset(-i.valueMinor, currency),
+  };
+  const { sort: owedSort, onSort: onOwedSort, filtered: owedFiltered, filterFor: owedFilterFor } = useTableSortAndFilter<Asset, OwedKey>(
+    owed,
+    owedSortValues,
+    owedFilterValues,
+    { key: "owed", dir: "desc" },
+  );
+  // The holdings grouped for the tables and the bar under the summary: by kind, or optionally by person.
+  const memberIds = members.map((m) => m.userId);
+  const groupLabel = (g: AssetGroup) => (g.kind ? g.label : (members.find((m) => m.userId === g.ownerUserId)?.displayName ?? "Shared"));
+  const ownedGroups = groupBy === "kind" ? groupByKind(filtered) : groupByOwner(filtered, memberIds);
+  const owedGroups = groupBy === "kind" ? groupByKind(owedFiltered) : groupByOwner(owedFiltered, memberIds);
+  // By kind, the bar splits owned assets. By person it splits what each one has in all: their assets and the
+  // accounts no asset follows, less what they owe.
+  const personOf = (userId: string | null | undefined) => (userId && memberIds.includes(userId) ? userId : null);
+  const personTotals = new Map<string | null, number>();
+  const addTo = (userId: string | null | undefined, minor: number) =>
+    personTotals.set(personOf(userId), (personTotals.get(personOf(userId)) ?? 0) + minor);
+  if (groupBy === "person") {
+    for (const a of rows) addTo(a.ownerUserId, a.valueMinor);
+    for (const v of accountValues) {
+      if (v.followedByAssetId || !v.valueMinor) continue;
+      addTo(accountList.find((a) => a.id === v.accountId)?.ownerUserId, v.valueMinor);
+    }
+  }
+  const personName = (userId: string | null) => members.find((m) => m.userId === userId)?.displayName ?? "Shared";
+  const slices =
+    groupBy === "person"
+      ? rankSlices(
+          new Map([...memberIds, null].filter((id) => personTotals.has(id)).map((id) => [personName(id), personTotals.get(id)!])),
+          new Map([...memberIds, null].map((id): [string, Tone] => [personName(id), memberTone(members, id)])),
+        )
+      : rankSlices(
+          new Map(ownedGroups.map((g) => [groupLabel(g), g.valueMinor])),
+          new Map(ownedGroups.map((g): [string, Tone] => [groupLabel(g), g.kind ? assetKindTone(g.kind) : "neutral"])),
+        );
+  // Grouped by person, the "Held by" column would only repeat the group header.
+  const showOwnerCol = showOwner && groupBy === "kind";
   const viewing = editor.mode === "view" ? rows.find((i) => i.id === editor.id) : undefined;
   const openAdd = () => setEditor({ mode: "add" });
   const close = () => setEditor({ mode: "closed" });
-  const { currency } = household;
 
   return (
     <>
@@ -108,24 +198,61 @@ export function AssetsPage() {
         <div className="flex flex-col gap-5">
           <Summary
             items={[
-              { label: "Owned", value: <Money currency={currency}>{formatAsset(summary.assetsMinor, currency)}</Money> },
-              { label: "Owed", value: <Money currency={currency}>{formatAsset(Math.abs(summary.liabilitiesMinor), currency)}</Money> },
-              { label: "Net", value: <Money currency={currency}>{formatAsset(summary.netMinor, currency)}</Money> },
+              { label: "Net worth", value: <Money currency={currency}>{formatAsset(summary.netMinor, currency)}</Money> },
+              accountsMinor !== 0 && {
+                label: "In accounts",
+                value: <Money currency={currency}>{formatAsset(accountsMinor, currency)}</Money>,
+              },
+              // With nothing else in the net worth, the owned total is it, so it stays unspoken.
+              (owed.length > 0 || accountsMinor !== 0) && {
+                label: "Owned",
+                value: <Money currency={currency}>{formatAsset(summary.assetsMinor, currency)}</Money>,
+              },
+              owed.length > 0 && {
+                label: "Owed",
+                value: <Money currency={currency}>{formatAsset(Math.abs(summary.liabilitiesMinor), currency)}</Money>,
+              },
               (summary.contributedMinor > 0 || summary.gainMinor !== 0) && {
                 label: `Gain${ratio !== null ? ` · ${formatPercent(ratio)}` : ""}`,
                 value: <Money currency={currency}>{formatSigned(summary.gainMinor, currency)}</Money>,
               },
               summary.annualReturn !== null && {
-                label: "Yearly return (money-weighted)",
+                label: <span title="Money-weighted return (XIRR) of the whole portfolio">Yearly return</span>,
                 value: <span className="amount">{formatPercent(summary.annualReturn)}</span>,
               },
               summary.feesMinor !== 0 && {
-                label: `Fees paid${summary.contributedMinor > 0 ? ` · ${((summary.feesMinor / summary.contributedMinor) * 100).toFixed(1)}% of put in` : ""}`,
-                value: <Money currency={currency}>{formatAsset(summary.feesMinor, currency)}</Money>,
+                label: "Fees paid",
+                value: (
+                  <>
+                    <Money currency={currency}>{formatAsset(summary.feesMinor, currency)}</Money>
+                    {summary.contributedMinor > 0 && (
+                      <span className="ml-2 text-base font-normal text-muted-foreground">
+                        {((summary.feesMinor / summary.contributedMinor) * 100).toFixed(1)}% of put in
+                      </span>
+                    )}
+                  </>
+                ),
               },
             ]}
           />
-          {history.data && <HistoryChart points={history.data.points} currency={currency} />}
+          <div className="grid items-start gap-x-10 gap-y-6 xl:grid-cols-[minmax(0,1fr)_15rem]">
+            {history.data && <HistoryChart points={history.data.points} currency={currency} height={240} />}
+            {slices.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {showOwner ? (
+                  <Tabs value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
+                    <TabsList aria-label="Group assets by">
+                      <TabsTrigger value="kind">By kind</TabsTrigger>
+                      <TabsTrigger value="person">By person</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                ) : (
+                  <h2 className="text-sm font-medium text-muted-foreground">By kind</h2>
+                )}
+                <ShareBar label={groupBy === "person" ? "Net worth by person" : "Owned assets by kind"} slices={slices} />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -149,62 +276,112 @@ export function AssetsPage() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Asset</TableHead>
-                  {showOwner && <TableHead className="max-md:hidden">Held by</TableHead>}
-                  <TableHead className="text-right max-md:hidden">Put in</TableHead>
-                  <TableHead className="text-right">Worth ({currency})</TableHead>
-                  <TableHead className="text-right max-md:hidden">Gain</TableHead>
-                  <TableHead className="text-right">%</TableHead>
+                  <SortableHead column="name" sort={sort} onSort={onSort} filter={filterFor("name")}>
+                    Asset
+                  </SortableHead>
+                  {showOwnerCol && (
+                    <SortableHead column="owner" sort={sort} onSort={onSort} filter={filterFor("owner")} className="max-md:hidden">
+                      Held by
+                    </SortableHead>
+                  )}
+                  <SortableHead column="putIn" first="desc" sort={sort} onSort={onSort} className="text-right max-md:hidden">
+                    Put in
+                  </SortableHead>
+                  <SortableHead column="worth" first="desc" sort={sort} onSort={onSort} className="text-right">
+                    Worth ({currency})
+                  </SortableHead>
+                  <SortableHead column="gain" first="desc" sort={sort} onSort={onSort} className="text-right max-md:hidden">
+                    Gain
+                  </SortableHead>
+                  <SortableHead column="pct" first="desc" sort={sort} onSort={onSort} className="text-right">
+                    %
+                  </SortableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {owned.map((i) => {
-                  const r = gainRatio(i);
+                {filtered.length === 0 && <EmptyFilterRow colSpan={showOwnerCol ? 6 : 5} onClear={clearFilters} />}
+                {/* Like the Income page's group-by-person: each group gets a header row with its totals. */}
+                {ownedGroups.map((group) => {
+                  const groupRatio = gainRatio(group);
                   return (
-                    <TableRow
-                      key={i.id}
-                      className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
-                      onClick={() => setEditor({ mode: "view", id: i.id })}
-                      onAnimationEnd={() => setFlashId(null)}
-                    >
-                      <TableCell className="whitespace-normal">
-                        <div className="flex items-center gap-3">
-                          <AssetIcon kind={i.kind} />
-                          <div className="min-w-0">
-                            <button
-                              className="text-left font-medium outline-none hover:underline focus-visible:underline"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setEditor({ mode: "view", id: i.id });
-                              }}
-                            >
-                              {i.name}
-                            </button>
-                            <div className="text-xs text-muted-foreground">
-                              {kindLabel(i.kind)} · {valuedBy(i)}
+                    <Fragment key={group.key}>
+                      {/* One cell per column, so the group's worth and gain sit under their own columns. */}
+                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableCell className="py-1.5">
+                          {group.kind ? (
+                            <span className="flex items-center gap-2 text-sm font-medium">
+                              <AssetIcon kind={group.kind} className="size-6" />
+                              {group.label}
+                            </span>
+                          ) : (
+                            <div className="text-sm font-medium">
+                              <PersonLabel members={members} userId={group.ownerUserId} jointLabel="Shared" />
                             </div>
-                          </div>
-                        </div>
-                      </TableCell>
-                      {showOwner && (
-                        <TableCell className="text-muted-foreground max-md:hidden">
-                          <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
+                          )}
                         </TableCell>
-                      )}
-                      <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>
-                      <TableCell className="amount text-right">{formatAsset(i.valueMinor, currency)}</TableCell>
-                      <TableCell className={cn("amount text-right max-md:hidden", i.gainMinor !== null && gainClass(i.gainMinor))}>
-                        {i.gainMinor === null ? "–" : formatSigned(i.gainMinor, currency)}
-                      </TableCell>
-                      <TableCell className="amount text-right">
-                        <div className={cn(r !== null && gainClass(r))}>{r === null ? "–" : formatPercent(r)}</div>
-                        {i.annualReturn !== null && (
-                          <div className="text-xs text-muted-foreground" title="Yearly return (money-weighted)">
-                            {formatPercent(i.annualReturn)}/yr
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
+                        {showOwnerCol && <TableCell className="py-1.5 max-md:hidden" />}
+                        <TableCell className="py-1.5 max-md:hidden" />
+                        <TableCell className="amount py-1.5 text-right font-medium">{formatAsset(group.valueMinor, currency)}</TableCell>
+                        <TableCell
+                          className={cn(
+                            "amount py-1.5 text-right font-medium max-md:hidden",
+                            group.gainMinor !== null && gainClass(group.gainMinor),
+                          )}
+                        >
+                          {group.gainMinor === null ? "–" : formatSigned(group.gainMinor, currency)}
+                        </TableCell>
+                        <TableCell className={cn("amount py-1.5 text-right font-medium", groupRatio !== null && gainClass(groupRatio))}>
+                          {groupRatio === null ? "–" : formatPercent(groupRatio)}
+                        </TableCell>
+                      </TableRow>
+                    {sortRows(group.rows, sort, ownedSortValues).map((i) => {
+                      const r = gainRatio(i);
+                      return (
+                        <TableRow
+                          key={i.id}
+                          className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
+                          onClick={() => setEditor({ mode: "view", id: i.id })}
+                          onAnimationEnd={() => setFlashId(null)}
+                        >
+                          <TableCell className="whitespace-normal">
+                            <div className="flex items-center gap-3">
+                              <AssetIcon kind={i.kind} />
+                              <div className="min-w-0">
+                                <button
+                                  className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setEditor({ mode: "view", id: i.id });
+                                  }}
+                                >
+                                  {i.name}
+                                </button>
+                                <div className="text-xs text-muted-foreground">{valuedBy(i)}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          {showOwnerCol && (
+                            <TableCell className="text-muted-foreground max-md:hidden">
+                              <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
+                            </TableCell>
+                          )}
+                          <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>
+                          <TableCell className="amount text-right">{formatAsset(i.valueMinor, currency)}</TableCell>
+                          <TableCell className={cn("amount text-right max-md:hidden", i.gainMinor !== null && gainClass(i.gainMinor))}>
+                            {i.gainMinor === null ? "–" : formatSigned(i.gainMinor, currency)}
+                          </TableCell>
+                          <TableCell className="amount text-right">
+                            <div className={cn(r !== null && gainClass(r))}>{r === null ? "–" : formatPercent(r)}</div>
+                            {i.annualReturn !== null && (
+                              <div className="text-xs text-muted-foreground" title="Yearly return (money-weighted)">
+                                {formatPercent(i.annualReturn)}/yr
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -220,53 +397,85 @@ export function AssetsPage() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Liability</TableHead>
-                  {showOwner && <TableHead className="max-md:hidden">Held by</TableHead>}
-                  <TableHead className="text-right max-md:hidden">Repaid</TableHead>
-                  <TableHead className="text-right">Owed ({currency})</TableHead>
+                  <SortableHead column="name" sort={owedSort} onSort={onOwedSort} filter={owedFilterFor("name")}>
+                    Liability
+                  </SortableHead>
+                  {showOwnerCol && (
+                    <SortableHead column="owner" sort={owedSort} onSort={onOwedSort} className="max-md:hidden">
+                      Held by
+                    </SortableHead>
+                  )}
+                  <SortableHead column="repaid" first="desc" sort={owedSort} onSort={onOwedSort} className="text-right max-md:hidden">
+                    Repaid
+                  </SortableHead>
+                  <SortableHead column="owed" first="desc" sort={owedSort} onSort={onOwedSort} className="text-right">
+                    Owed ({currency})
+                  </SortableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {owed.map((i) => (
-                  <TableRow
-                    key={i.id}
-                    className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
-                    onClick={() => setEditor({ mode: "view", id: i.id })}
-                    onAnimationEnd={() => setFlashId(null)}
-                  >
-                    <TableCell className="whitespace-normal">
-                      <div className="flex items-center gap-3">
-                        <AssetIcon kind={i.kind} />
-                        <div className="min-w-0">
-                          <button
-                            className="text-left font-medium outline-none hover:underline focus-visible:underline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setEditor({ mode: "view", id: i.id });
-                            }}
-                          >
-                            {i.name}
-                          </button>
-                          <div className="text-xs text-muted-foreground">
-                            {kindLabel(i.kind)} · {valuedBy(i)}
+                {owedGroups.map((group) => (
+                  <Fragment key={group.key}>
+                    {/* One cell per column, so the group's owed total sits under the Owed column. */}
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableCell className="py-1.5">
+                        {group.kind ? (
+                          <span className="flex items-center gap-2 text-sm font-medium">
+                            <AssetIcon kind={group.kind} className="size-6" />
+                            {group.label}
+                          </span>
+                        ) : (
+                          <div className="text-sm font-medium">
+                            <PersonLabel members={members} userId={group.ownerUserId} jointLabel="Shared" />
                           </div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    {showOwner && (
-                      <TableCell className="text-muted-foreground max-md:hidden">
-                        <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
+                        )}
                       </TableCell>
-                    )}
-                    <TableCell className="amount text-right max-md:hidden">{formatAsset(i.repaidMinor ?? 0, currency)}</TableCell>
-                    <TableCell className="amount text-right">{formatAsset(-i.valueMinor, currency)}</TableCell>
-                  </TableRow>
+                      {showOwnerCol && <TableCell className="py-1.5 max-md:hidden" />}
+                      <TableCell className="py-1.5 max-md:hidden" />
+                      <TableCell className="amount py-1.5 text-right font-medium">{formatAsset(-group.valueMinor, currency)}</TableCell>
+                    </TableRow>
+                    {sortRows(group.rows, owedSort, owedSortValues).map((i) => (
+                      <TableRow
+                        key={i.id}
+                        className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
+                        onClick={() => setEditor({ mode: "view", id: i.id })}
+                        onAnimationEnd={() => setFlashId(null)}
+                      >
+                        <TableCell className="whitespace-normal">
+                          <div className="flex items-center gap-3">
+                            <AssetIcon kind={i.kind} />
+                            <div className="min-w-0">
+                              <button
+                                className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setEditor({ mode: "view", id: i.id });
+                                }}
+                              >
+                                {i.name}
+                              </button>
+                              <div className="text-xs text-muted-foreground">{valuedBy(i)}</div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        {showOwnerCol && (
+                          <TableCell className="text-muted-foreground max-md:hidden">
+                            <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
+                          </TableCell>
+                        )}
+                        <TableCell className="amount text-right max-md:hidden">{formatAsset(i.repaidMinor ?? 0, currency)}</TableCell>
+                        <TableCell className="amount text-right">{formatAsset(-i.valueMinor, currency)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
           </Surface>
         </div>
       )}
+
+      <AccountsSection groupBy={groupBy} />
 
       <Sheet
         open={editor.mode === "add" || editor.mode === "edit"}
@@ -363,7 +572,7 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
         </dl>
         {/* The fee breakdown needs the room; the chart and note come back with the history. */}
         {!entry && !showingFees && <p className="text-xs text-muted-foreground">{valuationNote(asset)}</p>}
-        {!entry && !showingFees && timeline.data && <HistoryChart points={timeline.data.points} currency={currency} height={110} />}
+        {!entry && !showingFees && timeline.data && <HistoryChart points={timeline.data.points} currency={currency} height={140} compactHeader />}
 
         {entry ? (
           <EntryForm
@@ -460,7 +669,7 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
                   </button>
                   {fromTransfer && (
                     <Link
-                      to={`/households/${household.id}/transfers`}
+                      to={`/h/${household.id}/transfers`}
                       className="shrink-0 rounded px-1.5 py-1 text-xs text-muted-foreground underline hover:text-foreground"
                     >
                       Transfer

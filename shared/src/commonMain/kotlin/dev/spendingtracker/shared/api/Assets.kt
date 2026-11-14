@@ -108,6 +108,9 @@ data class Asset(
 data class AssetSummary(
     val assetsMinor: Long,
     val liabilitiesMinor: Long,
+    /** Balances of accounts no asset follows, read from the bank or computed from a balance check. */
+    val accountsMinor: Long = 0,
+    /** Accounts, assets and liabilities together: the same net worth as the Overview's. */
     val netMinor: Long,
     val contributedMinor: Long,
     val gainMinor: Long,
@@ -154,8 +157,13 @@ data class FxRateQuote(val from: String, val to: String, val date: LocalDate, va
 @Serializable
 data class AssetHistory(val points: List<HistoryPoint>)
 
+/**
+ * [accountsMinor]: on the whole household's history only, what the accounts no holding follows held that day, when
+ * every one of them can be worked out (from bank readings, back through bank rows to a feed's start, or from balance
+ * checks); null before that.
+ */
 @Serializable
-data class HistoryPoint(val date: LocalDate, val contributedMinor: Long, val valueMinor: Long)
+data class HistoryPoint(val date: LocalDate, val contributedMinor: Long, val valueMinor: Long, val accountsMinor: Long? = null)
 
 /**
  * Money put into a holding on [date], at cost; negative when taken out. [quantity] is the shares bought (negative:

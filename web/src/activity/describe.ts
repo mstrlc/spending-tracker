@@ -17,6 +17,7 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   member: "member",
   invite: "invite",
   account: "account",
+  account_balance: "balance of",
   category: "category",
   expense: "expense",
   expense_line: "line of",
@@ -33,8 +34,8 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   transfer: "transfer",
   bank_row: "bank row",
   import: "import",
-};
   recurring_payment: "recurring payment",
+};
 
 const LABELS: Record<string, string> = {
   name: "Name",
@@ -59,10 +60,10 @@ const LABELS: Record<string, string> = {
   earnedMonth: "Earned in",
   startDate: "From",
   endDate: "To",
-  iban: "IBAN",
   expectedAmountMinor: "Expected",
   intervalMonths: "Every",
   anchorDate: "Due from",
+  iban: "IBAN",
   ownerUserId: "Owner",
   currency: "Currency",
   status: "Status",
@@ -118,8 +119,8 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
   switch (field) {
     case "amountMinor":
     case "valueMinor":
-      return value === null ? "–" : formatMoney(Number(value), lookups.currency);
     case "expectedAmountMinor":
+      return value === null ? "–" : formatMoney(Number(value), lookups.currency);
     case "categoryId":
     case "parentId":
     case "defaultCategoryId":

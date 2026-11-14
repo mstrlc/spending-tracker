@@ -146,12 +146,12 @@ private fun expenseMerchants(rows: List<ResultRow>): Map<Uuid, Uuid> {
         .toMap()
 }
 
-/** Current names of the accounts that transfer entries are between; deleted ones are missing. */
+/** Current names of the accounts that transfer entries are between and balance checks are of; deleted ones are missing. */
 private fun accountNames(rows: List<ResultRow>): Map<Uuid, String> {
-    val ids = rows.filter { it[AuditLog.entity] == "transfer" }
+    val ids = rows.filter { it[AuditLog.entity] == "transfer" || it[AuditLog.entity] == "account_balance" }
         .flatMap { row ->
             val record = (row[AuditLog.after] ?: row[AuditLog.before])?.let(::parseRow).orEmpty()
-            listOf("from_account_id", "to_account_id").mapNotNull { record.text(it)?.let(Uuid::parse) }
+            listOf("from_account_id", "to_account_id", "account_id").mapNotNull { record.text(it)?.let(Uuid::parse) }
         }
         .distinct()
     if (ids.isEmpty()) return emptyMap()
@@ -200,9 +200,10 @@ private fun ResultRow.toEntry(
         ActivityEntity.BANK_ROW -> current.text("text")?.takeIf { it.isNotBlank() }
             ?: current.text("counterparty_name")?.takeIf { it.isNotBlank() }
             ?: current.text("message")?.takeIf { it.isNotBlank() }
+        ActivityEntity.ACCOUNT_BALANCE -> current.text("account_id")?.let(Uuid::parse)?.let(accounts::get)
         ActivityEntity.IMPORT -> "household data"
-        ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET,
         ActivityEntity.RECURRING_PAYMENT -> current.text("merchant_id")?.let(Uuid::parse)?.let(merchants::get)
+        ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET,
         ActivityEntity.TRIP, ActivityEntity.MERCHANT -> current.text("name")
     }
     val actor = this[AuditLog.actorUserId]

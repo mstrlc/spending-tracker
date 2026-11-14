@@ -1,5 +1,7 @@
 package dev.spendingtracker.server.asset
 
+import dev.spendingtracker.server.account.Ledger
+import dev.spendingtracker.server.account.loadLedger
 import dev.spendingtracker.server.auth.userId
 import dev.spendingtracker.server.common.ApiException
 import dev.spendingtracker.server.common.badRequest
@@ -21,6 +23,7 @@ import dev.spendingtracker.server.db.AssetValuations
 import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.BankBalances
 import dev.spendingtracker.server.db.BankFeeds
+import dev.spendingtracker.server.db.BankRows
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.db.isUniqueViolation
 import dev.spendingtracker.server.household.household
@@ -33,6 +36,8 @@ import dev.spendingtracker.shared.api.HistoryPoint
 import dev.spendingtracker.shared.api.ContributionInput
 import dev.spendingtracker.shared.api.Asset
 import dev.spendingtracker.shared.api.AssetHistory
+import dev.spendingtracker.shared.api.AccountValue
+import dev.spendingtracker.shared.api.AccountValueSource
 import dev.spendingtracker.shared.api.AssetInput
 import dev.spendingtracker.shared.api.AssetKind
 import dev.spendingtracker.shared.api.AssetSummary
@@ -52,6 +57,7 @@ import io.ktor.server.routing.RoutingCall
 import io.ktor.server.routing.route
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.minus
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
@@ -62,6 +68,7 @@ import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.core.min
 import org.jetbrains.exposed.v1.core.statements.UpdateBuilder
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
@@ -71,6 +78,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import java.math.BigDecimal
 import kotlin.time.Clock
+import kotlin.math.abs
 import kotlin.uuid.Uuid
 
 /** Must be inside a HouseholdAccess scope. */
@@ -88,12 +96,13 @@ fun Route.assetRoutes() = route("/assets") {
 
     get("/summary", {
         operationId = "getAssetSummary"
-        description = "Totals across owned assets and liabilities, and net worth as of today."
+        description = "Totals across owned assets and liabilities, accounts no asset follows, and net worth as of today."
         response {
             code(HttpStatusCode.OK) { body<AssetSummary>() }
         }
     }) {
-        val book = call.book()
+        val book = call.book(everyAccount = true)
+        val accountsMinor = book.wealth(book.today, accountKinds(call.household.id)).accountsMinor
         val assets = book.holdings.map { it to book.asset(it) }
         val owned = assets.filter { !it.second.kind.liability }
         val owed = assets.filter { it.second.kind.liability }
@@ -108,13 +117,44 @@ fun Route.assetRoutes() = route("/assets") {
             AssetSummary(
                 assetsMinor = assetsMinor,
                 liabilitiesMinor = liabilitiesMinor,
-                netMinor = assetsMinor + liabilitiesMinor,
+                accountsMinor = accountsMinor,
+                netMinor = assetsMinor + liabilitiesMinor + accountsMinor,
                 contributedMinor = owned.sumOf { it.second.contributedMinor },
                 gainMinor = invested.sumOf { it.second.gainMinor ?: 0L },
                 feesMinor = assets.sumOf { it.second.feesMinor },
                 annualReturn = xirr(portfolioFlows),
             ),
         )
+    }
+
+    get("/accounts", {
+        operationId = "listAccountValues"
+        description = "Every account's value today: the bank's latest balance, or one worked out from its balance checks " +
+            "and what the ledger recorded on it since."
+        response {
+            code(HttpStatusCode.OK) { body<List<AccountValue>>() }
+        }
+    }) {
+        val book = call.book(everyAccount = true)
+        val householdId = call.household.id
+        val kinds = accountKinds(householdId)
+        val followedBy = book.holdings.filter { it[Assets.accountId] != null }.associate { it[Assets.accountId]!! to it[Assets.id] }
+        val values = kinds.map { (accountId, kind) ->
+            val computed = if (accountId in book.ledger.accountIds) book.ledger.valueOn(accountId, book.today) else null
+            val bank = if (computed == null) book.bankValue(accountId, book.today, liability = kind == "credit_card") else null
+            AccountValue(
+                accountId = accountId.toString(),
+                valueMinor = computed?.valueMinor ?: bank?.valueMinor,
+                source = when {
+                    computed != null -> AccountValueSource.COMPUTED
+                    bank != null -> AccountValueSource.BANK
+                    else -> AccountValueSource.NONE
+                },
+                asOf = computed?.checkedOn ?: bank?.date,
+                followedByAssetId = followedBy[accountId]?.toString(),
+            )
+        }
+        call.respond(values)
     }
 
     get("/history", {
@@ -130,14 +170,21 @@ fun Route.assetRoutes() = route("/assets") {
         }
     }) {
         val assetId = parseId(call.request.queryParameters["assetId"], "assetId")
-        val book = call.book(assetId)
+        // The whole household's history also carries what the accounts held, so it needs every account's feeds.
+        val book = call.book(assetId, everyAccount = assetId == null)
+        val kinds = if (assetId == null) accountKinds(call.household.id) else emptyMap()
         val first = book.firstDate()
         val points = if (first == null) {
             emptyList()
         } else {
             monthEnds(first, book.today).map { day ->
                 val standings = book.holdings.map { book.standing(it, day) }
-                HistoryPoint(day, standings.sumOf { it.contributedMinor }, standings.sumOf { it.valueMinor })
+                HistoryPoint(
+                    day,
+                    standings.sumOf { it.contributedMinor },
+                    standings.sumOf { it.valueMinor },
+                    accountsMinor = if (assetId == null) book.accountsTotal(day, kinds) else null,
+                )
             }
         }
         call.respond(AssetHistory(points))
@@ -563,6 +610,21 @@ internal fun RoutingCall.assetId() = pathId("assetId", "Asset")
 /** Preference order when a feed has multiple balance readings on the same day, matching GoCardlessBankData. */
 private val BALANCE_TYPE_PREFERENCE = listOf("interimBooked", "closingBooked", "expected", "interimAvailable", "closingAvailable")
 
+private fun preference(reading: BankReading) = BALANCE_TYPE_PREFERENCE.indexOf(reading.balanceType).let { if (it < 0) BALANCE_TYPE_PREFERENCE.size else it }
+
+/** Later readings last; on one day, the latest read and then the preferred type last. */
+private val READING_ORDER = compareBy<BankReading> { it.date }.thenBy { it.readAt }.thenByDescending { preference(it) }
+
+/** The earliest day first; on that day the same choice as [READING_ORDER] (latest read, preferred type) first. */
+private val EARLIEST_FIRST = compareBy<BankReading> { it.date }.thenByDescending { it.readAt }.thenBy { preference(it) }
+
+/**
+ * What's owed on a card or loan: banks report it with either sign (Raiffeisen's card as positive spending, others as
+ * a negative balance), so it always counts as owed. A card paid beyond its debt is rare and small enough to read as
+ * owing that much instead.
+ */
+private fun signed(reading: BankReading, liability: Boolean) = if (liability) -abs(reading.amountMinor) else reading.amountMinor
+
 private data class BankReading(
     val date: LocalDate,
     val readAt: kotlin.time.Instant,
@@ -584,6 +646,12 @@ private class Book(
     val readingsByFeed: Map<Uuid, List<BankReading>>,
     val prices: Prices,
     val today: LocalDate,
+    /** Balances of accounts the bank doesn't report, worked out from their balance checks. */
+    val ledger: Ledger = Ledger.EMPTY,
+    /** Each feed's bank rows as (booking date, amount in the feed's currency), to work balances back before a reading. */
+    val rowsByFeed: Map<Uuid, List<Pair<LocalDate, Long>>> = emptyMap(),
+    /** The first day each feed's rows cover: its import-from day, else its first row. */
+    val feedStarts: Map<Uuid, LocalDate> = emptyMap(),
 ) {
     fun firstDate(): LocalDate? = listOfNotNull(
         lots.values.flatten().minOfOrNull { it.date },
@@ -591,27 +659,57 @@ private class Book(
         readingsByFeed.values.flatten().minOfOrNull { it.date },
     ).minOrNull()
 
-    fun bankValue(accountId: Uuid, on: LocalDate, liability: Boolean = false): Priced? {
+    /**
+     * The account's balance on [on]: the bank's latest reading by then, or for an account the bank doesn't report,
+     * the balance worked out from its balance checks and the ledger.
+     */
+    fun bankValue(accountId: Uuid, on: LocalDate, liability: Boolean = false, strict: Boolean = false): Priced? {
         val feedIds = feedsByAccount[accountId].orEmpty()
-        if (feedIds.isEmpty()) return null
-        val picked = feedIds.mapNotNull { feedId ->
-            readingsByFeed[feedId].orEmpty()
-                .filter { it.date <= on && (!liability || !it.balanceType.endsWith("Available", ignoreCase = true)) }
-                .maxWithOrNull(
-                    compareBy<BankReading> { it.date }
-                        .thenBy { it.readAt }
-                        .thenByDescending { BALANCE_TYPE_PREFERENCE.indexOf(it.balanceType).let { i -> if (i < 0) BALANCE_TYPE_PREFERENCE.size else i } },
-                )
+        if (feedIds.isEmpty() || feedIds.all { readingsByFeed[it].isNullOrEmpty() }) {
+            return ledger.valueOn(accountId, on)?.let { Priced(it.valueMinor, on) }
         }
-        if (picked.isEmpty()) return null
         var sum = 0L
         var latestDate: LocalDate? = null
-        for (reading in picked) {
-            val converted = prices.convertMinor(reading.amountMinor, reading.currency, reading.date) ?: return null
-            sum += converted
-            if (latestDate == null || reading.date > latestDate) latestDate = reading.date
+        for (feedId in feedIds) {
+            val readings = readingsByFeed[feedId].orEmpty()
+                .filter { !liability || !it.balanceType.endsWith("Available", ignoreCase = true) }
+            if (readings.isEmpty()) continue
+            val reading = readings.filter { it.date <= on }.maxWithOrNull(READING_ORDER)
+            val (amount, currency, date) = if (reading != null) {
+                Triple(signed(reading, liability), reading.currency, reading.date)
+            } else {
+                // Before the bank's first reading: that balance less what the feed's rows booked since [on]. A day
+                // before the rows start can't be told, so the feed is left out (and with [strict], the account).
+                val start = feedStarts[feedId]
+                val earliest = readings.minWith(EARLIEST_FIRST)
+                if (start == null || on < start.minus(1, DateTimeUnit.DAY)) {
+                    if (strict) return null else continue
+                }
+                val moved = rowsByFeed[feedId].orEmpty().filter { it.first > on && it.first <= earliest.date }.sumOf { it.second }
+                Triple(signed(earliest, liability) - moved, earliest.currency, on)
+            }
+            sum += prices.convertMinor(amount, currency, date) ?: return null
+            if (latestDate == null || date > latestDate) latestDate = date
         }
         return latestDate?.let { Priced(sum, it) }
+    }
+
+    /**
+     * What the accounts no holding follows held on [on], counting only accounts that hold something [today]; null
+     * unless every one of them can be told that day, or when none holds anything.
+     */
+    fun accountsTotal(on: LocalDate, accountKinds: Map<Uuid, String>): Long? {
+        val followed = holdings.mapNotNull { it[Assets.accountId] }.toSet()
+        var total = 0L
+        var counted = 0
+        for (accountId in (feedsByAccount.keys + ledger.accountIds) - followed) {
+            val liability = accountKinds[accountId]?.let { it == "credit_card" } ?: continue
+            val now = bankValue(accountId, today, liability)?.valueMinor ?: continue
+            if (now == 0L) continue
+            total += bankValue(accountId, on, liability, strict = true)?.valueMinor ?: return null
+            counted++
+        }
+        return total.takeIf { counted > 0 }
     }
 
     fun hasOnlyAvailableReadings(accountId: Uuid, on: LocalDate): Boolean {
@@ -787,8 +885,45 @@ private suspend fun RoutingCall.book(assetId: Uuid? = null, everyAccount: Boolea
                     )
                 }
         }
+        // Bank rows only matter before a feed's first reading, so they're loaded only up to the latest first reading.
+        val readFeeds = readingsByFeed.filterValues { it.isNotEmpty() }
+        val lastFirstReading = readFeeds.values.maxOfOrNull { readings -> readings.minOf { it.date } }
+        val rowsByFeed = if (readFeeds.isEmpty() || lastFirstReading == null) {
+            emptyMap()
+        } else {
+            BankRows.select(BankRows.feedId, BankRows.bookingDate, BankRows.amountMinor)
+                .where {
+                    (BankRows.householdId eq householdId) and (BankRows.feedId inList readFeeds.keys) and
+                        (BankRows.bookingDate lessEq lastFirstReading)
+                }
+                .groupBy({ it[BankRows.feedId] }) { it[BankRows.bookingDate] to it[BankRows.amountMinor] }
+        }
+        val firstRows = if (readFeeds.isEmpty()) {
+            emptyMap()
+        } else {
+            BankRows.select(BankRows.feedId, BankRows.bookingDate.min())
+                .where { (BankRows.householdId eq householdId) and (BankRows.feedId inList readFeeds.keys) }
+                .groupBy(BankRows.feedId)
+                .associate { it[BankRows.feedId] to it[BankRows.bookingDate.min()] }
+        }
+        val feedStarts = if (readFeeds.isEmpty()) {
+            emptyMap()
+        } else {
+            BankFeeds.select(BankFeeds.id, BankFeeds.importFrom).where { BankFeeds.id inList readFeeds.keys }
+                .mapNotNull { row -> (row[BankFeeds.importFrom] ?: firstRows[row[BankFeeds.id]])?.let { row[BankFeeds.id] to it } }
+                .toMap()
+        }
         val balanceCurrencies = readingsByFeed.values.flatten().map { it.currency }.distinct()
-        Book(holdings, lots, valuations, fees, feedsByAccount, readingsByFeed, loadPrices(currency, symbols, balanceCurrencies), today)
+        // Accounts the bank reports nothing for take their balance from the ledger.
+        val readAccounts = feedsByAccount.filterValues { feeds -> feeds.any { !readingsByFeed[it].isNullOrEmpty() } }.keys
+        val ledger = loadLedger(householdId, if (everyAccount) null else trackedAccountIds)
+        Book(
+            holdings, lots, valuations, fees, feedsByAccount, readingsByFeed,
+            loadPrices(currency, symbols, balanceCurrencies), today,
+            if (readAccounts.isEmpty()) ledger else ledger.without(readAccounts),
+            rowsByFeed,
+            feedStarts,
+        )
     }.also { if (assetId != null && it.holdings.isEmpty()) throw notFound("Asset") }
 }
 
@@ -806,23 +941,33 @@ internal data class Wealth(
 )
 
 /**
- * Every holding's standing on [on], and the latest bank balance on or before it of each account with feeds. An
- * account a holding follows counts once, through the holding. A credit card's "available" balance includes the
+ * Every holding's standing on [on], and the balance on it of each account: the bank's latest reading by then, or for
+ * an account the bank doesn't report, the one worked out from its balance checks. An account a holding follows
+ * counts once, through the holding. A credit card's "available" balance includes the
  * unused credit line, so only booked balances count for it, as for liabilities.
  */
 internal suspend fun RoutingCall.wealthOn(on: LocalDate): Wealth {
     val book = book(everyAccount = true)
-    val householdId = household.id
-    val accountKinds = dbQuery {
-        Accounts.select(Accounts.id, Accounts.kind).where { Accounts.householdId eq householdId }
-            .associate { it[Accounts.id] to it[Accounts.kind] }
-    }
-    val followed = book.holdings.mapNotNull { it[Assets.accountId] }.toSet()
-    val balances = book.feedsByAccount.keys.mapNotNull { accountId ->
+    return book.wealth(on, accountKinds(household.id))
+}
+
+private suspend fun accountKinds(householdId: Uuid): Map<Uuid, String> = dbQuery {
+    Accounts.select(Accounts.id, Accounts.kind).where { Accounts.householdId eq householdId }
+        .associate { it[Accounts.id] to it[Accounts.kind] }
+}
+
+/** Each account's balance on [on]: read from the bank, or worked out from a balance check. Needs every account's feeds. */
+private fun Book.accountBalances(on: LocalDate, accountKinds: Map<Uuid, String>): List<Triple<Uuid, String, Long>> =
+    (feedsByAccount.keys + ledger.accountIds).mapNotNull { accountId ->
         val kind = accountKinds[accountId] ?: return@mapNotNull null
-        book.bankValue(accountId, on, liability = kind == "credit_card")?.let { Triple(accountId, kind, it.valueMinor) }
+        bankValue(accountId, on, liability = kind == "credit_card")?.let { Triple(accountId, kind, it.valueMinor) }
     }
-    val standings = book.holdings.map { row -> Triple(row, kindFrom(row[Assets.kind]), book.standing(row, on)) }
+
+/** See [wealthOn]; the book must hold every account's feeds. */
+private fun Book.wealth(on: LocalDate, accountKinds: Map<Uuid, String>): Wealth {
+    val followed = holdings.mapNotNull { it[Assets.accountId] }.toSet()
+    val balances = accountBalances(on, accountKinds)
+    val standings = holdings.map { row -> Triple(row, kindFrom(row[Assets.kind]), standing(row, on)) }
     val liquidBalances = balances.filter { (_, kind, _) -> kind == "bank" || kind == "savings" || kind == "cash" }
     val liquidAccountIds = liquidBalances.map { it.first }.toSet()
     // Savings counted through their account's balance aren't counted again.
@@ -834,7 +979,7 @@ internal suspend fun RoutingCall.wealthOn(on: LocalDate): Wealth {
         assetsMinor = standings.filter { !it.second.liability }.sumOf { it.third.valueMinor },
         liabilitiesMinor = standings.filter { it.second.liability }.sumOf { it.third.valueMinor },
         liquidMinor = liquidBalances.sumOf { it.third } + otherSavings,
-        accountsRead = balances.size,
+        accountsRead = balances.count { it.first in feedsByAccount.keys && it.first !in ledger.accountIds },
     )
 }
 

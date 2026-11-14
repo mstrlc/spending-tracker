@@ -118,7 +118,7 @@ test("uses liability wording in the asset sheet button and history rows", async 
   expect(screen.getAllByText("Borrowed").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Repaid").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Owed").length).toBeGreaterThan(0);
-  expect(screen.getByRole("link", { name: "Transfer" }).getAttribute("href")).toBe("/households/h1/transfers");
+  expect(screen.getByRole("link", { name: "Transfer" }).getAttribute("href")).toBe("/h/h1/transfers");
 
   // Opening a transfer-backed contribution shows it read-only with no Save or Delete button.
   fireEvent.click(screen.getByText(/From transfer/));
@@ -127,5 +127,5 @@ test("uses liability wording in the asset sheet button and history rows", async 
   expect((screen.getByLabelText("Date") as HTMLInputElement).disabled).toBe(true);
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
-  expect(screen.getByRole("link", { name: "Edit or delete the transfer" }).getAttribute("href")).toBe("/households/h1/transfers");
+  expect(screen.getByRole("link", { name: "Edit or delete the transfer" }).getAttribute("href")).toBe("/h/h1/transfers");
 });

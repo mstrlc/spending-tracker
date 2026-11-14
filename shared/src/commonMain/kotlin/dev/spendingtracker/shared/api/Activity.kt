@@ -10,6 +10,7 @@ enum class ActivityEntity {
     @SerialName("member") MEMBER,
     @SerialName("invite") INVITE,
     @SerialName("account") ACCOUNT,
+    @SerialName("account_balance") ACCOUNT_BALANCE,
     @SerialName("category") CATEGORY,
     @SerialName("expense") EXPENSE,
     @SerialName("expense_line") EXPENSE_LINE,
@@ -26,8 +27,8 @@ enum class ActivityEntity {
     @SerialName("transfer") TRANSFER,
     @SerialName("bank_row") BANK_ROW,
     @SerialName("import") IMPORT,
-}
     @SerialName("recurring_payment") RECURRING_PAYMENT,
+}
 
 @Serializable
 enum class ActivityAction {

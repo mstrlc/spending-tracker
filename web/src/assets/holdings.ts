@@ -26,6 +26,65 @@ export const isTrackableKind = (kind: AssetKind) => KINDS.find((k) => k.value ==
 
 export const kindLabel = (kind: AssetKind) => KINDS.find((k) => k.value === kind)?.label ?? kind;
 
+export type AssetGroup = {
+  /** The grouping key: the kind when grouping by kind, the owner's user id ("shared" for joint) when by person. */
+  key: string;
+  label: string;
+  /** The kind when grouping by kind, null when by person. */
+  kind: AssetKind | null;
+  /** The owner's user id when grouping by person, null for the shared group or when grouping by kind. */
+  ownerUserId: string | null;
+  rows: Asset[];
+  /** Worth over all the group's rows. */
+  valueMinor: number;
+  /** Put in over the rows that have a gain (money went into them). */
+  contributedMinor: number;
+  /** Gain over those rows, or null when none of them has one (e.g. a bank-read savings account). */
+  gainMinor: number | null;
+};
+
+/** A group's totals: worth over all its rows; put-in and gain over the rows that have a gain. */
+const summarize = (rows: Asset[]) => {
+  const withGain = rows.filter((r) => r.gainMinor !== null);
+  return {
+    valueMinor: rows.reduce((sum, a) => sum + a.valueMinor, 0),
+    contributedMinor: withGain.reduce((sum, a) => sum + a.contributedMinor, 0),
+    gainMinor: withGain.length > 0 ? withGain.reduce((sum, a) => sum + (a.gainMinor ?? 0), 0) : null,
+  };
+};
+
+/**
+ * Holdings grouped by kind, in KINDS order (funds and other market kinds first, loans last); kinds with nothing in
+ * them are left out.
+ */
+export function groupByKind(assets: Asset[]): AssetGroup[] {
+  const byKind = new Map<AssetKind, Asset[]>();
+  for (const a of assets) byKind.set(a.kind, [...(byKind.get(a.kind) ?? []), a]);
+  return KINDS.filter((k) => byKind.has(k.value)).map((k) => {
+    const rows = byKind.get(k.value)!;
+    return { key: k.value, label: k.label, kind: k.value, ownerUserId: null, rows, ...summarize(rows) };
+  });
+}
+
+/**
+ * Holdings grouped by owner, like the Income page's group-by-person: members in [memberIds] order, then shared;
+ * owners not in [memberIds] count as shared, and people with nothing are left out.
+ */
+export function groupByOwner(assets: Asset[], memberIds: string[]): AssetGroup[] {
+  const order = [...memberIds, null];
+  const byOwner = new Map<string | null, Asset[]>();
+  for (const a of assets) {
+    const key = a.ownerUserId && memberIds.includes(a.ownerUserId) ? a.ownerUserId : null;
+    byOwner.set(key, [...(byOwner.get(key) ?? []), a]);
+  }
+  return order
+    .filter((id) => byOwner.has(id))
+    .map((userId) => {
+      const rows = byOwner.get(userId)!;
+      return { key: userId ?? "shared", label: userId ?? "Shared", kind: null, ownerUserId: userId, rows, ...summarize(rows) };
+    });
+}
+
 /** Describes the liability affected when a transfer moves money into or out of its linked account. */
 export function transferLiabilityLabel(
   assets: Asset[],

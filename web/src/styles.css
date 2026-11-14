@@ -94,6 +94,9 @@
     --tone-settlement: oklch(0.55 0.16 295);
     --tone-warning: oklch(0.66 0.15 75);
     --tone-danger: var(--destructive);
+    /* The worth line of the asset history chart. */
+    --chart-worth: oklch(0.55 0.16 262);
+    --chart-accounts: oklch(0.64 0.13 200);
     /* Eight hues for categories and people, told apart rather than meaning anything. */
     --hue-1: oklch(0.6 0.14 25);
     --hue-2: oklch(0.66 0.13 70);
@@ -140,6 +143,8 @@
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.97 0 0);
     --tone-income: oklch(0.74 0.15 152);
+    --chart-worth: oklch(0.72 0.14 262);
+    --chart-accounts: oklch(0.78 0.12 200);
     --tone-expense: oklch(0.76 0.14 55);
     --tone-deduction: oklch(0.74 0.14 345);
     --tone-transfer: oklch(0.74 0.13 255);
@@ -180,6 +185,8 @@
  *   `--tone-*` says what a record is or its state, `--hue-1..8` tells categories and people apart.
  * - Geist for the interface; every amount in Geist Mono with tabular figures (the `amount` utility).
  * - The one rich moment is the month's category bar: black for the biggest category, grey steps for the rest.
+ * - Assets wear their kind's hue (icons, share bar; `assetKindTone`), and the history chart draws worth in
+ *   `--chart-worth` with the gain over money put in shaded green (red for a loss).
  * - Motion only for feedback: the side panel, press, saved-row highlight.
  */
 

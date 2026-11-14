@@ -237,6 +237,20 @@ object AssetContributions : Table("asset_contributions") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/** V46: an account's balance at the end of a day, entered by hand for an account the bank doesn't report. */
+object AccountBalances : Table("account_balances") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val accountId = uuid("account_id")
+    val date = date("date")
+    val amountMinor = long("amount_minor")
+    val notes = text("notes")
+    val version = integer("version").default(1)
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
 object AssetValuations : Table("asset_valuations") {
     val id = uuid("id")
     val householdId = uuid("household_id")

@@ -240,6 +240,12 @@ export function Avatar({
   );
 }
 
+/** A member's hue, as on their avatar; neutral for nobody in particular. */
+export function memberTone(members: Pick<Member, "userId">[], userId: string | null | undefined): Tone {
+  const index = members.findIndex((m) => m.userId === userId);
+  return index < 0 ? "neutral" : (`hue-${(index % 8) + 1}` as Hue);
+}
+
 /** An avatar and the member's name; [jointLabel] for nobody in particular ("Joint", "Shared"). */
 export function PersonLabel({
   members,
@@ -300,10 +306,48 @@ const ACCOUNT_ICONS: Record<AccountKind, LucideIcon> = {
   other: WalletIcon,
 };
 
-/** The icon for a kind of account: current, savings, card, cash, other. */
+/** Each kind of account keeps one hue wherever it shows; savings match savings assets, cards the debt tone. */
+const ACCOUNT_KIND_TONES: Record<AccountKind, Tone> = {
+  bank: "hue-5",
+  savings: "hue-4",
+  credit_card: "deduction",
+  cash: "hue-3",
+  other: "neutral",
+};
+
+export const accountKindTone = (kind: AccountKind | undefined): Tone => ACCOUNT_KIND_TONES[kind ?? "other"];
+
+const tintedText = "text-[color-mix(in_oklch,var(--t)_80%,var(--foreground))]";
+
+/** The icon for a kind of account (current, savings, card, cash, other), in the kind's hue. */
 export function AccountIcon({ kind, className }: { kind: AccountKind | undefined; className?: string }) {
   const Icon = ACCOUNT_ICONS[kind ?? "other"];
-  return <Icon aria-hidden="true" className={cn("size-3.5 shrink-0 text-muted-foreground", className)} />;
+  const tone = accountKindTone(kind);
+  return (
+    <Icon
+      aria-hidden="true"
+      style={toneStyle(tone)}
+      className={cn("size-3.5 shrink-0", tone === "neutral" ? "text-muted-foreground" : tintedText, className)}
+    />
+  );
+}
+
+/** An account kind's icon in a tinted square, like [AssetIcon], for tables that list accounts beside assets. */
+export function AccountKindIcon({ kind, className }: { kind: AccountKind | undefined; className?: string }) {
+  const tone = accountKindTone(kind);
+  return (
+    <span
+      aria-hidden="true"
+      style={toneStyle(tone)}
+      className={cn(
+        "inline-flex size-8 shrink-0 items-center justify-center rounded-md",
+        tone === "neutral" ? "bg-muted" : "bg-[color-mix(in_oklch,var(--t)_16%,transparent)]",
+        className,
+      )}
+    >
+      <AccountIcon kind={kind} className="size-4" />
+    </span>
+  );
 }
 
 /** An account's name after its kind's icon. */
@@ -339,20 +383,37 @@ const ASSET_ICONS: Record<AssetKind, LucideIcon> = {
   payable: ReceiptTextIcon,
 };
 
-const LIABILITY_KINDS: AssetKind[] = ["loan", "card_debt", "payable"];
+/** Each kind of asset keeps one hue wherever it shows (icons, the share bar); debts are in the deduction tone. */
+const ASSET_KIND_TONES: Record<AssetKind, Tone> = {
+  fund: "hue-6",
+  stock: "hue-7",
+  bond: "hue-5",
+  crypto: "hue-2",
+  savings: "hue-4",
+  scheme: "hue-5",
+  receivable: "hue-8",
+  vehicle: "hue-1",
+  property: "hue-3",
+  other: "neutral",
+  loan: "deduction",
+  card_debt: "deduction",
+  payable: "deduction",
+};
 
-/** An asset kind's icon in a tinted square: debts in the deduction tone, everything else neutral. */
+export const assetKindTone = (kind: AssetKind): Tone => ASSET_KIND_TONES[kind];
+
+/** An asset kind's icon in a square tinted with the kind's hue. */
 export function AssetIcon({ kind, className }: { kind: AssetKind; className?: string }) {
   const Icon = ASSET_ICONS[kind];
-  const owed = LIABILITY_KINDS.includes(kind);
+  const tone = assetKindTone(kind);
   return (
     <span
       aria-hidden="true"
-      style={owed ? toneStyle("deduction") : undefined}
+      style={toneStyle(tone)}
       className={cn(
         "inline-flex size-7 shrink-0 items-center justify-center rounded-md [&>svg]:size-4",
-        owed
-          ? "bg-[color-mix(in_oklch,var(--t)_14%,transparent)] text-[color-mix(in_oklch,var(--t)_78%,var(--foreground))]"
+        tone !== "neutral"
+          ? "bg-[color-mix(in_oklch,var(--t)_16%,transparent)] text-[color-mix(in_oklch,var(--t)_80%,var(--foreground))]"
           : "bg-muted text-muted-foreground",
         className,
       )}

@@ -255,6 +255,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/accounts/{accountId}/balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The account's balance checks, newest first. */
+        get: operations["listAccountBalances"];
+        put?: never;
+        /** @description Records what the account held at the end of a day. Fails with 409 balance_exists when it already has a check that day, and with 409 bank_reports_balance when the bank already reports the account's balance. */
+        post: operations["createAccountBalance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/accounts/{accountId}/balances/{balanceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteAccountBalance"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/categories": {
         parameters: {
             query?: never;
@@ -380,8 +414,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Totals across owned assets and liabilities, and net worth as of today. */
+        /** @description Totals across owned assets and liabilities, accounts no asset follows, and net worth as of today. */
         get: operations["getAssetSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/assets/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Every account's value today: the bank's latest balance, or one worked out from its balance checks and what the ledger recorded on it since. */
+        get: operations["listAccountValues"];
         put?: never;
         post?: never;
         delete?: never;
@@ -553,6 +604,41 @@ export interface paths {
         post?: never;
         /** @description Fails with 409 trip_in_use while expenses belong to the trip. */
         delete: operations["deleteTrip"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/recurring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Recurring payments with how each stands on the given day, and merchants that look recurring but aren't confirmed or dismissed yet. */
+        get: operations["getRecurring"];
+        put?: never;
+        /** @description Confirms a merchant as recurring, or with status dismissed stops it being suggested. A merchant has at most one: 409 recurring_exists. */
+        post: operations["createRecurringPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/recurring/{recurringId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateRecurringPayment"];
+        post?: never;
+        /** @description Forgets a recurring payment (or a dismissal): the merchant can be suggested again. */
+        delete: operations["deleteRecurringPayment"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1512,6 +1598,39 @@ export interface components {
             /** ArrayList<String> */
             cards?: string[];
         };
+        /** AccountBalance */
+        AccountBalance: {
+            /** String */
+            id: string;
+            /** String */
+            accountId: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** AccountBalanceInput */
+        AccountBalanceInput: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes?: string;
+        };
         /** Category */
         Category: {
             /** String */
@@ -1917,6 +2036,11 @@ export interface components {
              * Long
              * Format: int64
              */
+            accountsMinor?: number;
+            /**
+             * Long
+             * Format: int64
+             */
             netMinor: number;
             /**
              * Long
@@ -1939,6 +2063,26 @@ export interface components {
              */
             annualReturn: null | number;
         };
+        /** AccountValue */
+        AccountValue: {
+            /** String */
+            accountId: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            valueMinor: null | number;
+            source: components["schemas"]["AccountValueSource"];
+            /** LocalDate */
+            asOf: null | string;
+            /** String */
+            followedByAssetId?: null | string;
+        };
+        /**
+         * AccountValueSource
+         * @enum {string}
+         */
+        AccountValueSource: "bank" | "computed" | "none";
         /** HistoryPoint */
         HistoryPoint: {
             /** LocalDate */
@@ -1953,6 +2097,11 @@ export interface components {
              * Format: int64
              */
             valueMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            accountsMinor?: null | number;
         };
         /** AssetHistory */
         AssetHistory: {
@@ -2158,6 +2307,138 @@ export interface components {
             startDate?: null | string;
             /** LocalDate */
             endDate?: null | string;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
+        /** RecurringPayment */
+        RecurringPayment: {
+            /** String */
+            id: string;
+            /** String */
+            merchantId: string;
+            /** String */
+            merchant: string;
+            status: components["schemas"]["RecurringStatus"];
+            /**
+             * Long
+             * Format: int64
+             */
+            expectedAmountMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            intervalMonths: number;
+            /** LocalDate */
+            anchorDate: string;
+            /** String */
+            categoryId: null | string;
+            /** String */
+            accountId: null | string;
+            /** String */
+            paidByUserId: null | string;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+            health: components["schemas"]["RecurringHealth"];
+            /** LocalDate */
+            lastDue: null | string;
+            /** LocalDate */
+            nextDue: string;
+            /** LocalDate */
+            lastChargeDate: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            lastChargeMinor: null | number;
+            /** ArrayList<LocalDate> */
+            missedDates: string[];
+        };
+        /**
+         * RecurringStatus
+         * @enum {string}
+         */
+        RecurringStatus: "active" | "ended" | "dismissed";
+        /**
+         * RecurringHealth
+         * @enum {string}
+         */
+        RecurringHealth: "ok" | "due" | "missed" | "changed" | "upcoming" | "inactive";
+        /** RecurringSuggestion */
+        RecurringSuggestion: {
+            /** String */
+            merchantId: string;
+            /** String */
+            merchant: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            intervalMonths: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** LocalDate */
+            anchorDate: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            timesSeen: number;
+            /** String */
+            categoryId: null | string;
+            /** String */
+            accountId: null | string;
+            /** String */
+            paidByUserId: null | string;
+        };
+        /** RecurringOverview */
+        RecurringOverview: {
+            /** ArrayList<RecurringPayment> */
+            payments: components["schemas"]["RecurringPayment"][];
+            /** ArrayList<RecurringSuggestion> */
+            suggestions: components["schemas"]["RecurringSuggestion"][];
+            /**
+             * Long
+             * Format: int64
+             */
+            monthlyMinor: number;
+        };
+        /** RecurringPaymentInput */
+        RecurringPaymentInput: {
+            /** String */
+            merchantId: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            expectedAmountMinor: number;
+            /** LocalDate */
+            anchorDate: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            intervalMonths?: number;
+            status?: components["schemas"]["RecurringStatus"];
+            /** String */
+            categoryId?: null | string;
+            /** String */
+            accountId?: null | string;
+            /** String */
+            paidByUserId?: null | string;
             /** String */
             notes?: string;
             /**
@@ -2898,6 +3179,8 @@ export interface components {
             withheldTaxMinor?: null | number;
             /** String */
             assetId?: null | string;
+            /** String */
+            notes?: null | string;
         };
         /**
          * SuggestedRecord
@@ -3471,7 +3754,7 @@ export interface components {
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement" | "transfer" | "bank_row" | "import";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "account_balance" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement" | "transfer" | "bank_row" | "import" | "recurring_payment";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -4571,6 +4854,125 @@ export interface operations {
             };
         };
     };
+    listAccountBalances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                accountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountBalance"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createAccountBalance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                accountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AccountBalanceInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountBalance"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteAccountBalance: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                accountId: string;
+                balanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listCategories: {
         parameters: {
             query?: never;
@@ -5164,6 +5566,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssetSummary"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listAccountValues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountValue"][];
                 };
             };
             /** @description Not a member of this household, or no such household */
@@ -5931,6 +6361,185 @@ export interface operations {
             path: {
                 householdId: string;
                 tripId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getRecurring: {
+        parameters: {
+            query?: {
+                /** @description The caller's date, YYYY-MM-DD; defaults to the server's */
+                today?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringOverview"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createRecurringPayment: {
+        parameters: {
+            query?: {
+                today?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RecurringPaymentInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringPayment"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateRecurringPayment: {
+        parameters: {
+            query?: {
+                today?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                recurringId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RecurringPaymentInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringPayment"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteRecurringPayment: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                recurringId: string;
             };
             cookie?: never;
         };
@@ -8376,6 +8985,8 @@ export interface operations {
                 month?: string;
                 /** @description The caller's date, YYYY-MM-DD, so a month in progress is measured in their time zone; defaults to the server's */
                 today?: string;
+                /** @description Only what's joint (`joint`) or one member's (their user id): spending by whose each expense or line is, income by recipient, investing by the asset's owner. Net worth, money at hand and the bank data stay the whole household's. Omitted: everything. */
+                whose?: string;
             };
             header?: never;
             path: {
