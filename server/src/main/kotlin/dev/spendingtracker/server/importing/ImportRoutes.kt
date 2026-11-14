@@ -8,6 +8,14 @@ import dev.spendingtracker.server.common.nonZeroAmount
 import dev.spendingtracker.server.common.optionalText
 import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.db.Accounts
+import dev.spendingtracker.server.db.BankFeeds
+import dev.spendingtracker.server.db.BankRows
+import dev.spendingtracker.server.inbox.FeedShape
+import dev.spendingtracker.server.inbox.dbValue
+import dev.spendingtracker.server.inbox.feedShape
+import dev.spendingtracker.server.inbox.loadHintContext
+import dev.spendingtracker.server.inbox.parseGoCardless
+import dev.spendingtracker.server.inbox.storeRows
 import dev.spendingtracker.server.db.AssetContributions
 import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.Categories
@@ -34,20 +42,25 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.YearMonth
 import kotlinx.datetime.yearMonth
 import org.jetbrains.exposed.v1.core.JoinType
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /** Must be inside a HouseholdAccess scope. */
 fun Route.importRoutes() {
     post("/import", {
         operationId = "importHouseholdData"
-        description = "Imports people, accounts, categories, trips, expenses, income and assets in one transaction: " +
+        description = "Imports people, accounts, categories, trips, expenses, income, assets and bank rows in one transaction: " +
             "all of it or, on any error, nothing. Names are matched to what the household has; expenses and income " +
             "already imported (same externalRef) are skipped. With dryRun=true it reports what it would do and saves nothing. Owners only."
         request {
@@ -86,8 +99,10 @@ private class Tally {
     var income = 0
     var assets = 0
     var contributions = 0
+    var bankFeeds = 0
+    var bankRows = 0
 
-    fun counts() = ImportCounts(members, accounts, categories, trips, merchants, expenses, income, assets, contributions)
+    fun counts() = ImportCounts(members, accounts, categories, trips, merchants, expenses, income, assets, contributions, bankFeeds, bankRows)
 }
 
 private fun key(name: String) = name.trim().lowercase()
@@ -191,6 +206,7 @@ private class Importer(private val householdId: Uuid, private val userId: Uuid) 
         importExpenses(input)
         importIncome(input)
         importAssets(input)
+        importBank(input)
         return created.counts() to matched.counts()
     }
 
@@ -400,8 +416,102 @@ private class Importer(private val householdId: Uuid, private val userId: Uuid) 
             }
         }
     }
+
+    private fun importBank(input: HouseholdImport) {
+        if (input.bankFeeds.isEmpty() && input.bankRows.isEmpty()) return
+        data class Feed(val id: Uuid, val shape: FeedShape, val currency: String, val importFrom: LocalDate?)
+
+        val feeds = BankFeeds.selectAll().where { BankFeeds.householdId eq householdId }.associate {
+            key(it[BankFeeds.name]) to Feed(it[BankFeeds.id], feedShape(it[BankFeeds.institution], it[BankFeeds.accountId]), it[BankFeeds.currency], it[BankFeeds.importFrom])
+        }.toMutableMap()
+        input.bankFeeds.forEachIndexed { i, feed ->
+            val path = "bankFeeds[$i]"
+            val name = requiredText(feed.name, "$path.name", max = 100)
+            if (key(name) in feeds) {
+                matched.bankFeeds++
+                return@forEachIndexed
+            }
+            val currency = feed.currency.trim().uppercase()
+            if (!Regex("^[A-Z]{3}$").matches(currency)) throw badRequest("invalid_currency", "Use a 3-letter currency code", "$path.currency")
+            val accountId = account(feed.account, "$path.account") ?: throw badRequest("required", "account is required", "$path.account")
+            val iban = try {
+                normalizeIban(feed.iban)
+            } catch (e: ApiException) {
+                throw badRequest(e.code, e.message, "$path.iban")
+            }
+            val id = Uuid.random()
+            BankFeeds.insert {
+                it[BankFeeds.id] = id
+                it[BankFeeds.householdId] = this@Importer.householdId
+                it[BankFeeds.accountId] = accountId
+                it[BankFeeds.name] = name
+                it[institution] = feed.institution.dbValue
+                it[BankFeeds.iban] = iban
+                it[BankFeeds.currency] = currency
+                it[importFrom] = feed.importFrom
+                it[createdBy] = userId
+            }
+            feeds[key(name)] = Feed(id, feedShape(feed.institution.dbValue, accountId), currency, feed.importFrom)
+            created.bankFeeds++
+        }
+
+        val expenseIds = refs(Expenses.externalRef, Expenses.id, Expenses.householdId)
+        val incomeIds = refs(Income.externalRef, Income.id, Income.householdId)
+        val context = loadHintContext(householdId)
+        data class Decision(val expenseId: Uuid?, val incomeId: Uuid?, val skipped: String?)
+
+        val byFeed = input.bankRows.withIndex().groupBy { (i, row) -> key(row.feed).also { if (it !in feeds) throw badRequest("unknown_feed", "No bank feed called \"${row.feed}\"", "bankRows[$i].feed") } }
+        for ((feedKey, entries) in byFeed) {
+            val feed = feeds.getValue(feedKey)
+            val parsed = entries.map { (i, row) ->
+                val path = "bankRows[$i]"
+                val decided = listOfNotNull(row.expense, row.income, row.skipped).count { it.isNotBlank() }
+                if (decided > 1) throw badRequest("too_many_outcomes", "A row can be an expense, income or skipped, not several", path)
+                val parsedRow = parseGoCardless(row.raw, feed.shape) ?: throw badRequest("unreadable_row", "No transaction id or date in raw", "$path.raw")
+                if (parsedRow.currency != feed.currency) {
+                    throw badRequest("currency_mismatch", "The row is in ${parsedRow.currency}, the feed in ${feed.currency}", "$path.raw")
+                }
+                val decision = Decision(
+                    expenseId = row.expense?.takeIf { it.isNotBlank() }?.let { expenseIds[it.trim()] ?: throw badRequest("unknown_expense", "No expense with externalRef \"$it\"", "$path.expense") },
+                    incomeId = row.income?.takeIf { it.isNotBlank() }?.let { incomeIds[it.trim()] ?: throw badRequest("unknown_income", "No income with externalRef \"$it\"", "$path.income") },
+                    skipped = row.skipped?.takeIf { it.isNotBlank() }?.let { optionalText(it, "$path.skipped", max = 200) },
+                )
+                Triple(parsedRow, decision, row.hint.trim())
+            }
+            val hints = parsed.filter { it.third.isNotEmpty() }.associate { it.first.externalId to it.third }
+            val counts = storeRows(householdId, feed.id, feed.shape, feed.importFrom, parsed.map { it.first }, context, hints)
+            created.bankRows += counts.added
+            matched.bankRows += counts.existing
+            // Decisions apply to rows added just now: an earlier import's rows keep what was decided since.
+            val fresh = BankRows.select(BankRows.id, BankRows.externalId)
+                .where { BankRows.feedId eq feed.id }
+                .filter { it[BankRows.externalId] in counts.addedIds }
+                .associate { it[BankRows.externalId] to it[BankRows.id] }
+            val now = Clock.System.now()
+            for ((row, decision, _) in parsed) {
+                if (decision.expenseId == null && decision.incomeId == null && decision.skipped == null) continue
+                val rowId = fresh[row.externalId] ?: continue
+                BankRows.update({ BankRows.id eq rowId }) {
+                    it[BankRows.expenseId] = decision.expenseId
+                    it[BankRows.incomeId] = decision.incomeId
+                    it[skipReason] = decision.skipped
+                    it[decidedBy] = userId
+                    it[decidedAt] = now
+                }
+            }
+        }
+    }
+
+    private fun refs(
+        ref: org.jetbrains.exposed.v1.core.Column<String?>,
+        id: org.jetbrains.exposed.v1.core.Column<Uuid>,
+        household: org.jetbrains.exposed.v1.core.Column<Uuid>,
+    ): Map<String, Uuid> =
+        ref.table.select(ref, id).where { (household eq householdId) and ref.isNotNull() }.associate { it[ref]!! to it[id] }
 }
 
 private val AccountKind.dbValue get() = name.lowercase()
+
+
 
 private val CategoryKind.dbValue get() = if (this == CategoryKind.INVESTMENT) "investment" else "consumption"

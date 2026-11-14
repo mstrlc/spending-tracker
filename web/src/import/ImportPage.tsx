@@ -20,6 +20,8 @@ const ROWS: { key: keyof ImportCounts; label: string }[] = [
   { key: "merchants", label: "Merchants" },
   { key: "trips", label: "Trips" },
   { key: "assets", label: "Assets" },
+  { key: "bankFeeds", label: "Bank feeds" },
+  { key: "bankRows", label: "Bank rows" },
 ];
 
 /** Where the file is wrong, e.g. "expenses[3].account", which the message alone doesn't say. */

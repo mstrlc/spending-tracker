@@ -4,6 +4,8 @@ import { ApiFailure, unwrap } from "./errors";
 import type {
   AccountInput,
   ActivityEntity,
+  BankFeedInput,
+  BankRowRef,
   CategoryInput,
   ContributionInput,
   FeeInput,
@@ -19,6 +21,8 @@ import type {
   TripInput,
   ValuationInput,
 } from "./types";
+
+export type BankRowStatus = "pending" | "decided";
 
 export const keys = {
   me: ["me"] as const,
@@ -44,6 +48,9 @@ export const keys = {
   activity: (id: string, entity?: ActivityEntity) => ["households", id, "activity", entity ?? "all"] as const,
   overview: (id: string, month: string) => ["households", id, "overview", month] as const,
   splitRules: (id: string) => ["households", id, "split-rules"] as const,
+  bankFeeds: (id: string) => ["households", id, "bank-feeds"] as const,
+  bankRows: (id: string, status?: BankRowStatus) =>
+    status === undefined ? (["households", id, "bank-rows"] as const) : (["households", id, "bank-rows", status] as const),
   balances: (id: string, from?: string, to?: string) =>
     from === undefined ? (["households", id, "balances"] as const) : (["households", id, "balances", from, to] as const),
 };
@@ -527,6 +534,7 @@ export function useSaveExpense(householdId: string) {
       qc.invalidateQueries({ queryKey: keys.balances(householdId) });
       // It may have added a merchant, and moves the totals of the others.
       qc.invalidateQueries({ queryKey: keys.merchants(householdId) });
+      invalidateInbox(qc, householdId);
     },
   });
 }
@@ -543,6 +551,8 @@ export function useDeleteExpense(householdId: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
       qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+      // Its bank rows go back to the inbox.
+      invalidateInbox(qc, householdId);
     },
   });
 }
@@ -573,7 +583,10 @@ export function useSaveIncome(householdId: string) {
               body: input,
             }),
           ),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.income(householdId) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.income(householdId) });
+      invalidateInbox(qc, householdId);
+    },
   });
 }
 
@@ -586,7 +599,10 @@ export function useDeleteIncome(householdId: string) {
           params: { path: { householdId, incomeId: id }, query: { version } },
         }),
       ),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.income(householdId) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.income(householdId) });
+      invalidateInbox(qc, householdId);
+    },
   });
 }
 
@@ -836,6 +852,136 @@ export function useImport(householdId: string) {
       ),
     onSuccess: (result) => {
       if (!result.dryRun) invalidate();
+    },
+  });
+}
+
+// ---- Inbox ----
+
+function invalidateInbox(qc: ReturnType<typeof useQueryClient>, householdId: string) {
+  qc.invalidateQueries({ queryKey: keys.bankRows(householdId) });
+  qc.invalidateQueries({ queryKey: keys.bankFeeds(householdId) });
+}
+
+export function useBankFeeds(householdId: string) {
+  return useQuery({
+    queryKey: keys.bankFeeds(householdId),
+    queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/bank-feeds", { params: { path: { householdId } } })),
+  });
+}
+
+export function useSaveBankFeed(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: BankFeedInput }) =>
+      id === undefined
+        ? unwrap(await api.POST("/api/households/{householdId}/bank-feeds", { params: { path: { householdId } }, body: input }))
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/bank-feeds/{feedId}", {
+              params: { path: { householdId, feedId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
+export function useDeleteBankFeed(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/bank-feeds/{feedId}", {
+          params: { path: { householdId, feedId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
+export function useUploadStatement(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ feedId, content, fileName }: { feedId: string; content: string; fileName: string }) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/bank-feeds/{feedId}/statements", {
+          params: { path: { householdId, feedId } },
+          body: { content, fileName },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
+export function useBankRows(householdId: string, status: BankRowStatus) {
+  return useQuery({
+    queryKey: keys.bankRows(householdId, status),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/bank-rows", {
+          params: { path: { householdId }, query: { status } },
+        }),
+      ),
+  });
+}
+
+/** Files rows under an existing expense or income line, skips them, or puts them back. */
+export function useDecideBankRows(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      decision:
+        | { action: "link"; rows: BankRowRef[]; expenseId?: string; incomeId?: string }
+        | { action: "skip"; rows: BankRowRef[]; reason: string }
+        | { action: "transfer"; rows: BankRowRef[]; otherAccountId?: string | null; notes?: string }
+        | { action: "settle"; rows: BankRowRef[]; fromUserId: string; toUserId: string; notes?: string }
+        | { action: "undo"; rows: BankRowRef[] },
+    ) => {
+      const path = { householdId };
+      switch (decision.action) {
+        case "link":
+          return unwrap(
+            await api.POST("/api/households/{householdId}/bank-rows/link", {
+              params: { path },
+              body: { rows: decision.rows, expenseId: decision.expenseId, incomeId: decision.incomeId },
+            }),
+          );
+        case "skip":
+          return unwrap(
+            await api.POST("/api/households/{householdId}/bank-rows/skip", {
+              params: { path },
+              body: { rows: decision.rows, reason: decision.reason },
+            }),
+          );
+        case "transfer":
+          return unwrap(
+            await api.POST("/api/households/{householdId}/bank-rows/transfer", {
+              params: { path },
+              body: { rows: decision.rows, otherAccountId: decision.otherAccountId ?? null, notes: decision.notes ?? "" },
+            }),
+          );
+        case "settle":
+          return unwrap(
+            await api.POST("/api/households/{householdId}/bank-rows/settle", {
+              params: { path },
+              body: { rows: decision.rows, fromUserId: decision.fromUserId, toUserId: decision.toUserId, notes: decision.notes ?? "" },
+            }),
+          );
+        case "undo":
+          return unwrap(await api.POST("/api/households/{householdId}/bank-rows/undo", { params: { path }, body: { rows: decision.rows } }));
+      }
+    },
+    onSettled: (_data, _error, decision) => {
+      invalidateInbox(qc, householdId);
+      // Undoing a row made into a record deletes the record.
+      if (decision.action === "undo") {
+        qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
+        qc.invalidateQueries({ queryKey: keys.income(householdId) });
+      }
+      // Transfers change the joint contributions, settlements the balance, and undo may delete either.
+      if (decision.action === "undo" || decision.action === "transfer" || decision.action === "settle") {
+        qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+      }
     },
   });
 }

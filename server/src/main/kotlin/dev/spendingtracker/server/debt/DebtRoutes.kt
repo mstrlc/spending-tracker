@@ -10,12 +10,14 @@ import dev.spendingtracker.server.common.parseId
 import dev.spendingtracker.server.common.pathId
 import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.versionParam
+import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Merchants
 import dev.spendingtracker.server.db.Settlements
 import dev.spendingtracker.server.db.SplitRules
 import dev.spendingtracker.server.db.SplitShares
+import dev.spendingtracker.server.db.Transfers
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.db.isUniqueViolation
 import dev.spendingtracker.server.expense.loadExpenseLines
@@ -27,6 +29,7 @@ import dev.spendingtracker.shared.api.BalanceEntryKind
 import dev.spendingtracker.shared.api.Balances
 import dev.spendingtracker.shared.api.Debt
 import dev.spendingtracker.shared.api.ExpenseLine
+import dev.spendingtracker.shared.api.JointContribution
 import dev.spendingtracker.shared.api.Settlement
 import dev.spendingtracker.shared.api.SettlementInput
 import dev.spendingtracker.shared.api.SplitRule
@@ -53,6 +56,7 @@ import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import kotlin.time.Clock
@@ -116,10 +120,37 @@ fun Route.debtRoutes() {
                 entries = all
                     .filter { (from == null || it.date >= from) && (to == null || it.date <= to) }
                     .sortedWith(compareByDescending<BalanceEntry> { it.date }.thenBy { it.kind }.thenBy { it.id }),
+                jointContributions = jointContributions(householdId, from, to),
             )
         }
         call.respond(balances)
     }
+}
+
+/**
+ * What each member put into joint accounts by transfers between [from] and [to]: from an account owned by a member
+ * into a joint one (no owner) counts for that member and that account, from a joint one into theirs against it.
+ * Transfers between two joint or two personal accounts don't count. Call inside a transaction.
+ */
+private fun jointContributions(householdId: Uuid, from: LocalDate?, to: LocalDate?): List<JointContribution> {
+    val owners = Accounts.select(Accounts.id, Accounts.ownerUserId).where { Accounts.householdId eq householdId }
+        .associate { it[Accounts.id] to it[Accounts.ownerUserId] }
+    var filter: Op<Boolean> = Transfers.householdId eq householdId
+    if (from != null) filter = filter and (Transfers.date greaterEq from)
+    if (to != null) filter = filter and (Transfers.date lessEq to)
+    val net = HashMap<Pair<Uuid, Uuid>, Long>()
+    for (t in Transfers.selectAll().where(filter)) {
+        val fromAccount = t[Transfers.fromAccountId]
+        val toAccount = t[Transfers.toAccountId]
+        val fromOwner = owners[fromAccount]
+        val toOwner = owners[toAccount]
+        val amount = t[Transfers.amountMinor]
+        if (fromOwner != null && toOwner == null) net.merge(fromOwner to toAccount, amount, Long::plus)
+        if (fromOwner == null && toOwner != null) net.merge(toOwner to fromAccount, -amount, Long::plus)
+    }
+    return net.filterValues { it != 0L }
+        .map { (key, amount) -> JointContribution(key.first.toString(), key.second.toString(), amount) }
+        .sortedWith(compareBy({ it.userId }, { it.accountId }))
 }
 
 /** A row of the expenses table. */

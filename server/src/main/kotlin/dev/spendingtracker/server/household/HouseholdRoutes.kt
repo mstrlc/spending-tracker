@@ -19,6 +19,7 @@ import dev.spendingtracker.server.income.incomeRoutes
 import dev.spendingtracker.server.asset.assetRoutes
 import dev.spendingtracker.server.merchant.merchantRoutes
 import dev.spendingtracker.server.importing.importRoutes
+import dev.spendingtracker.server.inbox.inboxRoutes
 import dev.spendingtracker.server.debt.debtRoutes
 import dev.spendingtracker.server.trip.tripRoutes
 import dev.spendingtracker.server.overview.overviewRoutes
@@ -230,6 +231,7 @@ fun Route.householdRoutes() = route("/households") {
         debtRoutes()
         merchantRoutes()
         importRoutes()
+        inboxRoutes()
         activityRoutes()
         overviewRoutes()
     }

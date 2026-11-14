@@ -78,8 +78,16 @@ data class BalanceEntry(
 )
 
 /**
- * Where members stand with each other. [balances]: who owes whom after everything so far, one line per pair that
- * isn't square. [entries]: what moved the balance between from and to, newest first.
+ * What [userId] put into the joint account [accountId] (negative: took out) by transfers: from an account of theirs
+ * into it counts positive, from it into an account of theirs negative. Not a debt, so it doesn't change [Balances.balances].
  */
 @Serializable
-data class Balances(val balances: List<Debt>, val entries: List<BalanceEntry>)
+data class JointContribution(val userId: String, val accountId: String, val amountMinor: Long)
+
+/**
+ * Where members stand with each other. [balances]: who owes whom after everything so far, one line per pair that
+ * isn't square. [entries]: what moved the balance between from and to, newest first. [jointContributions]: the net
+ * transfers into joint accounts between from and to, per member and joint account (none for a net of zero).
+ */
+@Serializable
+data class Balances(val balances: List<Debt>, val entries: List<BalanceEntry>, val jointContributions: List<JointContribution>)

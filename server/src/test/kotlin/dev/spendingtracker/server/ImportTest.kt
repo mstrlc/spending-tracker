@@ -77,7 +77,7 @@ class ImportTest {
         val preview = client.post("$base/import?dryRun=true") { setBody(file) }.body<ImportResult>()
         assertTrue(preview.dryRun)
         val expected = ImportCounts(
-            members = 1, accounts = 2, categories = 2, trips = 1, merchants = 1, expenses = 3, income = 2, assets = 1, contributions = 2,
+            members = 1, accounts = 2, categories = 2, trips = 1, merchants = 1, expenses = 3, income = 2, assets = 1, contributions = 2, bankFeeds = 0, bankRows = 0,
         )
         assertEquals(expected, preview.created)
         assertEquals(emptyList(), client.get("$base/expenses").body<List<Expense>>())
@@ -121,7 +121,7 @@ class ImportTest {
 
         // Importing the same file again creates nothing.
         val again = client.post("$base/import") { setBody(file) }.body<ImportResult>()
-        assertEquals(ImportCounts(0, 0, 0, 0, 0, 0, 0, 0, 0), again.created)
+        assertEquals(ImportCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), again.created)
         assertEquals(3 to 2, again.existing.expenses to again.existing.contributions)
     }
 

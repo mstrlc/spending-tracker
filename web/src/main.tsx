@@ -14,6 +14,7 @@ import { TripsPage } from "./trips/TripsPage";
 import { BalancesPage } from "./debts/BalancesPage";
 import { MerchantsPage } from "./merchants/MerchantsPage";
 import { ImportPage } from "./import/ImportPage";
+import { InboxPage } from "./inbox/InboxPage";
 import { HomeRedirect, HouseholdLayout, OnboardingPage } from "./households/HouseholdPages";
 import { InvitePage } from "./households/InvitePage";
 import { OverviewPage } from "./overview/OverviewPage";
@@ -42,6 +43,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/h/:householdId" element={<HouseholdLayout />}>
               <Route index element={<Navigate to="overview" replace />} />
               <Route path="overview" element={<OverviewPage />} />
+              <Route path="inbox" element={<InboxPage />} />
               <Route path="expenses" element={<ExpensesPage />} />
               <Route path="income" element={<IncomePage />} />
               <Route path="assets" element={<AssetsPage />} />

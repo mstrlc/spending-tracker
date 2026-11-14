@@ -74,4 +74,6 @@ data class ExpenseInput(
     val createsDebt: Boolean = true,
     /** Non-empty: splits the expense across these lines (at least two, summing to [amountMinor]), clearing [categoryId]. */
     val lines: List<ExpenseLineInput> = emptyList(),
+    /** On create only: bank rows this expense is made from, filed under it in the same transaction. */
+    val bankRows: List<BankRowRef> = emptyList(),
 )

@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Plus, X } from "lucide-react";
 import { useAccounts, useCategories, useDeleteExpense, useMembers, useMerchants, useSaveExpense, useTrips } from "../api/hooks";
-import type { Expense } from "../api/types";
+import type { BankRowRef, Expense } from "../api/types";
 import { categoryTree } from "../categories/tree";
 import { todayIso } from "../lib/dates";
 import { formatMoney, parseMoney, toInputValue } from "../lib/money";
@@ -37,21 +37,35 @@ type LineDraft = {
   notes: string;
 };
 
+/** What a new expense starts with, such as a bank row's suggestion. */
+export type ExpenseDraft = Partial<
+  Pick<
+    Expense,
+    "date" | "amountMinor" | "merchant" | "categoryId" | "accountId" | "paidByUserId" | "notes" | "originalAmountMinor" | "originalCurrency"
+  >
+>;
+
 /**
  * Adds expenses (staying open for the next one) or edits [expense]. Lives in a side sheet;
- * [onSaved] reports each saved row, [onDone] closes the sheet.
+ * [onSaved] reports each saved row, [onDone] closes the sheet. With [bankRows], it adds the one expense those bank
+ * rows become, starting from [draft], and closes once saved.
  */
 export function ExpenseForm({
   expense,
+  draft,
+  bankRows,
   defaultDate,
   onSaved,
   onDone,
 }: {
   expense?: Expense;
+  draft?: ExpenseDraft;
+  bankRows?: BankRowRef[];
   defaultDate?: string;
   onSaved?: (expense: Expense) => void;
   onDone: () => void;
 }) {
+  const start: ExpenseDraft = expense ?? draft ?? {};
   const household = useHousehold();
   const categories = useCategories(household.id).data ?? [];
   const accounts = useAccounts(household.id).data ?? [];
@@ -63,10 +77,10 @@ export function ExpenseForm({
   const amountRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
 
-  const [date, setDate] = useState(expense?.date ?? defaultDate ?? todayIso());
-  const [amount, setAmount] = useState(expense ? toInputValue(expense.amountMinor, household.currency) : "");
-  const [merchant, setMerchant] = useState(expense?.merchant ?? "");
-  const [categoryId, setCategoryId] = useState(expense?.categoryId ?? "");
+  const [date, setDate] = useState(start.date ?? defaultDate ?? todayIso());
+  const [amount, setAmount] = useState(start.amountMinor != null ? toInputValue(start.amountMinor, household.currency) : "");
+  const [merchant, setMerchant] = useState(start.merchant ?? "");
+  const [categoryId, setCategoryId] = useState(start.categoryId ?? "");
   const [hasLines, setHasLines] = useState((expense?.lines.length ?? 0) > 0);
   const [lines, setLines] = useState<LineDraft[]>(() =>
     expense && expense.lines.length > 0
@@ -80,22 +94,22 @@ export function ExpenseForm({
           { categoryId: "", amount: "", notes: "" },
         ],
   );
-  const [accountId, setAccountId] = useState(expense?.accountId ?? "");
-  const [paidByUserId, setPaidByUserId] = useState(expense?.paidByUserId ?? "");
-  // Whose it is follows the account until someone picks it.
-  const [ownerPicked, setOwnerPicked] = useState(expense !== undefined);
+  const [accountId, setAccountId] = useState(start.accountId ?? "");
+  const [paidByUserId, setPaidByUserId] = useState(start.paidByUserId ?? "");
+  // Whose it is follows the account until someone picks it (a draft's suggestion counts as picked).
+  const [ownerPicked, setOwnerPicked] = useState(expense !== undefined || draft?.paidByUserId !== undefined);
   const [createsDebt, setCreatesDebt] = useState(expense?.createsDebt ?? true);
   const [ownSplit, setOwnSplit] = useState(expense?.split != null);
   const [splitDraft, setSplitDraft] = useState(() =>
     draftFrom(expense?.split ?? members.map((m) => ({ userId: m.userId, weight: 1 })), members),
   );
-  const [notes, setNotes] = useState(expense?.notes ?? "");
+  const [notes, setNotes] = useState(start.notes ?? "");
   const [tripId, setTripId] = useState(expense?.tripId ?? "");
-  const [foreign, setForeign] = useState(expense?.originalCurrency != null);
-  const [originalCurrency, setOriginalCurrency] = useState(expense?.originalCurrency ?? "EUR");
+  const [foreign, setForeign] = useState(start.originalCurrency != null);
+  const [originalCurrency, setOriginalCurrency] = useState(start.originalCurrency ?? "EUR");
   const [originalAmount, setOriginalAmount] = useState(
-    expense?.originalAmountMinor != null && expense.originalCurrency
-      ? toInputValue(expense.originalAmountMinor, expense.originalCurrency)
+    start.originalAmountMinor != null && start.originalCurrency
+      ? toInputValue(start.originalAmountMinor, start.originalCurrency)
       : "",
   );
   const [amountError, setAmountError] = useState<string | null>(null);
@@ -214,12 +228,13 @@ export function ExpenseForm({
             ? parsedLines.map((l) => ({ categoryId: l.categoryId, amountMinor: l.amountMinor!, notes: l.notes }))
             : [],
           version: expense?.version,
+          bankRows: expense ? [] : (bankRows ?? []),
         },
       },
       {
         onSuccess: (saved) => {
           onSaved?.(saved);
-          if (expense) {
+          if (expense || bankRows) {
             onDone();
             return;
           }
@@ -259,7 +274,7 @@ export function ExpenseForm({
             )}
             <span className="flex-1" />
             <Button type="button" variant="outline" onClick={onDone}>
-              {expense ? "Cancel" : "Done"}
+              {expense || bankRows ? "Cancel" : "Done"}
             </Button>
             <Button type="submit" disabled={save.isPending}>
               {expense ? "Save" : "Add expense"}

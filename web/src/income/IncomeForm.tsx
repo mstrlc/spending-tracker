@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useAccounts, useDeleteIncome, useMembers, useSaveIncome } from "../api/hooks";
-import type { Income } from "../api/types";
+import type { BankRowRef, Income } from "../api/types";
 import { todayIso } from "../lib/dates";
 import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
@@ -16,21 +16,30 @@ type Kind = Income["kind"];
 
 const FIELDS = ["kind", "date", "earnedMonth", "amountMinor", "source", "accountId", "recipientUserId", "notes"];
 
+/** What a new income line starts with, such as a bank row's suggestion. */
+export type IncomeDraft = Partial<Pick<Income, "date" | "amountMinor" | "source" | "accountId" | "recipientUserId" | "notes">>;
+
 /**
  * Adds income or a deduction (staying open for the next line) or edits [income]. Lives in a side sheet;
- * [onSaved] reports each saved row, [onDone] closes the sheet.
+ * [onSaved] reports each saved row, [onDone] closes the sheet. With [bankRows], it adds the one line those bank
+ * rows become, starting from [draft], and closes once saved.
  */
 export function IncomeForm({
   income,
+  draft,
+  bankRows,
   defaultDate,
   onSaved,
   onDone,
 }: {
   income?: Income;
+  draft?: IncomeDraft;
+  bankRows?: BankRowRef[];
   defaultDate?: string;
   onSaved?: (income: Income) => void;
   onDone: () => void;
 }) {
+  const start: IncomeDraft = income ?? draft ?? {};
   const household = useHousehold();
   const accounts = useAccounts(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
@@ -41,12 +50,12 @@ export function IncomeForm({
 
   const [kind, setKind] = useState<Kind>(income?.kind ?? "earning");
   const deduction = kind === "deduction";
-  const [date, setDate] = useState(income?.date ?? defaultDate ?? todayIso());
-  const [amount, setAmount] = useState(income ? toInputValue(income.amountMinor, household.currency) : "");
-  const [source, setSource] = useState(income?.source ?? "");
-  const [accountId, setAccountId] = useState(income?.accountId ?? "");
-  const [recipientUserId, setRecipientUserId] = useState(income?.recipientUserId ?? "");
-  const [notes, setNotes] = useState(income?.notes ?? "");
+  const [date, setDate] = useState(start.date ?? defaultDate ?? todayIso());
+  const [amount, setAmount] = useState(start.amountMinor != null ? toInputValue(start.amountMinor, household.currency) : "");
+  const [source, setSource] = useState(start.source ?? "");
+  const [accountId, setAccountId] = useState(start.accountId ?? "");
+  const [recipientUserId, setRecipientUserId] = useState(start.recipientUserId ?? "");
+  const [notes, setNotes] = useState(start.notes ?? "");
   // The month it was earned; null follows the date (most income is earned the month it arrives).
   const [earnedMonth, setEarnedMonth] = useState<string | null>(
     income && income.earnedMonth !== income.date.slice(0, 7) ? income.earnedMonth : null,
@@ -83,12 +92,13 @@ export function IncomeForm({
           earnedMonth: earnedMonth ?? date.slice(0, 7),
           notes,
           version: income?.version,
+          bankRows: income ? [] : (bankRows ?? []),
         },
       },
       {
         onSuccess: (saved) => {
           onSaved?.(saved);
-          if (income) {
+          if (income || bankRows) {
             onDone();
             return;
           }
@@ -124,7 +134,7 @@ export function IncomeForm({
             )}
             <span className="flex-1" />
             <Button type="button" variant="outline" onClick={onDone}>
-              {income ? "Cancel" : "Done"}
+              {income || bankRows ? "Cancel" : "Done"}
             </Button>
             <Button type="submit" disabled={save.isPending}>
               {income ? "Save" : deduction ? "Add deduction" : "Add income"}

@@ -14,6 +14,7 @@ import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
+import dev.spendingtracker.server.inbox.fileBankRows
 import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.IncomeInput
@@ -93,7 +94,8 @@ fun Route.incomeRoutes() = route("/income") {
         }
     }) {
         val householdId = call.household.id
-        val input = call.receive<IncomeInput>().validated()
+        val raw = call.receive<IncomeInput>()
+        val input = raw.validated()
         val id = Uuid.random()
         val income = dbQuery {
             input.checkReferences(householdId)
@@ -104,6 +106,7 @@ fun Route.incomeRoutes() = route("/income") {
                 it[version] = 1
                 it[createdBy] = call.userId
             }
+            fileBankRows(householdId, raw.bankRows, call.userId, incomeId = id, created = true)
             Income.selectAll().where { Income.id eq id }.single().toIncome()
         }
         call.respond(HttpStatusCode.Created, income)

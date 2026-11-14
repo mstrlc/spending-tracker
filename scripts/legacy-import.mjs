@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Converts the old app's database (data/legacy/d1.sqlite) into an import file for POST /import, which the
-// Import page uploads. Only expenses and income come across, with the members, accounts, categories and trips they
-// use; the old Investments expenses become contributions to assets (see "Importing the old app" in ARCHITECTURE.md).
-// Bank rows, pairings and rules stay behind: the old app's automatic decisions are hints, not facts.
+// Import page uploads. Expenses and income come across, with the members, accounts, categories and trips they use;
+// the old Investments expenses become contributions to assets (see "Importing the old app" in ARCHITECTURE.md).
+// Bank feeds and their rows come across too, with what a person decided about each. The old app's automatic
+// decisions (bank-sync) are hints, not facts: those rows stay in the inbox with the old decision as their hint.
+// Pairings and rules stay behind.
 //
 //   node scripts/legacy-import.mjs [data/legacy/d1.sqlite] [data/legacy/import.json]
 //
@@ -93,8 +95,56 @@ const incomeLines = income.map((r) => {
   };
 });
 
+// ---- Bank feeds and rows ----
+
+const INSTITUTIONS = {
+  REVOLUT_REVOLT21: "revolut",
+  CSOB_CEKOCZPPXXX: "csob",
+  KOMERCNI_KOMBCZPPXXX: "kb",
+  RAIFFEISEN_RZBCCZPP: "raiffeisen",
+};
+const AUTOMATIC = new Set(["", "bank-sync"]);
+const investmentSpending = new Set(spending.filter((r) => r.category === INVESTMENTS).map((r) => r.id));
+
+const feedNames = new Set();
+const bankFeeds = [];
+const feedOf = new Map();
+for (const b of all("SELECT * FROM bank_accounts WHERE mode = 'import' ORDER BY ledger_account, currency, id")) {
+  let name = [b.ledger_account, b.name, b.currency === "CZK" ? "" : b.currency].filter(Boolean).join(" · ");
+  for (let n = 2; feedNames.has(name.toLowerCase()); n++) name = `${name.replace(/ \(\d+\)$/, "")} (${n})`;
+  feedNames.add(name.toLowerCase());
+  feedOf.set(b.id, name);
+  bankFeeds.push({
+    name,
+    account: b.ledger_account,
+    currency: b.currency,
+    institution: INSTITUTIONS[b.institution_id] ?? "other",
+    iban: blank(b.iban),
+    importFrom: blank(b.import_from),
+  });
+}
+
+const bankRows = all("SELECT * FROM bank_transactions ORDER BY date, id")
+  .filter((t) => feedOf.has(t.account_id))
+  .map((t) => {
+    const row = { feed: feedOf.get(t.account_id), raw: JSON.parse(t.raw), hint: "" };
+    const human = !AUTOMATIC.has(t.decided_by);
+    if (human && t.status === "accepted" && t.spending_id != null) {
+      if (investmentSpending.has(t.spending_id)) row.skipped = "Paid into an asset (old app)";
+      else row.expense = `legacy:spending:${t.spending_id}`;
+    } else if (human && t.status === "skipped") {
+      row.skipped = t.reason || "Skipped in the old app";
+    } else if (t.status !== "pending") {
+      row.hint = `Old app: ${t.reason || t.kind}`;
+    } else {
+      row.hint = t.reason;
+    }
+    return row;
+  });
+
 const usedAccounts = new Set([
   ...expenses.map((e) => e.account),
+  ...bankFeeds.map((f) => f.account),
   ...[...assets.values()].flatMap((a) => a.contributions.map((c) => c.account)),
 ].filter(Boolean));
 
@@ -141,6 +191,8 @@ const file = {
   expenses,
   income: incomeLines,
   assets: [...assets.values()],
+  bankFeeds,
+  bankRows,
 };
 writeFileSync(target, JSON.stringify(file, null, 2) + "\n");
 
@@ -148,5 +200,5 @@ const contributions = file.assets.reduce((n, a) => n + a.contributions.length, 0
 console.log(
   `Wrote ${target}: ${people.length} people, ${accounts.length} accounts, ${categories.length} categories, ` +
     `${trips.length} trips, ${expenses.length} expenses, ${incomeLines.length} income lines, ` +
-    `${file.assets.length} assets with ${contributions} contributions.`,
+    `${file.assets.length} assets with ${contributions} contributions, ${bankFeeds.length} bank feeds with ${bankRows.length} rows.`,
 );

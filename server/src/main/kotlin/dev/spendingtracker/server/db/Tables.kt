@@ -292,3 +292,70 @@ object AuditLog : Table("audit_log") {
     val after = text("after").nullable()
     override val primaryKey = PrimaryKey(id)
 }
+
+/** V19: what a bank provides, read into one ledger account. */
+object BankFeeds : Table("bank_feeds") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val accountId = uuid("account_id")
+    val name = text("name")
+    val institution = text("institution")
+    val feedSource = text("source")
+    val externalId = text("external_id").nullable()
+    val iban = text("iban").nullable()
+    val currency = text("currency")
+    val importFrom = date("import_from").nullable()
+    val version = integer("version").default(1)
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V19, V20: one bank transaction; pending while none of [expenseId], [incomeId], [transferId], [settlementId] and [skipReason] is set. */
+object BankRows : Table("bank_rows") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val feedId = uuid("feed_id")
+    val externalId = text("external_id")
+    val bookingDate = date("booking_date")
+    val valueDate = date("value_date").nullable()
+    val date = date("date")
+    val amountMinor = long("amount_minor")
+    val currency = text("currency")
+    val counterpartyName = text("counterparty_name")
+    val counterpartyIban = text("counterparty_iban").nullable()
+    val counterpartyAccount = text("counterparty_account")
+    val text = text("text")
+    val message = text("message")
+    val merchantKey = text("merchant_key")
+    val code = text("code")
+    val hint = text("hint")
+    val raw = jsonb("raw")
+    val expenseId = uuid("expense_id").nullable()
+    val incomeId = uuid("income_id").nullable()
+    val transferId = uuid("transfer_id").nullable()
+    val settlementId = uuid("settlement_id").nullable()
+    val skipReason = text("skip_reason").nullable()
+    val createdRecord = bool("created_record").default(false)
+    val decidedBy = uuid("decided_by").nullable()
+    val decidedAuto = bool("decided_auto").default(false)
+    val decidedAt = timestamp("decided_at").nullable()
+    val version = integer("version").default(1)
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V20: money moving between the household's own accounts. */
+object Transfers : Table("transfers") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val date = date("date")
+    val amountMinor = long("amount_minor")
+    val fromAccountId = uuid("from_account_id")
+    val toAccountId = uuid("to_account_id")
+    val notes = text("notes")
+    val version = integer("version").default(1)
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}

@@ -47,4 +47,6 @@ data class IncomeInput(
     /** YYYY-MM; defaults to the month of [date]. */
     val earnedMonth: String? = null,
     val kind: IncomeKind = IncomeKind.EARNING,
+    /** On create only: bank rows this income line is made from, filed under it in the same transaction. */
+    val bankRows: List<BankRowRef> = emptyList(),
 )

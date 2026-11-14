@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PlusIcon } from "lucide-react";
-import { useBalances, useCategories, useExpenses, useMembers, useSettlements, useSplitRules } from "../api/hooks";
+import { useAccounts, useBalances, useCategories, useExpenses, useMembers, useSettlements, useSplitRules } from "../api/hooks";
 import type { BalanceEntry, Debt, Expense, Settlement, SplitRule } from "../api/types";
 import { categoryLabel } from "../categories/tree";
 import { ExpenseForm } from "../expenses/ExpenseForm";
@@ -39,6 +39,7 @@ export function BalancesPage() {
   const expenses = useExpenses(household.id, from, to).data ?? [];
   const settlements = useSettlements(household.id, from, to).data ?? [];
   const rules = useSplitRules(household.id);
+  const accounts = useAccounts(household.id).data ?? [];
   const categories = useCategories(household.id).data ?? [];
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
   const close = () => setEditor({ mode: "closed" });
@@ -46,6 +47,7 @@ export function BalancesPage() {
   const people = members.data ?? [];
   const owed = balances.data?.balances ?? [];
   const entries = balances.data?.entries ?? [];
+  const contributions = balances.data?.jointContributions ?? [];
   const settle = () => setEditor({ mode: "settle", owed: owed[0] });
   useMonthShortcuts(month, goTo, settle);
 
@@ -159,6 +161,42 @@ export function BalancesPage() {
           </Table>
         )}
       </Surface>
+
+      {contributions.length > 0 && (
+        <section className="flex flex-col gap-3" aria-labelledby="joint-heading">
+          <div>
+            <h2 id="joint-heading" className="text-lg font-medium">
+              Put into joint accounts
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Money each of you moved into joint accounts in {formatMonth(month)}, less what you took out. It isn't a debt.
+            </p>
+          </div>
+          <Surface>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Who</TableHead>
+                  <TableHead>Joint account</TableHead>
+                  <TableHead className="text-right">Net ({household.currency})</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {contributions.map((c) => (
+                  <TableRow key={`${c.userId}-${c.accountId}`}>
+                    <TableCell className="font-medium">{memberName(people, c.userId)}</TableCell>
+                    <TableCell className="text-muted-foreground">{accounts.find((a) => a.id === c.accountId)?.name ?? "Account"}</TableCell>
+                    <TableCell className="amount text-right">
+                      {c.amountMinor < 0 ? "−" : ""}
+                      {formatAmount(Math.abs(c.amountMinor), household.currency)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Surface>
+        </section>
+      )}
 
       <section className="flex flex-col gap-3" aria-labelledby="splits-heading">
         <div className="flex items-center justify-between gap-3">

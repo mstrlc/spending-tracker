@@ -26,6 +26,7 @@ import dev.spendingtracker.server.debt.toShares
 import dev.spendingtracker.server.debt.validatedWeights
 import dev.spendingtracker.server.debt.writeExpenseSplit
 import dev.spendingtracker.server.household.household
+import dev.spendingtracker.server.inbox.fileBankRows
 import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.server.merchant.resolveMerchant
 import dev.spendingtracker.shared.api.ApiError
@@ -124,7 +125,8 @@ fun Route.expenseRoutes() = route("/expenses") {
         }
     }) {
         val householdId = call.household.id
-        val input = call.receive<ExpenseInput>().validated()
+        val raw = call.receive<ExpenseInput>()
+        val input = raw.validated()
         val id = Uuid.random()
         val expense = dbQuery {
             input.checkReferences(householdId)
@@ -138,6 +140,7 @@ fun Route.expenseRoutes() = route("/expenses") {
             }
             writeExpenseLines(householdId, id, input.lines)
             writeExpenseSplit(householdId, id, input.split, call.userId)
+            fileBankRows(householdId, raw.bankRows, call.userId, expenseId = id, created = true)
             loadExpense(householdId, id)
         }
         call.respond(HttpStatusCode.Created, expense)

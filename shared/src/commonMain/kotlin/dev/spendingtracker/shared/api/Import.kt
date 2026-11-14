@@ -2,6 +2,7 @@ package dev.spendingtracker.shared.api
 
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 /**
  * A batch of household data to import, such as another app's export converted to this shape. Everything refers to
@@ -21,6 +22,8 @@ data class HouseholdImport(
     val expenses: List<ImportExpense> = emptyList(),
     val income: List<ImportIncome> = emptyList(),
     val assets: List<ImportAsset> = emptyList(),
+    val bankFeeds: List<ImportBankFeed> = emptyList(),
+    val bankRows: List<ImportBankRow> = emptyList(),
 )
 
 /**
@@ -105,6 +108,32 @@ data class ImportContribution(
     val notes: String = "",
 )
 
+/** Matched by name; a new one is read into [account] (a name). Rows booked before [importFrom] aren't imported. */
+@Serializable
+data class ImportBankFeed(
+    val name: String,
+    val account: String,
+    val currency: String,
+    val institution: BankInstitution = BankInstitution.OTHER,
+    val iban: String? = null,
+    val importFrom: LocalDate? = null,
+)
+
+/**
+ * A bank row of [feed] (a name), as the bank's GoCardless transaction JSON ([raw]). What a person decided comes across:
+ * the [expense] or [income] line it became (their externalRef in this or an earlier import) or the [skipped] reason;
+ * none of them leaves it in the inbox, with [hint] saying what was thought of it. Rows already imported are skipped.
+ */
+@Serializable
+data class ImportBankRow(
+    val feed: String,
+    val raw: JsonObject,
+    val expense: String? = null,
+    val income: String? = null,
+    val skipped: String? = null,
+    val hint: String = "",
+)
+
 /**
  * What an import created, and what was [existing] already: names matched to the household's records, and expenses,
  * income and contributions imported before, which were skipped. With [dryRun] nothing was saved.
@@ -127,4 +156,6 @@ data class ImportCounts(
     val income: Int,
     val assets: Int,
     val contributions: Int,
+    val bankFeeds: Int,
+    val bankRows: Int,
 )

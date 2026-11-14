@@ -6,6 +6,7 @@ import {
   HandCoinsIcon,
   HistoryIcon,
   ImportIcon,
+  InboxIcon,
   LogOutIcon,
   LuggageIcon,
   StoreIcon,
@@ -17,7 +18,7 @@ import {
   UsersIcon,
   WalletIcon,
 } from "lucide-react";
-import { useCreateHousehold, useHouseholds, useLogout, useMe } from "../api/hooks";
+import { useBankFeeds, useCreateHousehold, useHouseholds, useLogout, useMe } from "../api/hooks";
 import type { Household } from "../api/types";
 import { AuthShell } from "../auth/AuthShell";
 import { ErrorText, Field, FormError, Loading, SheetSlot } from "../ui";
@@ -41,6 +42,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -109,6 +111,7 @@ export function OnboardingPage() {
 
 const SECTIONS = [
   { to: "overview", label: "Overview", icon: <GaugeIcon /> },
+  { to: "inbox", label: "Inbox", icon: <InboxIcon /> },
   { to: "expenses", label: "Expenses", icon: <ReceiptIcon /> },
   { to: "income", label: "Income", icon: <HandCoinsIcon /> },
   { to: "assets", label: "Assets", icon: <TrendingUpIcon /> },
@@ -162,6 +165,7 @@ function AppSidebar({ household, households }: { household: Household; household
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { setOpenMobile } = useSidebar();
+  const inboxCount = useBankFeeds(household.id).data?.reduce((sum, f) => sum + f.pendingCount, 0) ?? 0;
   const name = me.data?.displayName ?? "";
   const logOut = () => logout.mutate(undefined, { onSuccess: () => navigate("/login") });
 
@@ -219,6 +223,7 @@ function AppSidebar({ household, households }: { household: Household; household
                     <span>{s.label}</span>
                   </NavLink>
                 </SidebarMenuButton>
+                {s.to === "inbox" && inboxCount > 0 && <SidebarMenuBadge aria-label={`${inboxCount} to decide`}>{inboxCount}</SidebarMenuBadge>}
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
