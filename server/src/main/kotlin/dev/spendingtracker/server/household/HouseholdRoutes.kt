@@ -27,6 +27,7 @@ import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.CreateHouseholdRequest
 import dev.spendingtracker.shared.api.Household
 import dev.spendingtracker.shared.api.HouseholdRole
+import dev.spendingtracker.shared.api.HouseholdSettings
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.MemberInput
 import io.github.smiley4.ktoropenapi.delete
@@ -221,6 +222,33 @@ fun Route.householdRoutes() = route("/households") {
             call.respond(HttpStatusCode.NoContent)
         }
 
+        get("/settings", {
+            operationId = "getHouseholdSettings"
+            response { code(HttpStatusCode.OK) { body<HouseholdSettings>() } }
+        }) {
+            val householdId = call.household.id
+            call.respond(dbQuery { loadSettings(householdId) })
+        }
+
+        put("/settings", {
+            operationId = "updateHouseholdSettings"
+            description = "Changes the household's settings. Owners only."
+            request { body<HouseholdSettings>() }
+            response {
+                code(HttpStatusCode.OK) { body<HouseholdSettings>() }
+                code(HttpStatusCode.Forbidden) { body<ApiError>() }
+            }
+        }) {
+            call.requireOwner()
+            val householdId = call.household.id
+            val input = call.receive<HouseholdSettings>()
+            val settings = dbQuery {
+                Households.update({ Households.id eq householdId }) { it[autoMatch] = input.autoMatch }
+                loadSettings(householdId)
+            }
+            call.respond(settings)
+        }
+
         householdInviteRoutes()
         accountRoutes()
         categoryRoutes()
@@ -236,6 +264,9 @@ fun Route.householdRoutes() = route("/households") {
         overviewRoutes()
     }
 }
+
+private fun loadSettings(householdId: Uuid) =
+    HouseholdSettings(Households.selectAll().where { Households.id eq householdId }.single()[Households.autoMatch])
 
 /** [userId]'s membership of [householdId] joined with the user, or null. Call inside a transaction. */
 private fun memberRow(householdId: Uuid, userId: Uuid): ResultRow? =

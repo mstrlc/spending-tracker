@@ -102,6 +102,8 @@ data class BankRow(
     val message: String,
     val code: String,
     val hint: String,
+    /** The bank row's descriptor without numbers (what rules and past decisions are matched on); an IBAN when there is none. */
+    val merchantKey: String,
     val outcome: BankRowOutcome,
     val expenseId: String?,
     val incomeId: String?,
@@ -110,6 +112,8 @@ data class BankRow(
     val skipReason: String?,
     val decidedByUserId: String?,
     val decidedAuto: Boolean,
+    /** The rule that filed it automatically; null for a person's decision, the matcher's, or a rule since deleted. */
+    val ruleId: String?,
     /** ISO timestamp. */
     val decidedAt: String?,
     val version: Int,
@@ -134,6 +138,10 @@ enum class SuggestedRecord {
  * pending row looks like the other side ([transferCandidates], best first, at most 3), the counterparty's IBAN is
  * one of the household's accounts ([transferAccountId], only when there is no candidate), or the hint says so. The
  * expense and income fields stay filled, as for the record the row would be otherwise.
+ *
+ * A rule that matches the row ([ruleId], [ruleName]) takes precedence over the guess from past decisions: its record,
+ * merchant, category, whose, income source and other account replace the guesses, and [skipReason] is set when the
+ * rule skips. For income, [paidByUserId] is who receives it.
  */
 @Serializable
 data class BankRowSuggestion(
@@ -148,6 +156,9 @@ data class BankRowSuggestion(
     val duplicates: List<DuplicateCandidate>,
     val transferCandidates: List<TransferCandidate>,
     val transferAccountId: String?,
+    val ruleId: String?,
+    val ruleName: String?,
+    val skipReason: String?,
 )
 
 /** A pending row that looks like the other side of a transfer; [amountMinor] is in the row's own [currency], money out negative. */

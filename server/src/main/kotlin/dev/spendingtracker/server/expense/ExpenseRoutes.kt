@@ -126,20 +126,8 @@ fun Route.expenseRoutes() = route("/expenses") {
     }) {
         val householdId = call.household.id
         val raw = call.receive<ExpenseInput>()
-        val input = raw.validated()
-        val id = Uuid.random()
         val expense = dbQuery {
-            input.checkReferences(householdId)
-            val merchantId = resolveMerchant(householdId, input.merchant, input.defaultCategoryId, call.userId)
-            Expenses.insert {
-                it[Expenses.id] = id
-                it[Expenses.householdId] = householdId
-                it.write(input, merchantId)
-                it[version] = 1
-                it[createdBy] = call.userId
-            }
-            writeExpenseLines(householdId, id, input.lines)
-            writeExpenseSplit(householdId, id, input.split, call.userId)
+            val id = createExpense(householdId, call.userId, raw)
             fileBankRows(householdId, raw.bankRows, call.userId, expenseId = id, created = true)
             loadExpense(householdId, id)
         }
@@ -201,6 +189,27 @@ fun Route.expenseRoutes() = route("/expenses") {
         }
         call.respond(HttpStatusCode.NoContent)
     }
+}
+
+/**
+ * Validates [raw] and creates the expense (merchant found or created, split lines, own split): what the form and
+ * the inbox rules both make. Returns its id; filing bank rows under it is up to the caller. Call inside a transaction.
+ */
+fun createExpense(householdId: Uuid, userId: Uuid, raw: ExpenseInput): Uuid {
+    val input = raw.validated()
+    val id = Uuid.random()
+    input.checkReferences(householdId)
+    val merchantId = resolveMerchant(householdId, input.merchant, input.defaultCategoryId, userId)
+    Expenses.insert {
+        it[Expenses.id] = id
+        it[Expenses.householdId] = householdId
+        it.write(input, merchantId)
+        it[version] = 1
+        it[createdBy] = userId
+    }
+    writeExpenseLines(householdId, id, input.lines)
+    writeExpenseSplit(householdId, id, input.split, userId)
+    return id
 }
 
 private data class ValidLine(val categoryId: Uuid?, val amountMinor: Long, val notes: String)
@@ -337,7 +346,7 @@ private fun writeExpenseLines(householdId: Uuid, expenseId: Uuid, lines: List<Va
 }
 
 /** One expense as the API returns it. Call inside a transaction. */
-private fun loadExpense(householdId: Uuid, id: Uuid): Expense {
+fun loadExpense(householdId: Uuid, id: Uuid): Expense {
     val lines = loadExpenseLines(householdId, listOf(id))[id].orEmpty()
     return withMerchant().where { Expenses.id eq id }.single().toExpense(loadSplitBook(householdId, listOf(id)), lines)
 }

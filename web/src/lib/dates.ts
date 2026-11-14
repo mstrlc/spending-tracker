@@ -42,3 +42,9 @@ export function formatDate(iso: string, locale?: string): string {
   const [year, m, d] = iso.split("-").map(Number);
   return new Date(year, m - 1, d).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
 }
+
+/** [iso] moved by [days] calendar days (negative for earlier), as YYYY-MM-DD. */
+export function shiftDays(iso: string, days: number): string {
+  const [year, m, d] = iso.split("-").map(Number);
+  return todayIso(new Date(year, m - 1, d + days));
+}

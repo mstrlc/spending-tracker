@@ -95,6 +95,8 @@ class InboxTest {
         assertEquals(-41_250, pizza.amountMinor)
         assertEquals(revolut.id, pizza.accountId)
         assertEquals("CARD_PAYMENT", pizza.code)
+        assertEquals("PIZZA PLACE", pizza.merchantKey)
+        assertNull(pizza.ruleId)
         assertEquals("Top-up", rows[2].hint)
         val suggestion = pizza.suggestion!!
         assertEquals(SuggestedRecord.EXPENSE, suggestion.record)

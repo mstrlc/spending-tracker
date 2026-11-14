@@ -7,6 +7,7 @@ import {
   HistoryIcon,
   ImportIcon,
   InboxIcon,
+  ListFilterIcon,
   LogOutIcon,
   LuggageIcon,
   StoreIcon,
@@ -112,6 +113,7 @@ export function OnboardingPage() {
 const SECTIONS = [
   { to: "overview", label: "Overview", icon: <GaugeIcon /> },
   { to: "inbox", label: "Inbox", icon: <InboxIcon /> },
+  { to: "rules", label: "Rules", icon: <ListFilterIcon /> },
   { to: "expenses", label: "Expenses", icon: <ReceiptIcon /> },
   { to: "income", label: "Income", icon: <HandCoinsIcon /> },
   { to: "assets", label: "Assets", icon: <TrendingUpIcon /> },

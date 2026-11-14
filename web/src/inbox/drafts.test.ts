@@ -14,6 +14,9 @@ const suggestion = (s: Partial<BankRowSuggestion>): BankRowSuggestion => ({
   duplicates: [],
   transferCandidates: [],
   transferAccountId: null,
+  ruleId: null,
+  ruleName: null,
+  skipReason: null,
   ...s,
 });
 
@@ -32,6 +35,7 @@ const row = (r: Partial<BankRow>): BankRow => ({
   message: "",
   code: "",
   hint: "",
+  merchantKey: "",
   outcome: "pending",
   expenseId: null,
   incomeId: null,
@@ -40,6 +44,7 @@ const row = (r: Partial<BankRow>): BankRow => ({
   skipReason: null,
   decidedByUserId: null,
   decidedAuto: false,
+  ruleId: null,
   decidedAt: null,
   version: 1,
   suggestion: null,
@@ -68,6 +73,20 @@ describe("bank row drafts", () => {
     expect(draftIncome([pay], "u2")).toMatchObject({ amountMinor: 4_500_000, source: "Employer", recipientUserId: "u2" });
     expect(skipReason([row({ hint: "Old app: Revolut top-up" })])).toBe("Revolut top-up");
     expect(skipReason([row({ hint: "Money in" })])).toBe("");
+  });
+
+  it("lets a matching rule decide who receives income and why a row is skipped", () => {
+    const ruled = row({
+      amountMinor: 4_500_000,
+      hint: "Revolut top-up",
+      suggestion: suggestion({ record: "income", amountMinor: 4_500_000, incomeSource: "Acme Ltd", paidByUserId: "u3", ruleId: "r1", ruleName: "Employer" }),
+    });
+    expect(draftIncome([ruled], "u2")).toMatchObject({ source: "Acme Ltd", recipientUserId: "u3" });
+    // A rule that names nobody follows the account, which the suggestion already says.
+    const followsAccount = row({ suggestion: suggestion({ record: "income", paidByUserId: null, ruleId: "r1", ruleName: "Employer" }) });
+    expect(draftIncome([followsAccount], "u2").recipientUserId).toBeNull();
+    const skipping = row({ hint: "Revolut top-up", suggestion: suggestion({ ruleId: "r2", ruleName: "Top-ups", skipReason: "Top-up by rule" }) });
+    expect(skipReason([skipping])).toBe("Top-up by rule");
   });
 
   it("finds two opposite rows to pair", () => {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccounts, useBankFeeds, useBankRows, useCategories, useDecideBankRows, useMembers } from "../api/hooks";
+import { useAccounts, useBankFeeds, useBankRows, useCategories, useDecideBankRows, useInboxRules, useMembers } from "../api/hooks";
 import type { BankRow, BankRowRef, DuplicateCandidate, TransferCandidate } from "../api/types";
 import { formatDay } from "../lib/dates";
 import { formatMoney } from "../lib/money";
@@ -14,7 +14,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FeedsPanel } from "./FeedsPanel";
+import { loadDecision } from "./decisions";
 import { draftExpense, draftIncome, oppositeSides, skipReason } from "./drafts";
+import { RuleForm } from "./RuleForm";
+import { draftRule, type RuleDraft } from "./ruleDrafts";
 import { SettleForm } from "./SettleForm";
 import { TransferForm } from "./TransferForm";
 
@@ -24,7 +27,8 @@ type Editor =
   | { mode: "expense"; rows: BankRowRef[]; draft: ExpenseDraft }
   | { mode: "income"; rows: BankRowRef[]; draft: IncomeDraft }
   | { mode: "transfer"; row: BankRow; otherAccountId: string | null }
-  | { mode: "settle"; rows: BankRow[] };
+  | { mode: "settle"; rows: BankRow[] }
+  | { mode: "rule"; rowId: string; draft: RuleDraft };
 
 const ref = (row: BankRow): BankRowRef => ({ id: row.id, version: row.version });
 
@@ -35,22 +39,29 @@ const bankAmount = (row: Pick<BankRow, "amountMinor" | "currency">) =>
 export function InboxPage() {
   const household = useHousehold();
   const [tab, setTab] = useState<"pending" | "decided">("pending");
+  // In the Decided tab: everything, or only what rules and the matcher filed.
+  const [filter, setFilter] = useState<"all" | "auto">("all");
   const feeds = useBankFeeds(household.id);
   const rows = useBankRows(household.id, tab);
   const accounts = useAccounts(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
   const categories = useCategories(household.id).data ?? [];
+  const rules = useInboxRules(household.id).data ?? [];
   const decide = useDecideBankRows(household.id);
   const prompt = usePrompt();
   const confirm = useConfirm();
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const list = rows.data ?? [];
+  const [ruleError, setRuleError] = useState<unknown>(null);
+  const loaded = rows.data ?? [];
+  const autoCount = tab === "decided" ? loaded.filter((r) => r.decidedAuto).length : 0;
+  const list = tab === "decided" && filter === "auto" ? loaded.filter((r) => r.decidedAuto) : loaded;
   const pendingCount = feeds.data?.reduce((sum, f) => sum + f.pendingCount, 0);
   const picked = list.filter((r) => selected.has(r.id));
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? "";
   const ownerOf = (accountId: string) => accounts.find((a) => a.id === accountId)?.ownerUserId ?? null;
+  const ruleName = (id: string | null) => rules.find((r) => r.id === id)?.name;
   const categoryName = (id?: string | null) => categories.find((c) => c.id === id)?.name;
   const memberName = (id?: string | null) => (id ? members.find((m) => m.userId === id)?.displayName : "Joint");
 
@@ -115,6 +126,34 @@ export function InboxPage() {
     decide.mutate({ action: "undo", rows: [ref(row)] });
   }
 
+  /** Puts several decided rows back at once, after saying what goes with them. */
+  async function undoMany(picks: BankRow[]) {
+    const skippedOnly = picks.every((r) => r.outcome === "skipped");
+    if (
+      !skippedOnly &&
+      !(await confirm({
+        title: `Put ${picks.length === 1 ? "this row" : `${picks.length} rows`} back in the inbox?`,
+        description:
+          "An expense, income line or transfer made from them is deleted once none of its rows is left. One you entered by hand stays.",
+        action: "Put back",
+      }))
+    ) {
+      return;
+    }
+    decide.mutate({ action: "undo", rows: picks.map(ref) }, { onSuccess: clear });
+  }
+
+  /** Opens the rule form filled in from the decided [row] and what it became. */
+  async function makeRule(row: BankRow) {
+    setRuleError(null);
+    try {
+      const decision = await loadDecision(household.id, row);
+      setEditor({ mode: "rule", rowId: row.id, draft: draftRule(row, decision) });
+    } catch (e) {
+      setRuleError(e);
+    }
+  }
+
   const sides = oppositeSides(picked);
   const noFeeds = feeds.data?.length === 0;
 
@@ -130,14 +169,37 @@ export function InboxPage() {
         with the other side of a transfer, or skip it. Suggestions come from what you decided before.
       </PageIntro>
 
-      <Tabs value={tab} onValueChange={(v) => { setTab(v as "pending" | "decided"); clear(); }}>
-        <TabsList>
-          <TabsTrigger value="pending">To decide{pendingCount ? ` (${pendingCount})` : ""}</TabsTrigger>
-          <TabsTrigger value="decided">Decided</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-wrap items-center gap-3">
+        <Tabs value={tab} onValueChange={(v) => { setTab(v as "pending" | "decided"); clear(); }}>
+          <TabsList>
+            <TabsTrigger value="pending">To decide{pendingCount ? ` (${pendingCount})` : ""}</TabsTrigger>
+            <TabsTrigger value="decided">Decided</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {tab === "decided" && (
+          <Tabs value={filter} onValueChange={(v) => { setFilter(v as "all" | "auto"); clear(); }}>
+            <TabsList aria-label="Which decided rows">
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="auto">Automatic{autoCount ? ` (${autoCount})` : ""}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+      </div>
 
-      {picked.length > 0 && (
+      {tab === "decided" && picked.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2" role="toolbar" aria-label="Selected rows">
+          <span className="text-sm">{picked.length} selected</span>
+          <span className="flex-1" />
+          <Button size="sm" onClick={() => undoMany(picked)} disabled={decide.isPending}>
+            Put back in the inbox
+          </Button>
+          <Button size="sm" variant="ghost" onClick={clear}>
+            Clear
+          </Button>
+        </div>
+      )}
+
+      {tab === "pending" && picked.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2" role="toolbar" aria-label="Selected rows">
           <span className="text-sm">
             {picked.length} selected
@@ -173,6 +235,7 @@ export function InboxPage() {
       <Surface>
         <ErrorText error={rows.error} className="p-4" />
         <ErrorText error={decide.error} className="p-4" />
+        <ErrorText error={ruleError} className="p-4" />
         {rows.isPending && <SkeletonRows />}
         {rows.data && list.length === 0 && (
           noFeeds ? (
@@ -181,6 +244,8 @@ export function InboxPage() {
             </EmptyState>
           ) : tab === "pending" ? (
             <EmptyState title="All decided">Nothing waits in the inbox. Upload a newer statement to bring in more rows.</EmptyState>
+          ) : filter === "auto" ? (
+            <EmptyState title="Nothing filed automatically">Rows that rules or the matcher file without asking show here.</EmptyState>
           ) : (
             <EmptyState title="Nothing decided yet">Rows you add, file or skip show here, where you can put them back.</EmptyState>
           )
@@ -191,15 +256,13 @@ export function InboxPage() {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                {tab === "pending" && (
-                  <TableHead className="w-8">
-                    <Checkbox
-                      aria-label="Select all"
-                      checked={picked.length > 0 && picked.length === list.length ? true : picked.length > 0 ? "indeterminate" : false}
-                      onCheckedChange={(c) => setSelected(c === true ? new Set(list.map((r) => r.id)) : new Set())}
-                    />
-                  </TableHead>
-                )}
+                <TableHead className="w-8">
+                  <Checkbox
+                    aria-label="Select all"
+                    checked={picked.length > 0 && picked.length === list.length ? true : picked.length > 0 ? "indeterminate" : false}
+                    onCheckedChange={(c) => setSelected(c === true ? new Set(list.map((r) => r.id)) : new Set())}
+                  />
+                </TableHead>
                 <TableHead className="@max-xl:hidden">Day</TableHead>
                 <TableHead>Bank row</TableHead>
                 <TableHead className="@max-3xl:hidden">{tab === "pending" ? "Suggestion" : "Became"}</TableHead>
@@ -212,7 +275,8 @@ export function InboxPage() {
             <TableBody>
               {list.map((row) => {
                 const s = row.suggestion;
-                const isTransfer = s?.record === "transfer";
+                const isSkip = s?.skipReason != null;
+                const isTransfer = s?.record === "transfer" && !isSkip;
                 const isExpense = s?.record !== "income";
                 const best = s?.transferCandidates[0];
                 const otherAccount =
@@ -223,21 +287,26 @@ export function InboxPage() {
                     {tab === "pending" && s && (
                       <>
                         <div>
-                          {isTransfer
-                            ? `Transfer ${row.amountMinor < 0 ? "to" : "from"} ${otherAccount}`
-                            : isExpense
-                              ? s.merchant || "Expense"
-                              : s.incomeSource || "Income"}
+                          {s.skipReason != null
+                            ? `Skip: ${s.skipReason}`
+                            : isTransfer
+                              ? `Transfer ${row.amountMinor < 0 ? "to" : "from"} ${otherAccount}`
+                              : isExpense
+                                ? s.merchant || "Expense"
+                                : s.incomeSource || "Income"}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {isTransfer
+                          {s.skipReason != null
                             ? "Not spending or income"
-                            : isExpense
-                            ? [categoryName(s.categoryId) ?? "Uncategorized", members.length > 1 && memberName(s.paidByUserId)]
-                                .filter(Boolean)
-                                .join(" · ")
-                            : "Income"}
+                            : isTransfer
+                              ? "Not spending or income"
+                              : isExpense
+                                ? [categoryName(s.categoryId) ?? "Uncategorized", members.length > 1 && memberName(s.paidByUserId)]
+                                    .filter(Boolean)
+                                    .join(" · ")
+                                : "Income"}
                         </div>
+                        {s.ruleName && <div className="text-xs text-muted-foreground">Rule: {s.ruleName}</div>}
                       </>
                     )}
                     {tab === "decided" && (
@@ -253,22 +322,24 @@ export function InboxPage() {
                                   ? "Settlement"
                                   : `Skipped: ${row.skipReason}`}
                         </div>
-                        {row.decidedAuto && <div className="text-xs text-muted-foreground">Filed automatically</div>}
+                        {row.decidedAuto && (
+                          <div className="text-xs text-muted-foreground">
+                            {ruleName(row.ruleId) ? `Filed by rule: ${ruleName(row.ruleId)}` : "Filed automatically"}
+                          </div>
+                        )}
                       </>
                     )}
                   </>
                 );
                 return (
                   <TableRow key={row.id} data-state={selected.has(row.id) ? "selected" : undefined}>
-                    {tab === "pending" && (
-                      <TableCell className="align-top">
-                        <Checkbox
-                          aria-label={`Select ${row.text}`}
-                          checked={selected.has(row.id)}
-                          onCheckedChange={(c) => toggle(row.id, c === true)}
-                        />
-                      </TableCell>
-                    )}
+                    <TableCell className="align-top">
+                      <Checkbox
+                        aria-label={`Select ${row.text}`}
+                        checked={selected.has(row.id)}
+                        onCheckedChange={(c) => toggle(row.id, c === true)}
+                      />
+                    </TableCell>
                     <TableCell className="align-top text-muted-foreground @max-xl:hidden">{formatDay(row.date)}</TableCell>
                     <TableCell className="whitespace-normal align-top">
                       <div className="flex flex-wrap items-baseline justify-between gap-x-2">
@@ -321,11 +392,19 @@ export function InboxPage() {
                             variant="outline"
                             className="@max-lg:hidden"
                             onClick={() =>
-                              isTransfer ? (best ? pair(row, best) : openTransfer(row)) : isExpense ? openExpense([row]) : openIncome([row])
+                              isSkip
+                                ? skip([row])
+                                : isTransfer
+                                  ? best
+                                    ? pair(row, best)
+                                    : openTransfer(row)
+                                  : isExpense
+                                    ? openExpense([row])
+                                    : openIncome([row])
                             }
                             disabled={isTransfer && decide.isPending}
                           >
-                            {isTransfer ? "Transfer" : isExpense ? "Add expense" : "Add income"}
+                            {isSkip ? "Skip" : isTransfer ? "Transfer" : isExpense ? "Add expense" : "Add income"}
                           </Button>
                         )}
                         <RowMenu
@@ -340,7 +419,10 @@ export function InboxPage() {
                                   { label: "Settle between members…", onSelect: () => openSettle([row]) },
                                   { label: "Skip…", onSelect: () => skip([row]) },
                                 ]
-                              : [{ label: "Put back in the inbox", onSelect: () => undo(row) }]
+                              : [
+                                  { label: "Put back in the inbox", onSelect: () => undo(row) },
+                                  ...(row.outcome !== "settlement" ? [{ label: "Make a rule…", onSelect: () => makeRule(row) }] : []),
+                                ]
                           }
                         />
                       </div>
@@ -366,7 +448,9 @@ export function InboxPage() {
                 ? "Transfer"
                 : editor.mode === "settle"
                   ? "Settle between members"
-                  : "Add expense from the bank"
+                  : editor.mode === "rule"
+                    ? "New rule"
+                    : "Add expense from the bank"
         }
       >
         {editor.mode === "feeds" && <FeedsPanel onDone={() => setEditor({ mode: "closed" })} />}
@@ -405,6 +489,7 @@ export function InboxPage() {
             onDone={() => setEditor({ mode: "closed" })}
           />
         )}
+        {editor.mode === "rule" && <RuleForm key={editor.rowId} draft={editor.draft} onDone={() => setEditor({ mode: "closed" })} />}
       </Sheet>
     </>
   );

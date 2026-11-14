@@ -37,19 +37,25 @@ export function draftExpense(rows: BankRow[]): ExpenseDraft {
   };
 }
 
-/** The income line [rows] become together: their amounts added up, from the first row's payer, for the account's owner. */
+/**
+ * The income line [rows] become together: their amounts added up, from the first row's payer, for the account's owner
+ * (or whoever a matching rule names).
+ */
 export function draftIncome(rows: BankRow[], accountOwner: string | null): IncomeDraft {
+  const s = rows.find((r) => r.suggestion)?.suggestion;
   return {
     date: earliest(rows),
     amountMinor: sum(rows.map(signedAmount)),
-    source: rows.find((r) => r.suggestion)?.suggestion?.incomeSource,
+    source: s?.incomeSource,
     accountId: sameAccount(rows),
-    recipientUserId: accountOwner,
+    recipientUserId: s?.ruleId ? s.paidByUserId : accountOwner,
   };
 }
 
-/** What skipping [rows] is probably about: the first row's hint, without saying it came from the old app. */
+/** What skipping [rows] is probably about: a matching rule's reason, else the first row's hint, without saying it came from the old app. */
 export function skipReason(rows: BankRow[]): string {
+  const ruled = rows.find((r) => r.suggestion?.skipReason)?.suggestion?.skipReason;
+  if (ruled) return ruled;
   const hint = rows.find((r) => r.hint)?.hint ?? "";
   return hint.replace(/^Old app: /, "").replace(/^Money in$/, "");
 }

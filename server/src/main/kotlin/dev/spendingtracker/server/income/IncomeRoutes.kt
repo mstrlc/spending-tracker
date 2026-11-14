@@ -95,17 +95,8 @@ fun Route.incomeRoutes() = route("/income") {
     }) {
         val householdId = call.household.id
         val raw = call.receive<IncomeInput>()
-        val input = raw.validated()
-        val id = Uuid.random()
         val income = dbQuery {
-            input.checkReferences(householdId)
-            Income.insert {
-                it[Income.id] = id
-                it[Income.householdId] = householdId
-                it.write(input)
-                it[version] = 1
-                it[createdBy] = call.userId
-            }
+            val id = createIncome(householdId, call.userId, raw)
             fileBankRows(householdId, raw.bankRows, call.userId, incomeId = id, created = true)
             Income.selectAll().where { Income.id eq id }.single().toIncome()
         }
@@ -164,6 +155,24 @@ fun Route.incomeRoutes() = route("/income") {
         }
         call.respond(HttpStatusCode.NoContent)
     }
+}
+
+/**
+ * Validates [raw] and creates the income line: what the form and the inbox rules both make. Returns its id; filing bank
+ * rows under it is up to the caller. Call inside a transaction.
+ */
+fun createIncome(householdId: Uuid, userId: Uuid, raw: IncomeInput): Uuid {
+    val input = raw.validated()
+    val id = Uuid.random()
+    input.checkReferences(householdId)
+    Income.insert {
+        it[Income.id] = id
+        it[Income.householdId] = householdId
+        it.write(input)
+        it[version] = 1
+        it[createdBy] = userId
+    }
+    return id
 }
 
 private data class ValidIncome(

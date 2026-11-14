@@ -45,6 +45,33 @@ General rules for every slice:
 - Web: rules page (list, edit, delete), "Make a rule" from a decided row (prefilled from the row and its decision),
   an "Automatic" filter in the Decided tab with bulk undo.
 
+Decisions (2026-11-14):
+
+- Matching: `text_contains` is checked against `normalizeText` (`BankText.kt`) of text, counterparty name and message
+  together. Every condition a rule sets must hold, and a rule needs at least one of IBAN, merchant key or text. The
+  first match wins: highest `priority`, then the most conditions set, then oldest.
+- Creating records: expense and income creation are written inline in `ExpenseRoutes` / `IncomeRoutes`, and transfer
+  creation in `TransferRoutes`. Extract them into functions (validation, merchant find-or-create, lines, splits) that
+  the HTTP routes and the rules both call, so a rule-made record is exactly what the form would have made. A rule-made
+  expense or income line uses the same prefill as `suggestFor`: the row's date, the feed's account, the amount in the
+  household currency at the ČNB fixing with the original amount and currency kept when foreign, and whose from the
+  account when the rule doesn't name a person. The category comes from the rule, else the merchant's default.
+- Never count money twice: when `suggestFor` finds a hand-entered duplicate for a row, an auto rule links the row to
+  that record (`created_record = false`) instead of creating a new one. A transfer rule pairs the row with its pending
+  other side when there's exactly one candidate; otherwise it files the row alone against the rule's other account.
+- Who did it: auto-filed rows get `decided_by` null, `decided_auto` true and `rule_id` set. The matcher's own
+  decisions have `rule_id` null. The audit actor is whoever made the request that triggered them (upload, import or
+  apply-rules). Undo clears `rule_id` too. Bulk undo is the existing `/bank-rows/undo` with many refs.
+- Setting: `households.auto_match boolean NOT NULL DEFAULT false`, editable by owners through the household update
+  route, shown on the rules page as "File transfers and duplicates automatically". Rules with `auto` file whatever
+  the setting says.
+- Suggestions: a matching rule without `auto` takes precedence over the history-based guess, and
+  `BankRowSuggestion` names it (`ruleId`, `ruleName`). The Inbox shows "Rule: …" on such rows.
+- `rule_id` on `bank_rows` references `inbox_rules` `ON DELETE SET NULL (rule_id)`: deleting a rule leaves what it
+  filed in place.
+- The legacy report prints counts only (agree, disagree, matcher-only, old-only per decision type). It never prints
+  names, amounts, IBANs or texts.
+
 ## Slice 4: live GoCardless
 
 Blocked on whether the old app's GoCardless credentials still work (new sign-ups are closed). Then: `bank_connections`
@@ -53,6 +80,21 @@ accounts and creating feeds from them (`source = 'gocardless'`, `external_id`), 
 background jobs yet: add a simple coroutine scheduler in `Application.module`, disabled in tests), "Sync now",
 balance readings (`bank_balances`), expiry warnings. Secrets from env, never in the database in plain text.
 
+Decisions (2026-11-14):
+
+- The old app (`../household-spending-tracker/worker`) has working GoCardless code (token, requisitions, accounts,
+  transactions, its daily cron): port its rules, not its code. Its `.env` has `GOCARDLESS_SECRET_ID` and
+  `GOCARDLESS_SECRET_KEY`. They may be copied into this repo's gitignored root `.env` to request a token and confirm
+  they work. Never make a bank connection, print the keys, or put them in a committed file. `Config.fromEnv` reads them,
+  and `:server:run` loads the root `.env` when it exists.
+- The GoCardless client sits behind an interface (as `MarketData` does), and tests use a fake. With no keys, the
+  connect UI says bank connections aren't set up, and nothing else changes.
+- Synced rows go through `storeRows` and then the rules from slice 3, exactly as an upload does. A sync asks for rows
+  from the last booked date minus 7 days (overlap is harmless: external ids dedupe), and never before the feed's
+  `import_from`.
+- The scheduler runs once a day and on "Sync now". Rate limits (GoCardless allows a few calls per account per day) are
+  respected by remembering each feed's last sync and refusing more than 4 a day.
+
 ## Slice 5: refunds and deduction rules
 
 - `expenses.refund_of uuid` (self-FK): a refund (negative expense) attached to the original; category and month
@@ -60,3 +102,19 @@ balance readings (`bank_balances`), expiry warnings. Secrets from env, never in 
   at that merchant) and the Inbox prefill for refund rows.
 - Rule outcome `deduction` (source, whose, month offset): ZPMV and OSSZ advances leaving an account become income
   deductions.
+
+Decisions (2026-11-14):
+
+- A refund is a negative expense, and its original is a positive expense in the same household that isn't itself a
+  refund. `refund_of` is `ON DELETE SET NULL`. The form fills the refund's category (or lines) and whose from the
+  original.
+- "Net in its own category and month" means reports count a refund in its original's month and category: the
+  Overview (month totals, typical month, anomalies, category totals, saved) and the Expenses page's category
+  breakdown. Lists still show the refund on its own date. An `Expense` carries `refundOfId`, and the original carries
+  `refundedMinor` (the sum of its refunds).
+- Debts follow on their own: a refund on the same account with the same whose reverses its share of the debt.
+- Inbox: for a positive row, `suggestFor` offers originals at the same merchant key or merchant from the past 120
+  days with an amount at least the refund's, newest first. Adding the row as an expense prefills "Refund of".
+- Deduction rule outcome: `deduction` with source, whose and month offset (default -1, the previous month). It makes
+  an income line of kind deduction for minus the row's amount, earned in the row's month plus the offset, arrived on
+  the row's date.

@@ -9,6 +9,7 @@ import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.db.Merchants
 import dev.spendingtracker.shared.api.BankRowSuggestion
 import dev.spendingtracker.shared.api.DuplicateCandidate
+import dev.spendingtracker.shared.api.RuleOutcome
 import dev.spendingtracker.shared.api.SuggestedRecord
 import dev.spendingtracker.shared.api.TransferCandidate
 import kotlinx.datetime.DatePeriod
@@ -57,10 +58,15 @@ private const val INCOME_MONTH_DAYS = 40
 
 /**
  * Suggestions for pending [rows] (rows of [rowsWithFeed]): what each probably becomes, filled in from the household's
- * past decisions, and the hand-entered records it may duplicate. Call inside a transaction, after the exchange rates
- * of the rows' years are fresh.
+ * past decisions, and the hand-entered records it may duplicate. A matching rule of [rules] takes precedence over what
+ * the past decisions say. Call inside a transaction, after the exchange rates of the rows' years are fresh.
  */
-fun suggestFor(householdId: Uuid, householdCurrency: String, rows: List<ResultRow>): Map<Uuid, BankRowSuggestion> {
+fun suggestFor(
+    householdId: Uuid,
+    householdCurrency: String,
+    rows: List<ResultRow>,
+    rules: List<RuleDef> = loadRules(householdId),
+): Map<Uuid, BankRowSuggestion> {
     if (rows.isEmpty()) return emptyMap()
     val accountRows = Accounts.select(Accounts.id, Accounts.ownerUserId, Accounts.kind, Accounts.iban).where { Accounts.householdId eq householdId }.toList()
     val owners = accountRows.associate { it[Accounts.id] to it[Accounts.ownerUserId] }
@@ -116,7 +122,13 @@ fun suggestFor(householdId: Uuid, householdCurrency: String, rows: List<ResultRo
         val movement = row[BankRows.hint].let { it.isNotEmpty() && it !in NOT_MOVEMENT }
         val refund = row[BankRows.code] == "CARD_REFUND" ||
             (!movement && (accountId in cards || (key in pastExpenses && key !in pastIncome)))
-        val expenseOrIncome = if (native < 0 || refund) SuggestedRecord.EXPENSE else SuggestedRecord.INCOME
+        val rule = rules.firstMatch(row)
+        // A rule can say the row is the other kind than the guess: money in as an expense (a refund), or out as income.
+        val expenseOrIncome = when (rule?.outcome) {
+            RuleOutcome.EXPENSE -> SuggestedRecord.EXPENSE
+            RuleOutcome.INCOME -> SuggestedRecord.INCOME
+            else -> if (native < 0 || refund) SuggestedRecord.EXPENSE else SuggestedRecord.INCOME
+        }
         val text = row[BankRows.text]
         val owner = owners[accountId]
 
@@ -162,18 +174,40 @@ fun suggestFor(householdId: Uuid, householdCurrency: String, rows: List<ResultRo
             }.toList()
         val ownAccount = row[BankRows.counterpartyIban]?.let(accountByIban::get)?.takeIf { it != accountId && candidates.isEmpty() }
         val isMovement = row[BankRows.hint].removePrefix("Old app: ") in MOVEMENT_HINTS
+        val guessedMerchant = past?.get(Expenses.merchantId)?.let(merchantNames::get) ?: known?.get(Merchants.name) ?: guessName
+        val guessedCategory = (past?.get(Expenses.categoryId) ?: known?.get(Merchants.defaultCategoryId))
+        // What a rule fills in: its merchant and category (else that merchant's default), and whose from the account unless it names a person.
+        val forExpense = rule?.outcome == RuleOutcome.EXPENSE
+        val forIncome = rule?.outcome == RuleOutcome.INCOME
+        val ruleMerchant = if (forExpense && rule!!.merchant.isNotBlank()) rule.merchant else null
+        val merchant = ruleMerchant ?: guessedMerchant
+        val category = when {
+            !forExpense -> guessedCategory
+            rule!!.categoryId != null -> rule.categoryId
+            ruleMerchant != null -> merchantsByName[ruleMerchant.lowercase()]?.get(Merchants.defaultCategoryId)
+            else -> guessedCategory
+        }
         row[BankRows.id] to BankRowSuggestion(
-            record = if (candidates.isNotEmpty() || ownAccount != null || isMovement) SuggestedRecord.TRANSFER else expenseOrIncome,
+            record = when (rule?.outcome) {
+                RuleOutcome.TRANSFER -> SuggestedRecord.TRANSFER
+                RuleOutcome.EXPENSE, RuleOutcome.INCOME -> expenseOrIncome
+                else -> if (candidates.isNotEmpty() || ownAccount != null || isMovement) SuggestedRecord.TRANSFER else expenseOrIncome
+            },
             amountMinor = converted?.let { if (expenseOrIncome == SuggestedRecord.EXPENSE) -it else it },
             originalAmountMinor = if (currency == householdCurrency) null else abs(native),
             originalCurrency = if (currency == householdCurrency) null else currency,
-            merchant = past?.get(Expenses.merchantId)?.let(merchantNames::get) ?: known?.get(Merchants.name) ?: guessName,
-            categoryId = (past?.get(Expenses.categoryId) ?: known?.get(Merchants.defaultCategoryId))?.toString(),
-            paidByUserId = (if (past != null) past[Expenses.paidByUserId] else owner)?.toString(),
-            incomeSource = pastSource?.get(Income.sourceName) ?: row[BankRows.counterpartyName].ifEmpty { text },
+            merchant = merchant,
+            categoryId = category?.toString(),
+            paidByUserId = (if (forExpense || forIncome) rule!!.personUserId ?: owner else if (past != null) past[Expenses.paidByUserId] else owner)?.toString(),
+            incomeSource = (if (forIncome) rule!!.incomeSource.ifBlank { null } else null)
+                ?: pastSource?.get(Income.sourceName) ?: row[BankRows.counterpartyName].ifEmpty { text },
             duplicates = duplicates,
             transferCandidates = candidates,
-            transferAccountId = ownAccount?.toString(),
+            transferAccountId = (if (rule?.outcome == RuleOutcome.TRANSFER) rule.otherAccountId?.takeIf { it != accountId } else null)?.toString()
+                ?: ownAccount?.toString(),
+            ruleId = rule?.id?.toString(),
+            ruleName = rule?.name,
+            skipReason = rule?.takeIf { it.outcome == RuleOutcome.SKIP }?.skipReason,
         )
     }
 }

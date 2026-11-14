@@ -77,34 +77,7 @@ fun Route.transferRoutes() {
             }
             call.refreshRates(input.rows)
             val rows = dbQuery {
-                val sides = Sides.of(lockRows(householdId, input.rows))
-                val other = when {
-                    sides.rows.size == 1 -> {
-                        if (otherAccountId == null) throw badRequest("other_account_required", "Say which account the other side is", "otherAccountId")
-                        if (Accounts.selectAll().where { (Accounts.id eq otherAccountId) and (Accounts.householdId eq householdId) }.empty()) {
-                            throw badRequest("invalid_account", "Unknown account", "otherAccountId")
-                        }
-                        if (otherAccountId == sides.rows.single()[BankFeeds.accountId]) {
-                            throw badRequest("same_account", "The other side is the row's own account", "otherAccountId")
-                        }
-                        otherAccountId
-                    }
-                    else -> null
-                }
-                val amount = sides.amount(call.household.currency)
-                val from = sides.out?.get(BankFeeds.accountId) ?: other!!
-                val to = sides.inn?.get(BankFeeds.accountId) ?: other!!
-                val id = Uuid.random()
-                Transfers.insert {
-                    it[Transfers.id] = id
-                    it[Transfers.householdId] = householdId
-                    it[date] = sides.date
-                    it[amountMinor] = amount
-                    it[fromAccountId] = from
-                    it[toAccountId] = to
-                    it[Transfers.notes] = notes
-                    it[createdBy] = call.userId
-                }
+                val id = createTransfer(householdId, call.userId, call.household.currency, lockRows(householdId, input.rows), otherAccountId, notes)
                 fileBankRows(householdId, input.rows, call.userId, transferId = id, created = true)
                 reload(householdId, input.rows.map { Uuid.parse(it.id) })
             }
@@ -209,6 +182,7 @@ fun Route.transferRoutes() {
                         it[createdRecord] = false
                         it[decidedBy] = null
                         it[decidedAuto] = false
+                        it[BankRows.ruleId] = null
                         it[decidedAt] = null
                         it[BankRows.version] = BankRows.version + 1
                         it[updatedAt] = now
@@ -218,6 +192,50 @@ fun Route.transferRoutes() {
             call.respond(HttpStatusCode.NoContent)
         }
     }
+}
+
+/**
+ * Creates the transfer [rows] (one or two locked, pending rows) make: with two, an outgoing and an incoming one of
+ * different feeds; with one, [otherAccountId] is the account on the other side. Amounts in a foreign currency are
+ * converted at the ČNB fixing. Returns its id; filing the rows under it is up to the caller. Call inside a transaction.
+ */
+fun createTransfer(
+    householdId: Uuid,
+    userId: Uuid,
+    householdCurrency: String,
+    rows: List<ResultRow>,
+    otherAccountId: Uuid?,
+    notes: String,
+): Uuid {
+    val sides = Sides.of(rows)
+    val other = when {
+        sides.rows.size == 1 -> {
+            if (otherAccountId == null) throw badRequest("other_account_required", "Say which account the other side is", "otherAccountId")
+            if (Accounts.selectAll().where { (Accounts.id eq otherAccountId) and (Accounts.householdId eq householdId) }.empty()) {
+                throw badRequest("invalid_account", "Unknown account", "otherAccountId")
+            }
+            if (otherAccountId == sides.rows.single()[BankFeeds.accountId]) {
+                throw badRequest("same_account", "The other side is the row's own account", "otherAccountId")
+            }
+            otherAccountId
+        }
+        else -> null
+    }
+    val amount = sides.amount(householdCurrency)
+    val from = sides.out?.get(BankFeeds.accountId) ?: other!!
+    val to = sides.inn?.get(BankFeeds.accountId) ?: other!!
+    val id = Uuid.random()
+    Transfers.insert {
+        it[Transfers.id] = id
+        it[Transfers.householdId] = householdId
+        it[date] = sides.date
+        it[amountMinor] = amount
+        it[fromAccountId] = from
+        it[toAccountId] = to
+        it[Transfers.notes] = notes
+        it[createdBy] = userId
+    }
+    return id
 }
 
 private fun match(householdId: Uuid, id: Uuid) = (Transfers.id eq id) and (Transfers.householdId eq householdId)

@@ -29,6 +29,8 @@ object Households : Table("households") {
     val id = uuid("id")
     val name = text("name")
     val currency = text("currency")
+    /** V21: whether the inbox matcher files transfer pairs and duplicates without asking. */
+    val autoMatch = bool("auto_match").default(false)
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
 }
@@ -339,6 +341,8 @@ object BankRows : Table("bank_rows") {
     val createdRecord = bool("created_record").default(false)
     val decidedBy = uuid("decided_by").nullable()
     val decidedAuto = bool("decided_auto").default(false)
+    /** V21: the rule that filed the row automatically; null for a person's or the matcher's decision. */
+    val ruleId = uuid("rule_id").nullable()
     val decidedAt = timestamp("decided_at").nullable()
     val version = integer("version").default(1)
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
@@ -356,6 +360,33 @@ object Transfers : Table("transfers") {
     val notes = text("notes")
     val version = integer("version").default(1)
     val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V21: rules mapping bank rows to an outcome. */
+object InboxRules : Table("inbox_rules") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val name = text("name")
+    val counterpartyIban = text("counterparty_iban").nullable()
+    val merchantKey = text("merchant_key").nullable()
+    val textContains = text("text_contains").nullable()
+    val feedId = uuid("feed_id").nullable()
+    val accountId = uuid("account_id").nullable()
+    val direction = text("direction").nullable()
+    val outcome = text("outcome")
+    val merchant = text("merchant")
+    val categoryId = uuid("category_id").nullable()
+    val personUserId = uuid("person_user_id").nullable()
+    val incomeSource = text("income_source")
+    val otherAccountId = uuid("other_account_id").nullable()
+    val skipReason = text("skip_reason")
+    val auto = bool("auto").default(false)
+    val priority = integer("priority").default(0)
+    val version = integer("version").default(1)
+    val createdBy = uuid("created_by").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
 }

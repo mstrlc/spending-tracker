@@ -72,6 +72,7 @@ fun Route.inboxRoutes() {
     feedRoutes()
     bankRowRoutes()
     transferRoutes()
+    ruleRoutes()
 }
 
 private fun Route.feedRoutes() = route("/bank-feeds") {
@@ -185,7 +186,8 @@ private fun Route.feedRoutes() = route("/bank-feeds") {
         val householdId = call.household.id
         val id = call.pathId("feedId", "Bank feed")
         val upload = call.receive<StatementUpload>()
-        val result = dbQuery {
+        val household = call.household
+        val (result, added) = dbQuery {
             val feed = BankFeeds.selectAll().where { match(householdId, id) }.singleOrNull() ?: throw notFound("Bank feed")
             val shape = feedShape(feed[BankFeeds.institution], feed[BankFeeds.accountId])
             val statement = try {
@@ -202,7 +204,14 @@ private fun Route.feedRoutes() = route("/bank-feeds") {
                 )
             }
             val counts = storeRows(householdId, id, shape, feed[BankFeeds.importFrom], statement.rows, loadHintContext(householdId))
-            StatementResult(statement.format, counts.added, counts.existing, counts.beforeImportFrom, statement.notBooked)
+            StatementResult(statement.format, counts.added, counts.existing, counts.beforeImportFrom, statement.notBooked) to
+                addedRows(id, counts.addedIds)
+        }
+        // The rules file what they can of the new rows, with foreign amounts converted at the ČNB fixings.
+        val years = added.filter { it[BankRows.currency] != household.currency }.map { it[BankRows.date].year }.distinct()
+        if (years.isNotEmpty()) call.application.market.refresh(emptyList(), years)
+        if (added.isNotEmpty()) {
+            dbQuery { applyRules(householdId, household.currency, call.userId, added.map { it[BankRows.id] }.toSet()) }
         }
         call.respond(result)
     }

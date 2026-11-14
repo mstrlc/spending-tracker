@@ -15,6 +15,7 @@ import dev.spendingtracker.server.inbox.dbValue
 import dev.spendingtracker.server.inbox.feedShape
 import dev.spendingtracker.server.inbox.loadHintContext
 import dev.spendingtracker.server.inbox.parseGoCardless
+import dev.spendingtracker.server.inbox.applyRules
 import dev.spendingtracker.server.inbox.storeRows
 import dev.spendingtracker.server.db.AssetContributions
 import dev.spendingtracker.server.db.Assets
@@ -81,7 +82,7 @@ fun Route.importRoutes() {
             throw badRequest("currency_mismatch", "The file is in ${input.currency}, the household in ${household.currency}", "currency")
         }
         val result = dbQuery {
-            val counts = Importer(household.id, call.userId).run(input)
+            val counts = Importer(household.id, household.currency, call.userId).run(input)
             if (dryRun) rollback()
             ImportResult(dryRun, created = counts.first, existing = counts.second)
         }
@@ -108,7 +109,7 @@ private class Tally {
 private fun key(name: String) = name.trim().lowercase()
 
 /** Runs one import inside a transaction. Every error names the entry it's about, e.g. `expenses[3].account`. */
-private class Importer(private val householdId: Uuid, private val userId: Uuid) {
+private class Importer(private val householdId: Uuid, private val householdCurrency: String, private val userId: Uuid) {
     private val created = Tally()
     private val matched = Tally()
 
@@ -460,6 +461,7 @@ private class Importer(private val householdId: Uuid, private val userId: Uuid) 
         val context = loadHintContext(householdId)
         data class Decision(val expenseId: Uuid?, val incomeId: Uuid?, val skipped: String?)
 
+        val addedRows = mutableSetOf<Uuid>()
         val byFeed = input.bankRows.withIndex().groupBy { (i, row) -> key(row.feed).also { if (it !in feeds) throw badRequest("unknown_feed", "No bank feed called \"${row.feed}\"", "bankRows[$i].feed") } }
         for ((feedKey, entries) in byFeed) {
             val feed = feeds.getValue(feedKey)
@@ -487,6 +489,7 @@ private class Importer(private val householdId: Uuid, private val userId: Uuid) 
                 .where { BankRows.feedId eq feed.id }
                 .filter { it[BankRows.externalId] in counts.addedIds }
                 .associate { it[BankRows.externalId] to it[BankRows.id] }
+            addedRows += fresh.values
             val now = Clock.System.now()
             for ((row, decision, _) in parsed) {
                 if (decision.expenseId == null && decision.incomeId == null && decision.skipped == null) continue
@@ -500,6 +503,8 @@ private class Importer(private val householdId: Uuid, private val userId: Uuid) 
                 }
             }
         }
+        // Rows nothing was decided about go through the rules like a statement's, at the fixings already stored.
+        if (addedRows.isNotEmpty()) applyRules(householdId, householdCurrency, userId, addedRows)
     }
 
     private fun refs(

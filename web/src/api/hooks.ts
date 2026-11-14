@@ -13,7 +13,9 @@ import type {
   Household,
   HouseholdImport,
   HouseholdRole,
+  HouseholdSettings,
   IncomeInput,
+  InboxRuleInput,
   AssetInput,
   MerchantInput,
   SettlementInput,
@@ -48,6 +50,8 @@ export const keys = {
   activity: (id: string, entity?: ActivityEntity) => ["households", id, "activity", entity ?? "all"] as const,
   overview: (id: string, month: string) => ["households", id, "overview", month] as const,
   splitRules: (id: string) => ["households", id, "split-rules"] as const,
+  inboxRules: (id: string) => ["households", id, "inbox-rules"] as const,
+  settings: (id: string) => ["households", id, "settings"] as const,
   bankFeeds: (id: string) => ["households", id, "bank-feeds"] as const,
   bankRows: (id: string, status?: BankRowStatus) =>
     status === undefined ? (["households", id, "bank-rows"] as const) : (["households", id, "bank-rows", status] as const),
@@ -861,6 +865,8 @@ export function useImport(householdId: string) {
 function invalidateInbox(qc: ReturnType<typeof useQueryClient>, householdId: string) {
   qc.invalidateQueries({ queryKey: keys.bankRows(householdId) });
   qc.invalidateQueries({ queryKey: keys.bankFeeds(householdId) });
+  // Rules count the rows they filed.
+  qc.invalidateQueries({ queryKey: keys.inboxRules(householdId) });
 }
 
 export function useBankFeeds(householdId: string) {
@@ -983,5 +989,81 @@ export function useDecideBankRows(householdId: string) {
         qc.invalidateQueries({ queryKey: keys.balances(householdId) });
       }
     },
+  });
+}
+
+// ---- Inbox rules ----
+
+export function useInboxRules(householdId: string) {
+  return useQuery({
+    queryKey: keys.inboxRules(householdId),
+    queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/inbox-rules", { params: { path: { householdId } } })),
+  });
+}
+
+/** A rule changes what the inbox suggests, and the rows it filed keep pointing at it. */
+export function useSaveInboxRule(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: InboxRuleInput }) =>
+      id === undefined
+        ? unwrap(await api.POST("/api/households/{householdId}/inbox-rules", { params: { path: { householdId } }, body: input }))
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/inbox-rules/{ruleId}", {
+              params: { path: { householdId, ruleId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.inboxRules(householdId) });
+      invalidateInbox(qc, householdId);
+    },
+  });
+}
+
+export function useDeleteInboxRule(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/inbox-rules/{ruleId}", {
+          params: { path: { householdId, ruleId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.inboxRules(householdId) });
+      invalidateInbox(qc, householdId);
+    },
+  });
+}
+
+/** Files what the rules and the matcher can file among the pending rows, which may make or link records. */
+export function useApplyInboxRules(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => unwrap(await api.POST("/api/households/{householdId}/bank-rows/apply-rules", { params: { path: { householdId } } })),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.inboxRules(householdId) });
+      qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
+      qc.invalidateQueries({ queryKey: keys.income(householdId) });
+      qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+      invalidateInbox(qc, householdId);
+    },
+  });
+}
+
+export function useHouseholdSettings(householdId: string) {
+  return useQuery({
+    queryKey: keys.settings(householdId),
+    queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/settings", { params: { path: { householdId } } })),
+  });
+}
+
+export function useSaveHouseholdSettings(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (settings: HouseholdSettings) =>
+      unwrap(await api.PUT("/api/households/{householdId}/settings", { params: { path: { householdId } }, body: settings })),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.settings(householdId) }),
   });
 }

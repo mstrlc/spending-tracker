@@ -171,6 +171,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getHouseholdSettings"];
+        /** @description Changes the household's settings. Owners only. */
+        put: operations["updateHouseholdSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/invites": {
         parameters: {
             query?: never;
@@ -828,6 +845,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/bank-rows/apply-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Files the pending rows that rules with auto speak for and, when the household allows it, the transfer pairs and duplicates the matcher is sure of. Statements and imports do this for the rows they add; this does it for everything pending. */
+        post: operations["applyInboxRules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/transfers": {
         parameters: {
             query?: never;
@@ -857,6 +891,42 @@ export interface paths {
         post?: never;
         /** @description Deletes a transfer. The bank rows it was made from go back to the inbox. */
         delete: operations["deleteTransfer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/inbox-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The household's inbox rules in the order they win: highest priority first, then the most specific, then the oldest. */
+        get: operations["listInboxRules"];
+        put?: never;
+        /** @description Needs at least one of counterpartyIban, merchantKey and textContains. A rule with auto files matching rows (now, when the rules are applied, and on every statement or import after); without, it only shapes the suggestion. */
+        post: operations["createInboxRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/inbox-rules/{ruleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Changes the rule. Rows it filed stay as they are. */
+        put: operations["updateInboxRule"];
+        post?: never;
+        /** @description Deletes the rule. Rows it filed stay filed. */
+        delete: operations["deleteInboxRule"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1008,6 +1078,11 @@ export interface components {
         MemberInput: {
             /** String */
             displayName: string;
+        };
+        /** HouseholdSettings */
+        HouseholdSettings: {
+            /** Boolean */
+            autoMatch: boolean;
         };
         /** Invite */
         Invite: {
@@ -2143,6 +2218,8 @@ export interface components {
             code: string;
             /** String */
             hint: string;
+            /** String */
+            merchantKey: string;
             outcome: components["schemas"]["BankRowOutcome"];
             /** String */
             expenseId: null | string;
@@ -2158,6 +2235,8 @@ export interface components {
             decidedByUserId: null | string;
             /** Boolean */
             decidedAuto: boolean;
+            /** String */
+            ruleId: null | string;
             /** String */
             decidedAt: null | string;
             /**
@@ -2201,6 +2280,12 @@ export interface components {
             transferCandidates: components["schemas"]["TransferCandidate"][];
             /** String */
             transferAccountId: null | string;
+            /** String */
+            ruleId: null | string;
+            /** String */
+            ruleName: null | string;
+            /** String */
+            skipReason: null | string;
         };
         /**
          * SuggestedRecord
@@ -2286,6 +2371,34 @@ export interface components {
             /** String */
             notes?: string;
         };
+        /** ApplyRulesResult */
+        ApplyRulesResult: {
+            /**
+             * Int
+             * Format: int32
+             */
+            checked: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            filedByRules: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            linkedByRules: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            pairedByMatcher: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            duplicatesByMatcher: number;
+        };
         /** Transfer */
         Transfer: {
             /** String */
@@ -2310,6 +2423,105 @@ export interface components {
             version: number;
             /** ArrayList<String> */
             rowIds: string[];
+        };
+        /** InboxRule */
+        InboxRule: {
+            /** String */
+            id: string;
+            /** String */
+            name: string;
+            /** String */
+            counterpartyIban: null | string;
+            /** String */
+            merchantKey: null | string;
+            /** String */
+            textContains: null | string;
+            /** String */
+            feedId: null | string;
+            /** String */
+            accountId: null | string;
+            direction: null | components["schemas"]["RuleDirection"];
+            outcome: components["schemas"]["RuleOutcome"];
+            /** String */
+            merchant: string;
+            /** String */
+            categoryId: null | string;
+            /** String */
+            personUserId: null | string;
+            /** String */
+            incomeSource: string;
+            /** String */
+            otherAccountId: null | string;
+            /** String */
+            skipReason: string;
+            /** Boolean */
+            auto: boolean;
+            /**
+             * Int
+             * Format: int32
+             */
+            priority: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            filedCount: number;
+        };
+        /**
+         * RuleDirection
+         * @enum {string}
+         */
+        RuleDirection: "in" | "out";
+        /**
+         * RuleOutcome
+         * @enum {string}
+         */
+        RuleOutcome: "expense" | "income" | "transfer" | "skip";
+        /** InboxRuleInput */
+        InboxRuleInput: {
+            /** String */
+            name: string;
+            /** String */
+            counterpartyIban?: null | string;
+            /** String */
+            merchantKey?: null | string;
+            /** String */
+            textContains?: null | string;
+            /** String */
+            feedId?: null | string;
+            /** String */
+            accountId?: null | string;
+            direction?: null | components["schemas"]["RuleDirection"];
+            outcome: components["schemas"]["RuleOutcome"];
+            /** String */
+            merchant?: string;
+            /** String */
+            categoryId?: null | string;
+            /** String */
+            personUserId?: null | string;
+            /** String */
+            incomeSource?: string;
+            /** String */
+            otherAccountId?: null | string;
+            /** String */
+            skipReason?: string;
+            /** Boolean */
+            auto?: boolean;
+            /**
+             * Int
+             * Format: int32
+             */
+            priority?: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
         };
         /**
          * ActivityEntity
@@ -2964,6 +3176,74 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiError"];
                 };
+            };
+        };
+    };
+    getHouseholdSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdSettings"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateHouseholdSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["HouseholdSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdSettings"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -5752,6 +6032,34 @@ export interface operations {
             };
         };
     };
+    applyInboxRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyRulesResult"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listTransfers: {
         parameters: {
             query?: {
@@ -5802,6 +6110,162 @@ export interface operations {
             path: {
                 householdId: string;
                 transferId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listInboxRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxRule"][];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createInboxRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InboxRuleInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxRule"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateInboxRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InboxRuleInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxRule"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteInboxRule: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                ruleId: string;
             };
             cookie?: never;
         };

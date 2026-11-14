@@ -103,7 +103,7 @@ fun pendingRows(): Op<Boolean> = BankRows.expenseId.isNull() and BankRows.income
 
 fun ResultRow.isPending() = outcome() == BankRowOutcome.PENDING
 
-private fun ResultRow.outcome() = when {
+fun ResultRow.outcome() = when {
     this[BankRows.expenseId] != null -> BankRowOutcome.EXPENSE
     this[BankRows.incomeId] != null -> BankRowOutcome.INCOME
     this[BankRows.transferId] != null -> BankRowOutcome.TRANSFER
@@ -128,6 +128,7 @@ fun ResultRow.toBankRow(suggestion: BankRowSuggestion? = null) = BankRow(
     message = this[BankRows.message],
     code = this[BankRows.code],
     hint = this[BankRows.hint],
+    merchantKey = this[BankRows.merchantKey],
     outcome = outcome(),
     expenseId = this[BankRows.expenseId]?.toString(),
     incomeId = this[BankRows.incomeId]?.toString(),
@@ -136,6 +137,7 @@ fun ResultRow.toBankRow(suggestion: BankRowSuggestion? = null) = BankRow(
     skipReason = this[BankRows.skipReason],
     decidedByUserId = this[BankRows.decidedBy]?.toString(),
     decidedAuto = this[BankRows.decidedAuto],
+    ruleId = this[BankRows.ruleId]?.toString(),
     decidedAt = this[BankRows.decidedAt]?.toString(),
     version = this[BankRows.version],
     suggestion = suggestion,
@@ -159,8 +161,9 @@ fun lockRows(householdId: Uuid, refs: List<BankRowRef>, field: String = "rows"):
 }
 
 /**
- * Files [refs] under an expense, income line, transfer or settlement (one of the four ids). [created]: the record was made from
- * these rows just now, so undoing them all deletes it. Call inside a transaction.
+ * Files [refs] under an expense, income line, transfer or settlement (one of the four ids), or with a [skipReason]. [created]: the
+ * record was made from these rows just now, so undoing them all deletes it. [auto]: a rule ([ruleId]) or the matcher decided,
+ * not [userId]. Call inside a transaction.
  */
 fun fileBankRows(
     householdId: Uuid,
@@ -171,6 +174,9 @@ fun fileBankRows(
     transferId: Uuid? = null,
     settlementId: Uuid? = null,
     created: Boolean = false,
+    skipReason: String? = null,
+    auto: Boolean = false,
+    ruleId: Uuid? = null,
 ) {
     if (refs.isEmpty()) return
     val rows = lockRows(householdId, refs, "bankRows")
@@ -183,10 +189,11 @@ fun fileBankRows(
         it[BankRows.incomeId] = incomeId
         it[BankRows.transferId] = transferId
         it[BankRows.settlementId] = settlementId
-        it[skipReason] = null
+        it[BankRows.skipReason] = skipReason
         it[createdRecord] = created
-        it[decidedBy] = userId
-        it[decidedAuto] = false
+        it[decidedBy] = if (auto) null else userId
+        it[decidedAuto] = auto
+        it[BankRows.ruleId] = ruleId
         it[decidedAt] = now
         it[version] = BankRows.version + 1
         it[updatedAt] = now
@@ -210,6 +217,7 @@ fun undoBankRows(householdId: Uuid, refs: List<BankRowRef>) {
         it[createdRecord] = false
         it[decidedBy] = null
         it[decidedAuto] = false
+        it[BankRows.ruleId] = null
         it[decidedAt] = null
         it[version] = BankRows.version + 1
         it[updatedAt] = now
