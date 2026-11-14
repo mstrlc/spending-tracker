@@ -207,7 +207,7 @@ fun Route.merchantRoutes() = route("/merchants") {
  * The household's merchant called [name] (ignoring case), created filed under [categoryId] if there is none;
  * null for a blank name. Call inside a transaction.
  */
-fun resolveMerchant(householdId: Uuid, name: String, categoryId: Uuid?, userId: Uuid): Uuid? {
+fun resolveMerchant(householdId: Uuid, name: String, categoryId: Uuid?, userId: Uuid, importId: Uuid? = null): Uuid? {
     if (name.isBlank()) return null
     findByName(householdId, name)?.let { return it }
     val id = Uuid.random()
@@ -216,6 +216,7 @@ fun resolveMerchant(householdId: Uuid, name: String, categoryId: Uuid?, userId: 
         it[Merchants.householdId] = householdId
         it[Merchants.name] = name
         it[defaultCategoryId] = categoryId
+        it[Merchants.importId] = importId
         it[createdBy] = userId
     }
     return id

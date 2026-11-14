@@ -40,6 +40,7 @@ object HouseholdMembers : Table("household_members") {
     val userId = uuid("user_id")
     val role = text("role")
     val legalName = text("legal_name").default("")
+    val importId = uuid("import_id").nullable()
     override val primaryKey = PrimaryKey(householdId, userId)
 }
 
@@ -51,6 +52,7 @@ object Accounts : Table("accounts") {
     val status = text("status")
     val kind = text("kind")
     val iban = text("iban").nullable()
+    val importId = uuid("import_id").nullable()
     val version = integer("version")
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
@@ -64,6 +66,7 @@ object Categories : Table("categories") {
     val kind = text("kind")
     val archived = bool("archived")
     val sortOrder = integer("sort_order")
+    val importId = uuid("import_id").nullable()
     val version = integer("version")
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
@@ -86,6 +89,7 @@ object Expenses : Table("expenses") {
     val createsDebt = bool("creates_debt").default(true)
     /** V22: the expense this one refunds. */
     val refundOf = uuid("refund_of").nullable()
+    val importId = uuid("import_id").nullable()
     val version = integer("version")
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
@@ -144,6 +148,7 @@ object Merchants : Table("merchants") {
     val householdId = uuid("household_id")
     val name = text("name")
     val defaultCategoryId = uuid("default_category_id").nullable()
+    val importId = uuid("import_id").nullable()
     val version = integer("version").default(1)
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
@@ -157,6 +162,7 @@ object Trips : Table("trips") {
     val startDate = date("start_date").nullable()
     val endDate = date("end_date").nullable()
     val notes = text("notes")
+    val importId = uuid("import_id").nullable()
     val version = integer("version").default(1)
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
@@ -178,6 +184,7 @@ object Income : Table("income") {
     val recipientUserId = uuid("recipient_user_id").nullable()
     val notes = text("notes")
     val externalRef = text("external_ref").nullable()
+    val importId = uuid("import_id").nullable()
     val version = integer("version")
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
@@ -192,6 +199,7 @@ object Assets : Table("assets") {
     val ownerUserId = uuid("owner_user_id").nullable()
     val notes = text("notes")
     val symbol = text("symbol").nullable()
+    val importId = uuid("import_id").nullable()
     val version = integer("version")
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
@@ -207,6 +215,7 @@ object AssetContributions : Table("asset_contributions") {
     val quantity = decimal("quantity", 30, 10).nullable()
     val accountId = uuid("account_id").nullable()
     val notes = text("notes")
+    val importId = uuid("import_id").nullable()
     val version = integer("version")
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
@@ -312,6 +321,7 @@ object BankFeeds : Table("bank_feeds") {
     val importFrom = date("import_from").nullable()
     val connectionId = uuid("connection_id").nullable()
     val lastSyncedAt = timestamp("last_synced_at").nullable()
+    val importId = uuid("import_id").nullable()
     val version = integer("version").default(1)
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
@@ -393,6 +403,7 @@ object BankRows : Table("bank_rows") {
     /** V21: the rule that filed the row automatically; null for a person's or the matcher's decision. */
     val ruleId = uuid("rule_id").nullable()
     val decidedAt = timestamp("decided_at").nullable()
+    val importId = uuid("import_id").nullable()
     val version = integer("version").default(1)
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
@@ -438,5 +449,17 @@ object InboxRules : Table("inbox_rules") {
     val createdBy = uuid("created_by").nullable()
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V26: an import batch, so it can be listed and undone as a whole. */
+object Imports : Table("imports") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val createdBy = uuid("created_by").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    val counts = jsonb("counts")
+    val undoneAt = timestamp("undone_at").nullable()
+    val undoneBy = uuid("undone_by").nullable()
     override val primaryKey = PrimaryKey(id)
 }

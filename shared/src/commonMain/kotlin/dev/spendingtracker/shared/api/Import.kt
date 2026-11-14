@@ -160,3 +160,34 @@ data class ImportCounts(
     val bankFeeds: Int,
     val bankRows: Int,
 )
+
+/** One completed import batch in the household. */
+@Serializable
+data class ImportSummary(
+    val id: String,
+    val createdAt: String,
+    val createdByName: String?,
+    val counts: ImportCounts,
+    val undoneAt: String?,
+    val undoneByName: String?,
+)
+
+/** A container created by an import that was kept during undo because something else still uses it. */
+@Serializable
+data class KeptImportItem(
+    val kind: String,
+    val name: String,
+    val reason: String,
+)
+
+/** What undoing an import removed, what had been edited since, and what was kept because it is still referenced. */
+@Serializable
+data class ImportUndoResult(
+    val dryRun: Boolean,
+    val deleted: ImportCounts,
+    val edited: ImportCounts,
+    val kept: ImportCounts,
+    val keptItems: List<KeptImportItem>,
+    val unlinkedBankRows: Int,
+    val unlinkedRefunds: Int,
+)

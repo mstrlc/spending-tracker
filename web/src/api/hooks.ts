@@ -60,6 +60,7 @@ export const keys = {
     status === undefined ? (["households", id, "bank-rows"] as const) : (["households", id, "bank-rows", status] as const),
   balances: (id: string, from?: string, to?: string) =>
     from === undefined ? (["households", id, "balances"] as const) : (["households", id, "balances", from, to] as const),
+  imports: (id: string) => ["households", id, "imports"] as const,
 };
 
 // ---- Auth ----
@@ -883,6 +884,29 @@ export function useImport(householdId: string) {
         await api.POST("/api/households/{householdId}/import", {
           params: { path: { householdId }, query: { dryRun } },
           body: file,
+        }),
+      ),
+    onSuccess: (result) => {
+      if (!result.dryRun) invalidate();
+    },
+  });
+}
+
+export function useImports(householdId: string) {
+  return useQuery({
+    queryKey: keys.imports(householdId),
+    queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/imports", { params: { path: { householdId } } })),
+  });
+}
+
+/** Undoes an import; with dryRun, only reports what it would remove, keep and unlink. */
+export function useUndoImport(householdId: string) {
+  const invalidate = useInvalidateHousehold(householdId);
+  return useMutation({
+    mutationFn: async ({ importId, dryRun }: { importId: string; dryRun: boolean }) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/imports/{id}/undo", {
+          params: { path: { householdId, id: importId }, query: { dryRun } },
         }),
       ),
     onSuccess: (result) => {
