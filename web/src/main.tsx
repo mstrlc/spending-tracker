@@ -12,6 +12,7 @@ import { IncomePage } from "./income/IncomePage";
 import { AssetsPage } from "./assets/AssetsPage";
 import { TripsPage } from "./trips/TripsPage";
 import { MerchantsPage } from "./merchants/MerchantsPage";
+import { ImportPage } from "./import/ImportPage";
 import { HomeRedirect, HouseholdLayout, OnboardingPage } from "./households/HouseholdPages";
 import { InvitePage } from "./households/InvitePage";
 import { OverviewPage } from "./overview/OverviewPage";
@@ -49,6 +50,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="members" element={<MembersPage />} />
               <Route path="activity" element={<ActivityPage />} />
+              <Route path="import" element={<ImportPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

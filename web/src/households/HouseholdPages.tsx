@@ -5,6 +5,7 @@ import {
   GaugeIcon,
   HandCoinsIcon,
   HistoryIcon,
+  ImportIcon,
   LogOutIcon,
   LuggageIcon,
   StoreIcon,
@@ -116,6 +117,7 @@ const SECTIONS = [
   { to: "categories", label: "Categories", icon: <TagIcon /> },
   { to: "members", label: "Members", icon: <UsersIcon /> },
   { to: "activity", label: "Activity", icon: <HistoryIcon /> },
+  { to: "import", label: "Import", icon: <ImportIcon />, ownerOnly: true },
 ];
 
 export function HouseholdLayout() {
@@ -207,7 +209,7 @@ function AppSidebar({ household, households }: { household: Household; household
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu aria-label="Sections">
-            {SECTIONS.map((s) => (
+            {SECTIONS.filter((s) => !s.ownerOnly || household.role === "owner").map((s) => (
               <SidebarMenuItem key={s.to}>
                 <SidebarMenuButton asChild isActive={pathname.startsWith(`/h/${household.id}/${s.to}`)}>
                   <NavLink to={s.to} onClick={() => setOpenMobile(false)}>

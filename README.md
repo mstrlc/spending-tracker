@@ -39,6 +39,15 @@ After changing API endpoints, with the server running:
 pnpm --dir web gen:api             # regenerates web/src/api/schema.d.ts
 ```
 
+## Importing the old app
+
+Converts the old app's exported database (see `data/legacy/README.md`) into an import file, which the household's
+Import page (owners only) previews and imports. Node 22.5+ (built-in `node:sqlite`):
+
+```bash
+node scripts/legacy-import.mjs     # data/legacy/d1.sqlite → data/legacy/import.json (gitignored, real data)
+```
+
 ## Tests
 
 ```bash

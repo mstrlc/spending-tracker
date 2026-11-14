@@ -40,3 +40,6 @@ export type ActivityEntity = Schemas["ActivityEntity"];
 export type FieldChange = Schemas["FieldChange"];
 export type Overview = Schemas["Overview"];
 export type MonthFlow = Schemas["MonthFlow"];
+export type HouseholdImport = Schemas["HouseholdImport"];
+export type ImportResult = Schemas["ImportResult"];
+export type ImportCounts = Schemas["ImportCounts"];

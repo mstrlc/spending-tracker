@@ -576,6 +576,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Imports people, accounts, categories, trips, expenses, income and assets in one transaction: all of it or, on any error, nothing. Names are matched to what the household has; expenses and income already imported (same externalRef) are skipped. With dryRun=true it reports what it would do and saves nothing. Owners only. */
+        post: operations["importHouseholdData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/activity": {
         parameters: {
             query?: never;
@@ -1294,6 +1311,198 @@ export interface components {
              * Format: int32
              */
             version: number;
+        };
+        /** ImportPerson */
+        ImportPerson: {
+            /** String */
+            name: string;
+            /** String */
+            email?: null | string;
+        };
+        /** ImportAccount */
+        ImportAccount: {
+            /** String */
+            name: string;
+            kind?: components["schemas"]["AccountKind"];
+            /** String */
+            owner?: null | string;
+            status?: components["schemas"]["AccountStatus"];
+            /** String */
+            iban?: null | string;
+        };
+        /** ImportCategory */
+        ImportCategory: {
+            /** String */
+            name: string;
+            /** String */
+            parent?: null | string;
+            kind?: components["schemas"]["CategoryKind"];
+        };
+        /** ImportTrip */
+        ImportTrip: {
+            /** String */
+            name: string;
+            /** LocalDate */
+            startDate?: null | string;
+            /** LocalDate */
+            endDate?: null | string;
+            /** String */
+            notes?: string;
+        };
+        /** ImportExpense */
+        ImportExpense: {
+            /** String */
+            externalRef: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            merchant?: string;
+            /** String */
+            category?: null | string;
+            /** String */
+            subcategory?: null | string;
+            /** String */
+            account?: null | string;
+            /** String */
+            person?: null | string;
+            /** String */
+            notes?: string;
+            /** String */
+            trip?: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            originalAmountMinor?: null | number;
+            /** String */
+            originalCurrency?: null | string;
+        };
+        /** ImportIncome */
+        ImportIncome: {
+            /** String */
+            externalRef: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            source?: string;
+            /** String */
+            earnedMonth?: null | string;
+            /** String */
+            account?: null | string;
+            /** String */
+            recipient?: null | string;
+            /** String */
+            notes?: string;
+        };
+        /** ImportAsset */
+        ImportAsset: {
+            /** String */
+            name: string;
+            kind?: components["schemas"]["AssetKind"];
+            /** String */
+            owner?: null | string;
+            /** String */
+            notes?: string;
+            /** ArrayList<ImportContribution> */
+            contributions?: components["schemas"]["ImportContribution"][];
+        };
+        /** ImportContribution */
+        ImportContribution: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            account?: null | string;
+            /** String */
+            notes?: string;
+        };
+        /** HouseholdImport */
+        HouseholdImport: {
+            /** String */
+            currency: string;
+            /** ArrayList<ImportPerson> */
+            people?: components["schemas"]["ImportPerson"][];
+            /** ArrayList<ImportAccount> */
+            accounts?: components["schemas"]["ImportAccount"][];
+            /** ArrayList<ImportCategory> */
+            categories?: components["schemas"]["ImportCategory"][];
+            /** ArrayList<ImportTrip> */
+            trips?: components["schemas"]["ImportTrip"][];
+            /** ArrayList<ImportExpense> */
+            expenses?: components["schemas"]["ImportExpense"][];
+            /** ArrayList<ImportIncome> */
+            income?: components["schemas"]["ImportIncome"][];
+            /** ArrayList<ImportAsset> */
+            assets?: components["schemas"]["ImportAsset"][];
+        };
+        /** ImportCounts */
+        ImportCounts: {
+            /**
+             * Int
+             * Format: int32
+             */
+            members: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            accounts: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            categories: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            trips: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            merchants: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            expenses: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            income: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            assets: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            contributions: number;
+        };
+        /** ImportResult */
+        ImportResult: {
+            /** Boolean */
+            dryRun: boolean;
+            created: components["schemas"]["ImportCounts"];
+            existing: components["schemas"]["ImportCounts"];
         };
         /**
          * ActivityEntity
@@ -3814,6 +4023,56 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiError"];
                 };
+            };
+        };
+    };
+    importHouseholdData: {
+        parameters: {
+            query?: {
+                dryRun?: boolean;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["HouseholdImport"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

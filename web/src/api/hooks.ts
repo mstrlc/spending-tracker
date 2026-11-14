@@ -9,6 +9,7 @@ import type {
   FeeInput,
   ExpenseInput,
   Household,
+  HouseholdImport,
   HouseholdRole,
   IncomeInput,
   AssetInput,
@@ -704,5 +705,24 @@ export function useOverview(householdId: string, month: string, today: string) {
           params: { path: { householdId }, query: { month, today } },
         }),
       ),
+  });
+}
+
+// ---- Import ----
+
+/** Imports a file; with dryRun, only reports what it would create. A real import refreshes everything. */
+export function useImport(householdId: string) {
+  const invalidate = useInvalidateHousehold(householdId);
+  return useMutation({
+    mutationFn: async ({ file, dryRun }: { file: HouseholdImport; dryRun: boolean }) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/import", {
+          params: { path: { householdId }, query: { dryRun } },
+          body: file,
+        }),
+      ),
+    onSuccess: (result) => {
+      if (!result.dryRun) invalidate();
+    },
   });
 }

@@ -97,7 +97,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 - **The forecast** projects coming months from confirmed recurring items and declared expected income.
 - **Goals and the wishlist** are out for now.
 
-### Importing the old app
+### Importing the old app (done 2026-11-14)
 
 - **Only expenses and income** already logged, keeping subcategories and trips; members, accounts and categories are created as needed (Sam as a member without login). Bank rows, rules, budgets and net-worth snapshots come later, on demand.
 - **The old app's automatic pairings are hints, not facts**: anything it decided as `bank-sync` (all transfer links, internal-transfer and duplicate skips) isn't imported as a decision; it can serve as a test set for the new matcher.
@@ -127,5 +127,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
      - An expense can record what it cost in another currency.
      - Income carries the month it was earned, which the Income page and Overview count it in, as well as the date it arrived.
    - ~~**Merchants**~~ (done 2026-11-14): a merchants table (name unique per household ignoring case, default category); expenses point at one instead of carrying the name. Existing names were folded into merchants by migration. The API still takes the merchant's name on an expense and finds or creates it, so clients and the import don't manage ids; a new merchant takes the expense's category as its default, and the web form fills a known merchant's category in. The Merchants page renames (on every expense), sets the default category, merges two spellings and deletes unused ones. Activity names expenses by their merchant's current name.
-3. **Next**: the old-app import, debts and split ratios, split lines, income deductions, inbox (bank import), budget.
+   - ~~**Old-app import**~~ (done 2026-11-14): `POST /import` (owners only) takes a household import file (`HouseholdImport` in `shared`): people, accounts, categories, trips, expenses, income and assets with contributions, all referring to each other by name. Names are matched to the household's records ignoring case (members by login email, then display name; accounts by name or IBAN), and anything missing is created; people become members without a login. It runs in one transaction, so an error (naming the entry, e.g. `expenses[3].account`) saves nothing. Expenses and income carry an `externalRef` and contributions are matched on date and amount, so importing a file again only adds what's new. `?dryRun=true` reports the counts and rolls back; the Import page shows that preview before importing. `scripts/legacy-import.mjs` turns `data/legacy/d1.sqlite` into such a file, applying the rules under "Importing the old app" (income arrives on the 1st of its month, as the old app had no day).
+     Not yet: other apps' formats (CSV), undoing an import as a whole.
+3. **Next**: debts and split ratios, split lines, income deductions, inbox (bank import), budget.
 4. **Later**: net worth, forecast, MCP server, mobile apps, hosting, goals, wishlist.
