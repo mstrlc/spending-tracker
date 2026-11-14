@@ -12,6 +12,7 @@ enum class ActivityEntity {
     @SerialName("account") ACCOUNT,
     @SerialName("category") CATEGORY,
     @SerialName("expense") EXPENSE,
+    @SerialName("expense_line") EXPENSE_LINE,
     @SerialName("income") INCOME,
     @SerialName("asset") ASSET,
     @SerialName("asset_contribution") ASSET_CONTRIBUTION,

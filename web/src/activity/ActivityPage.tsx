@@ -11,6 +11,7 @@ import { describeAction, describeChanges, type Lookups } from "./describe";
 const FILTERS: { value: ActivityEntity | ""; label: string }[] = [
   { value: "", label: "Everything" },
   { value: "expense", label: "Expenses" },
+  { value: "expense_line", label: "Expense lines" },
   { value: "income", label: "Income" },
   { value: "asset", label: "Assets" },
   { value: "asset_contribution", label: "Contributions" },

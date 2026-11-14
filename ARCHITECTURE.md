@@ -71,7 +71,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 ### Spending
 
 - ~~**Merchants are records**~~ (done 2026-11-14) with a name and a default category, so top merchants and subscriptions don't split on spelling. The bank texts that map to them come with the rules table.
-- **Split lines**: an expense can have lines with their own category and amount that add up to its total. E-shop orders can fill them in later.
+- ~~**Split lines**~~ (done 2026-11-14): an expense can have lines with their own category and amount that add up to its total. E-shop orders can fill them in later.
 - **Refunds attach to the original expense**, so it shows net in its own category and month.
 - ~~**Foreign currency**~~ (done 2026-11-14): an expense can store the original amount and currency next to the household-currency amount everything adds up in.
 - ~~**Trips**~~ (done 2026-11-14): a trips table, and an expense can belong to a trip (including a single lump sum booked for the whole trip).
@@ -133,5 +133,6 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
      Not yet: top-ups of joint accounts (need transfers), settlements matched from bank rows, the old app's import carrying splits.
    - ~~**Income deductions**~~ (done 2026-11-14): an income line is an earning or a deduction (`kind`). A deduction (health and social insurance advances, income tax) has who took it as its source, a positive amount (negative for an overpaid advance refunded), the month it's for and whose it is. Net income is earnings less deductions: the Overview, Saved and "Split by income" count net, and deductions are never a top source or spending. The Income page shows net, earned and deducted once a month has a deduction; the form switches between income and deduction. The old app's negative ZPMV and OSSZ lines became deductions (migration and import script).
      Not yet: linking a deduction to the gross line it came off (payslips), deduction rules for the inbox.
-3. **Next**: split lines, inbox (bank import), budget.
+   - ~~**Split lines**~~ (done 2026-11-14): an expense can carry `lines` (`expense_lines`), at least two when split, each with its own category, non-zero amount of the same sign as the total, and optional note, adding up to `amountMinor`; a split expense clears its top-level `categoryId` and gives a new merchant its largest line's category as default. Category filtering (`?categoryId=`), Overview category totals and anomalies, the Expenses page category breakdown and totals, and joint-expense debt allocation (when the expense has no per-expense split override, grouping lines that share the same split weights before largest-remainder rounding) all follow each line's category. The expense form switches between a single category and a line editor.
+3. **Next**: inbox (bank import), budget.
 4. **Later**: net worth, forecast, MCP server, mobile apps, hosting, goals, wishlist.

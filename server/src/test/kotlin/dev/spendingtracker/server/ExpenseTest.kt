@@ -2,8 +2,12 @@ package dev.spendingtracker.server
 
 import dev.spendingtracker.shared.api.Category
 import dev.spendingtracker.shared.api.CategoryInput
+import dev.spendingtracker.shared.api.CategoryTotal
 import dev.spendingtracker.shared.api.Expense
 import dev.spendingtracker.shared.api.ExpenseInput
+import dev.spendingtracker.shared.api.ExpenseLine
+import dev.spendingtracker.shared.api.ExpenseLineInput
+import dev.spendingtracker.shared.api.Overview
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.delete
@@ -85,5 +89,60 @@ class ExpenseTest {
         alice.post("$aliceHome/expenses") { setBody(ExpenseInput(LocalDate(2026, 10, 1), 100, categoryId = bobCategory.id)) }
             .assertError(HttpStatusCode.BadRequest, "invalid_category")
         assertTrue(alice.get("$aliceHome/expenses").body<List<Expense>>().isEmpty())
+    }
+
+    @Test
+    fun splitsExpenseAcrossCategoryLines() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+        val base = "$household/expenses"
+        val food = client.post("$household/categories") { setBody(CategoryInput("Food")) }.body<Category>()
+        val home = client.post("$household/categories") { setBody(CategoryInput("Home")) }.body<Category>()
+
+        client.post(base) {
+            setBody(ExpenseInput(LocalDate(2026, 10, 5), 500, lines = listOf(ExpenseLineInput(food.id, 500))))
+        }.assertError(HttpStatusCode.BadRequest, "too_few_lines")
+
+        client.post(base) {
+            setBody(ExpenseInput(LocalDate(2026, 10, 5), 500, lines = listOf(ExpenseLineInput(food.id, 300), ExpenseLineInput(home.id, 100))))
+        }.assertError(HttpStatusCode.BadRequest, "lines_mismatch")
+
+        client.post(base) {
+            setBody(ExpenseInput(LocalDate(2026, 10, 5), 500, lines = listOf(ExpenseLineInput(food.id, 600), ExpenseLineInput(home.id, -100))))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_line_amount")
+
+        val receipt = client.add(
+            base,
+            ExpenseInput(
+                date = LocalDate(2026, 10, 5),
+                amountMinor = 500,
+                merchant = "Tesco",
+                categoryId = food.id,
+                lines = listOf(
+                    ExpenseLineInput(food.id, 350, "Groceries"),
+                    ExpenseLineInput(home.id, 150, "Detergent"),
+                ),
+            ),
+        )
+        assertEquals(null, receipt.categoryId)
+        assertEquals(
+            listOf(ExpenseLine(food.id, 350, "Groceries"), ExpenseLine(home.id, 150, "Detergent")),
+            receipt.lines,
+        )
+
+        // Filtering by either category finds the split expense, and a category used by a line can't be deleted.
+        assertEquals(listOf(receipt.id), client.get("$base?categoryId=${food.id}").body<List<Expense>>().map { it.id })
+        assertEquals(listOf(receipt.id), client.get("$base?categoryId=${home.id}").body<List<Expense>>().map { it.id })
+        client.delete("$household/categories/${home.id}?version=${home.version}")
+            .assertError(HttpStatusCode.Conflict, "category_in_use")
+
+        val overview = client.get("$household/overview?month=2026-10").body<Overview>()
+        assertEquals(listOf(CategoryTotal(food.id, 350), CategoryTotal(home.id, 150)), overview.topCategories)
+
+        // Collapsing back to a single category clears the lines.
+        val single = client.put("$base/${receipt.id}") {
+            setBody(ExpenseInput(LocalDate(2026, 10, 5), 500, "Tesco", categoryId = food.id, version = receipt.version))
+        }.body<Expense>()
+        assertEquals(food.id to emptyList(), single.categoryId to single.lines)
     }
 }

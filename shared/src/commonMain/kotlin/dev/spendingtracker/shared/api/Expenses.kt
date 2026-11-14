@@ -4,6 +4,24 @@ import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
 
 /**
+ * One line of a split expense: its own category, amount and optional note. An expense's lines add up to its
+ * [Expense.amountMinor] and take the place of its single [Expense.categoryId].
+ */
+@Serializable
+data class ExpenseLine(
+    val categoryId: String?,
+    val amountMinor: Long,
+    val notes: String,
+)
+
+@Serializable
+data class ExpenseLineInput(
+    val categoryId: String? = null,
+    val amountMinor: Long,
+    val notes: String = "",
+)
+
+/**
  * One expense in the household currency. [amountMinor] is negative for refunds; [merchant] is the name of the
  * merchant [merchantId] ("" for none);
  * a null [paidByUserId] means a shared expense. Paid in another currency, [originalAmountMinor] and [originalCurrency]
@@ -11,6 +29,7 @@ import kotlinx.serialization.Serializable
  *
  * [paidByUserId] is whose expense it is; the account says who paid. When they don't match, [debts] says who owes whom
  * because of it, unless [createsDebt] is off. [split] overrides the household's split rules for this expense.
+ * When split across categories, [lines] holds the parts (adding up to [amountMinor]) and [categoryId] is null.
  */
 @Serializable
 data class Expense(
@@ -30,6 +49,7 @@ data class Expense(
     val split: List<Share>?,
     val createsDebt: Boolean,
     val debts: List<Debt>,
+    val lines: List<ExpenseLine>,
 )
 
 /**
@@ -52,4 +72,6 @@ data class ExpenseInput(
     /** Null: the household's split rules apply. */
     val split: List<Share>? = null,
     val createsDebt: Boolean = true,
+    /** Non-empty: splits the expense across these lines (at least two, summing to [amountMinor]), clearing [categoryId]. */
+    val lines: List<ExpenseLineInput> = emptyList(),
 )

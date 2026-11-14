@@ -130,7 +130,13 @@ private fun assetNames(rows: List<ResultRow>): Map<String, String> {
 
 /** The current merchant of each expense the entries are about, for entries whose own merchant was merged away. */
 private fun expenseMerchants(rows: List<ResultRow>): Map<Uuid, Uuid> {
-    val ids = rows.filter { it[AuditLog.entity] == "expense" }.map { it[AuditLog.entityId] }.distinct()
+    val ids = rows.mapNotNull { row ->
+        when (row[AuditLog.entity]) {
+            "expense" -> row[AuditLog.entityId]
+            "expense_line" -> (row[AuditLog.after] ?: row[AuditLog.before])?.let(::parseRow)?.text("expense_id")?.let(Uuid::parse)
+            else -> null
+        }
+    }.distinct()
     if (ids.isEmpty()) return emptyMap()
     return Expenses.select(Expenses.id, Expenses.merchantId).where { Expenses.id inList ids }
         .mapNotNull { row -> row[Expenses.merchantId]?.let { row[Expenses.id] to it } }
@@ -153,6 +159,8 @@ private fun ResultRow.toEntry(
         ActivityEntity.EXPENSE -> current.text("merchant_id")?.let(Uuid::parse)
             ?.let { merchants[it] ?: expenseMerchants[this[AuditLog.entityId]]?.let(merchants::get) }
             ?: current.text("merchant")
+        ActivityEntity.EXPENSE_LINE -> current.text("notes")?.takeIf { it.isNotBlank() }
+            ?: current.text("expense_id")?.let(Uuid::parse)?.let { expenseMerchants[it]?.let(merchants::get) }
         ActivityEntity.INCOME -> current.text("source")
         ActivityEntity.INVITE -> current.text("email")
         ActivityEntity.MEMBER -> names[this[AuditLog.entityId]]

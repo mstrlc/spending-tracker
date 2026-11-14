@@ -985,6 +985,32 @@ export interface components {
             createsDebt: boolean;
             /** ArrayList<Debt> */
             debts: components["schemas"]["Debt"][];
+            /** ArrayList<ExpenseLine> */
+            lines: components["schemas"]["ExpenseLine"][];
+        };
+        /** ExpenseLine */
+        ExpenseLine: {
+            /** String */
+            categoryId: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes: string;
+        };
+        /** ExpenseLineInput */
+        ExpenseLineInput: {
+            /** String */
+            categoryId?: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes?: string;
         };
         /** Share */
         Share: {
@@ -1045,6 +1071,8 @@ export interface components {
             split?: null | components["schemas"]["Share"][];
             /** Boolean */
             createsDebt?: boolean;
+            /** ArrayList<ExpenseLineInput> */
+            lines?: components["schemas"]["ExpenseLineInput"][];
         };
         /** Income */
         Income: {
@@ -1734,7 +1762,7 @@ export interface components {
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement";
         /** ActivityEntry */
         ActivityEntry: {
             /**

@@ -18,6 +18,7 @@ import dev.spendingtracker.server.db.SplitRules
 import dev.spendingtracker.server.db.SplitShares
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.db.isUniqueViolation
+import dev.spendingtracker.server.expense.loadExpenseLines
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.shared.api.ApiError
@@ -25,6 +26,7 @@ import dev.spendingtracker.shared.api.BalanceEntry
 import dev.spendingtracker.shared.api.BalanceEntryKind
 import dev.spendingtracker.shared.api.Balances
 import dev.spendingtracker.shared.api.Debt
+import dev.spendingtracker.shared.api.ExpenseLine
 import dev.spendingtracker.shared.api.Settlement
 import dev.spendingtracker.shared.api.SettlementInput
 import dev.spendingtracker.shared.api.SplitRule
@@ -79,21 +81,23 @@ fun Route.debtRoutes() {
         val to = call.dateParam("to")
         val balances = dbQuery {
             val book = loadSplitBook(householdId)
-            val expenseEntries = Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id)
+            val expenseRows = Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id)
                 .selectAll()
                 .where { (Expenses.householdId eq householdId) and Expenses.accountId.isNotNull() and (Expenses.createsDebt eq true) }
-                .mapNotNull { row ->
-                    val debts = book.debtsFor(row.toExpenseFacts())
-                    if (debts.isEmpty()) return@mapNotNull null
-                    BalanceEntry(
-                        kind = BalanceEntryKind.EXPENSE,
-                        id = row[Expenses.id].toString(),
-                        date = row[Expenses.date],
-                        label = row.getOrNull(Merchants.name).orEmpty(),
-                        amountMinor = row[Expenses.amountMinor],
-                        debts = debts,
-                    )
-                }
+                .toList()
+            val lines = loadExpenseLines(householdId, expenseRows.map { it[Expenses.id] })
+            val expenseEntries = expenseRows.mapNotNull { row ->
+                val debts = book.debtsFor(row.toExpenseFacts(lines[row[Expenses.id]].orEmpty()))
+                if (debts.isEmpty()) return@mapNotNull null
+                BalanceEntry(
+                    kind = BalanceEntryKind.EXPENSE,
+                    id = row[Expenses.id].toString(),
+                    date = row[Expenses.date],
+                    label = row.getOrNull(Merchants.name).orEmpty(),
+                    amountMinor = row[Expenses.amountMinor],
+                    debts = debts,
+                )
+            }
             val settlementEntries = Settlements.selectAll().where { Settlements.householdId eq householdId }.map { row ->
                 val settlement = row.toSettlement()
                 BalanceEntry(
@@ -119,7 +123,7 @@ fun Route.debtRoutes() {
 }
 
 /** A row of the expenses table. */
-fun ResultRow.toExpenseFacts() = ExpenseFacts(
+fun ResultRow.toExpenseFacts(lines: List<ExpenseLine> = emptyList()) = ExpenseFacts(
     id = this[Expenses.id],
     date = this[Expenses.date],
     amountMinor = this[Expenses.amountMinor],
@@ -127,6 +131,7 @@ fun ResultRow.toExpenseFacts() = ExpenseFacts(
     accountId = this[Expenses.accountId],
     ownerUserId = this[Expenses.paidByUserId],
     createsDebt = this[Expenses.createsDebt],
+    lines = lines.map { ExpenseLineFacts(it.categoryId?.let(Uuid::parse), it.amountMinor) },
 )
 
 // ---- Split rules ----

@@ -12,6 +12,7 @@ import dev.spendingtracker.shared.api.CategoryInput
 import dev.spendingtracker.shared.api.Debt
 import dev.spendingtracker.shared.api.Expense
 import dev.spendingtracker.shared.api.ExpenseInput
+import dev.spendingtracker.shared.api.ExpenseLineInput
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.MemberInput
 import dev.spendingtracker.shared.api.Settlement
@@ -131,6 +132,18 @@ class DebtTest {
         val logged = client.get("$base/activity").body<ActivityPage>().entries
         assertEquals("Bob → Alice", logged.first { it.entity == ActivityEntity.SETTLEMENT }.label)
         assertEquals(setOf("Alice", "Bob"), logged.filter { it.entity == ActivityEntity.SPLIT_SHARE }.map { it.label }.toSet())
+
+        // A receipt split across Groceries (50/50 from August) and another category (60/40 household split):
+        // Bob owes half of the 400 groceries (200) plus 40 % of the 600 rest (240) = 440.
+        val splitReceipt = expense(
+            ExpenseInput(
+                date = LocalDate(2026, 8, 10),
+                amountMinor = 1000,
+                accountId = aliceCard,
+                lines = listOf(ExpenseLineInput(groceries, 400), ExpenseLineInput(null, 600)),
+            ),
+        )
+        assertEquals(owes(bob, alice, 440), splitReceipt.debts)
     }
 
     private suspend fun HttpClient.account(base: String, name: String, owner: String?) =

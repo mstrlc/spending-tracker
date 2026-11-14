@@ -12,6 +12,7 @@ import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.versionParam
 import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.Categories
+import dev.spendingtracker.server.db.ExpenseLines
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Merchants
 import dev.spendingtracker.server.db.Trips
@@ -30,6 +31,7 @@ import dev.spendingtracker.server.merchant.resolveMerchant
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.Expense
 import dev.spendingtracker.shared.api.ExpenseInput
+import dev.spendingtracker.shared.api.ExpenseLine
 import io.github.smiley4.ktoropenapi.delete
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
@@ -47,6 +49,7 @@ import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greaterEq
+import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.inSubQuery
 import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.core.or
@@ -55,6 +58,7 @@ import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
+import kotlin.math.abs
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
@@ -93,13 +97,20 @@ fun Route.expenseRoutes() = route("/expenses") {
             if (categoryId != null) {
                 val subcategories = Categories.select(Categories.id)
                     .where { (Categories.householdId eq householdId) and (Categories.parentId eq categoryId) }
-                filter = filter and ((Expenses.categoryId eq categoryId) or (Expenses.categoryId inSubQuery subcategories))
+                val inCategory = (Expenses.categoryId eq categoryId) or (Expenses.categoryId inSubQuery subcategories)
+                val lineExpenses = ExpenseLines.select(ExpenseLines.expenseId).where {
+                    (ExpenseLines.householdId eq householdId) and
+                        ((ExpenseLines.categoryId eq categoryId) or (ExpenseLines.categoryId inSubQuery subcategories))
+                }
+                filter = filter and (inCategory or (Expenses.id inSubQuery lineExpenses))
             }
-            withMerchant()
+            val rows = withMerchant()
                 .where(filter)
                 .orderBy(Expenses.date to SortOrder.DESC, Expenses.id to SortOrder.ASC)
                 .limit(LIST_LIMIT)
-                .map { it.toExpense(book) }
+                .toList()
+            val lines = loadExpenseLines(householdId, rows.map { it[Expenses.id] })
+            rows.map { it.toExpense(book, lines[it[Expenses.id]].orEmpty()) }
         }
         call.respond(expenses)
     }
@@ -117,7 +128,7 @@ fun Route.expenseRoutes() = route("/expenses") {
         val id = Uuid.random()
         val expense = dbQuery {
             input.checkReferences(householdId)
-            val merchantId = resolveMerchant(householdId, input.merchant, input.categoryId, call.userId)
+            val merchantId = resolveMerchant(householdId, input.merchant, input.defaultCategoryId, call.userId)
             Expenses.insert {
                 it[Expenses.id] = id
                 it[Expenses.householdId] = householdId
@@ -125,6 +136,7 @@ fun Route.expenseRoutes() = route("/expenses") {
                 it[version] = 1
                 it[createdBy] = call.userId
             }
+            writeExpenseLines(householdId, id, input.lines)
             writeExpenseSplit(householdId, id, input.split, call.userId)
             loadExpense(householdId, id)
         }
@@ -151,13 +163,14 @@ fun Route.expenseRoutes() = route("/expenses") {
         val input = raw.validated()
         val expense = dbQuery {
             input.checkReferences(householdId)
-            val merchantId = resolveMerchant(householdId, input.merchant, input.categoryId, call.userId)
+            val merchantId = resolveMerchant(householdId, input.merchant, input.defaultCategoryId, call.userId)
             val affected = Expenses.update({ match(householdId, id) and (Expenses.version eq version) }) {
                 it.write(input, merchantId)
                 it[Expenses.version] = version + 1
                 it[updatedAt] = Clock.System.now()
             }
             checkVersioned(affected, { exists(householdId, id) }, "Expense")
+            writeExpenseLines(householdId, id, input.lines)
             writeExpenseSplit(householdId, id, input.split, call.userId)
             loadExpense(householdId, id)
         }
@@ -187,6 +200,8 @@ fun Route.expenseRoutes() = route("/expenses") {
     }
 }
 
+private data class ValidLine(val categoryId: Uuid?, val amountMinor: Long, val notes: String)
+
 private data class ValidExpense(
     val date: LocalDate,
     val amountMinor: Long,
@@ -200,14 +215,32 @@ private data class ValidExpense(
     val originalCurrency: String?,
     val split: Weights?,
     val createsDebt: Boolean,
-)
+    val lines: List<ValidLine>,
+) {
+    /** The category a new merchant takes as its default: the expense's, or its largest split line's. */
+    val defaultCategoryId: Uuid? get() = categoryId ?: lines.maxByOrNull { abs(it.amountMinor) }?.categoryId
+}
 
 private fun ExpenseInput.validated(): ValidExpense {
+    val total = nonZeroAmount(amountMinor)
+    val validLines = lines.map { line ->
+        val lineAmount = nonZeroAmount(line.amountMinor, "lines")
+        if ((lineAmount > 0) != (total > 0)) {
+            throw badRequest("invalid_line_amount", "Every line must have the same sign as the expense", "lines")
+        }
+        ValidLine(parseId(line.categoryId, "lines"), lineAmount, optionalText(line.notes, "lines", max = 500))
+    }
+    if (validLines.size == 1) {
+        throw badRequest("too_few_lines", "Split an expense into at least two lines, or give it one category", "lines")
+    }
+    if (validLines.isNotEmpty() && validLines.sumOf { it.amountMinor } != total) {
+        throw badRequest("lines_mismatch", "Split lines must add up to the expense amount", "lines")
+    }
     return ValidExpense(
         date = date,
-        amountMinor = nonZeroAmount(amountMinor),
+        amountMinor = total,
         merchant = optionalText(merchant, "merchant", max = 200),
-        categoryId = parseId(categoryId, "categoryId"),
+        categoryId = if (validLines.isEmpty()) parseId(categoryId, "categoryId") else null,
         accountId = parseId(accountId, "accountId"),
         paidByUserId = parseId(paidByUserId, "paidByUserId"),
         notes = optionalText(notes, "notes", max = 2000),
@@ -218,6 +251,7 @@ private fun ExpenseInput.validated(): ValidExpense {
         },
         split = split?.validatedWeights("split"),
         createsDebt = createsDebt,
+        lines = validLines,
     ).also {
         if ((it.originalAmountMinor == null) != (it.originalCurrency == null)) {
             val field = if (it.originalAmountMinor == null) "originalAmountMinor" else "originalCurrency"
@@ -228,10 +262,14 @@ private fun ExpenseInput.validated(): ValidExpense {
 
 /** Field-level errors for references the composite foreign keys would otherwise reject opaquely. */
 private fun ValidExpense.checkReferences(householdId: Uuid) {
-    if (categoryId != null &&
-        Categories.selectAll().where { (Categories.id eq categoryId) and (Categories.householdId eq householdId) }.empty()
-    ) {
-        throw badRequest("invalid_category", "Unknown category", "categoryId")
+    val categoryIds = (listOfNotNull(categoryId) + lines.mapNotNull { it.categoryId }).distinct()
+    if (categoryIds.isNotEmpty()) {
+        val found = Categories.select(Categories.id)
+            .where { (Categories.householdId eq householdId) and (Categories.id inList categoryIds) }
+            .count()
+        if (found < categoryIds.size) {
+            throw badRequest("invalid_category", "Unknown category", if (categoryId != null) "categoryId" else "lines")
+        }
     }
     if (accountId != null &&
         Accounts.selectAll().where { (Accounts.id eq accountId) and (Accounts.householdId eq householdId) }.empty()
@@ -261,9 +299,45 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[Expenses.createsDebt] = input.createsDebt
 }
 
+/** Lines of the household's expenses (or just [expenseIds]), in order. Call inside a transaction. */
+fun loadExpenseLines(householdId: Uuid, expenseIds: Collection<Uuid>? = null): Map<Uuid, List<ExpenseLine>> {
+    if (expenseIds?.isEmpty() == true) return emptyMap()
+    var filter: Op<Boolean> = ExpenseLines.householdId eq householdId
+    if (expenseIds != null) filter = filter and (ExpenseLines.expenseId inList expenseIds)
+    return ExpenseLines.selectAll().where(filter)
+        .orderBy(ExpenseLines.sortOrder to SortOrder.ASC)
+        .groupBy(
+            { it[ExpenseLines.expenseId] },
+            { ExpenseLine(it[ExpenseLines.categoryId]?.toString(), it[ExpenseLines.amountMinor], it[ExpenseLines.notes]) },
+        )
+}
+
+private fun writeExpenseLines(householdId: Uuid, expenseId: Uuid, lines: List<ValidLine>) {
+    val current = ExpenseLines.selectAll()
+        .where { (ExpenseLines.householdId eq householdId) and (ExpenseLines.expenseId eq expenseId) }
+        .orderBy(ExpenseLines.sortOrder to SortOrder.ASC)
+        .map { ValidLine(it[ExpenseLines.categoryId], it[ExpenseLines.amountMinor], it[ExpenseLines.notes]) }
+    if (current == lines) return
+    if (current.isNotEmpty()) {
+        ExpenseLines.deleteWhere { (ExpenseLines.householdId eq householdId) and (ExpenseLines.expenseId eq expenseId) }
+    }
+    lines.forEachIndexed { index, line ->
+        ExpenseLines.insert {
+            it[ExpenseLines.householdId] = householdId
+            it[ExpenseLines.expenseId] = expenseId
+            it[sortOrder] = index
+            it[categoryId] = line.categoryId
+            it[amountMinor] = line.amountMinor
+            it[notes] = line.notes
+        }
+    }
+}
+
 /** One expense as the API returns it. Call inside a transaction. */
-private fun loadExpense(householdId: Uuid, id: Uuid): Expense =
-    withMerchant().where { Expenses.id eq id }.single().toExpense(loadSplitBook(householdId, listOf(id)))
+private fun loadExpense(householdId: Uuid, id: Uuid): Expense {
+    val lines = loadExpenseLines(householdId, listOf(id))[id].orEmpty()
+    return withMerchant().where { Expenses.id eq id }.single().toExpense(loadSplitBook(householdId, listOf(id)), lines)
+}
 
 private fun match(householdId: Uuid, id: Uuid) = (Expenses.id eq id) and (Expenses.householdId eq householdId)
 
@@ -273,7 +347,7 @@ private fun withMerchant() =
     Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id).selectAll()
 
 /** A row of [withMerchant]; [book] holds its split, if it has its own. */
-private fun ResultRow.toExpense(book: SplitBook) = Expense(
+private fun ResultRow.toExpense(book: SplitBook, lines: List<ExpenseLine>) = Expense(
     id = this[Expenses.id].toString(),
     date = this[Expenses.date],
     amountMinor = this[Expenses.amountMinor],
@@ -289,5 +363,6 @@ private fun ResultRow.toExpense(book: SplitBook) = Expense(
     originalCurrency = this[Expenses.originalCurrency],
     split = book.overrides[this[Expenses.id]]?.toShares(),
     createsDebt = this[Expenses.createsDebt],
-    debts = book.debtsFor(toExpenseFacts()),
+    debts = book.debtsFor(toExpenseFacts(lines)),
+    lines = lines,
 )

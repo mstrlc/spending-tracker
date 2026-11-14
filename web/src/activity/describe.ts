@@ -19,6 +19,7 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   account: "account",
   category: "category",
   expense: "expense",
+  expense_line: "line of",
   income: "income",
   asset: "asset",
   asset_contribution: "contribution to",

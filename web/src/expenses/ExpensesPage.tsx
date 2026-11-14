@@ -20,8 +20,11 @@ export function expenseTotals(expenses: Expense[], categories: Category[]) {
   let spent = 0;
   let invested = 0;
   for (const e of expenses) {
-    if (e.categoryId && investment.has(e.categoryId)) invested += e.amountMinor;
-    else spent += e.amountMinor;
+    const parts = e.lines && e.lines.length > 0 ? e.lines : [{ categoryId: e.categoryId, amountMinor: e.amountMinor }];
+    for (const p of parts) {
+      if (p.categoryId && investment.has(p.categoryId)) invested += p.amountMinor;
+      else spent += p.amountMinor;
+    }
   }
   return { spent, invested };
 }
@@ -34,11 +37,14 @@ export function spendingByCategory(expenses: Expense[], categories: Category[]):
   const byId = new Map(categories.map((c) => [c.id, c]));
   const sums = new Map<string, number>();
   for (const e of expenses) {
-    const category = e.categoryId ? byId.get(e.categoryId) : undefined;
-    if (category?.kind === "investment") continue;
-    const top = category?.parentId ? byId.get(category.parentId) : category;
-    const name = top?.name ?? "Uncategorized";
-    sums.set(name, (sums.get(name) ?? 0) + e.amountMinor);
+    const parts = e.lines && e.lines.length > 0 ? e.lines : [{ categoryId: e.categoryId, amountMinor: e.amountMinor }];
+    for (const p of parts) {
+      const category = p.categoryId ? byId.get(p.categoryId) : undefined;
+      if (category?.kind === "investment") continue;
+      const top = category?.parentId ? byId.get(category.parentId) : category;
+      const name = top?.name ?? "Uncategorized";
+      sums.set(name, (sums.get(name) ?? 0) + p.amountMinor);
+    }
   }
   return rankSlices(sums);
 }
@@ -117,6 +123,10 @@ export function ExpensesPage() {
               {rows.map((e) => {
                 const category = categories.find((c) => c.id === e.categoryId);
                 const parent = category?.parentId ? categories.find((c) => c.id === category.parentId) : undefined;
+                const splitNames =
+                  e.lines && e.lines.length > 0
+                    ? [...new Set(e.lines.map((l) => categories.find((c) => c.id === l.categoryId)?.name ?? "Uncategorized"))].join(", ")
+                    : null;
                 return (
                   <TableRow
                     key={e.id}
@@ -138,11 +148,13 @@ export function ExpensesPage() {
                       </button>
                       {e.notes && <div className="text-xs text-muted-foreground">{e.notes}</div>}
                       <div className="text-xs text-muted-foreground md:hidden">
-                        {formatDay(e.date)} · {category?.name ?? "Uncategorized"}
+                        {formatDay(e.date)} · {splitNames ?? category?.name ?? "Uncategorized"}
                       </div>
                     </TableCell>
                     <TableCell className="max-md:hidden">
-                      {category ? (
+                      {splitNames ? (
+                        splitNames
+                      ) : category ? (
                         <>
                           {parent && <span className="text-muted-foreground">{parent.name} › </span>}
                           {category.name}

@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
+import { Plus, X } from "lucide-react";
 import { useAccounts, useCategories, useDeleteExpense, useMembers, useMerchants, useSaveExpense, useTrips } from "../api/hooks";
 import type { Expense } from "../api/types";
 import { categoryTree } from "../categories/tree";
@@ -20,6 +21,7 @@ const FIELDS = [
   "amountMinor",
   "merchant",
   "categoryId",
+  "lines",
   "accountId",
   "paidByUserId",
   "tripId",
@@ -28,6 +30,12 @@ const FIELDS = [
   "notes",
   "split",
 ];
+
+type LineDraft = {
+  categoryId: string;
+  amount: string;
+  notes: string;
+};
 
 /**
  * Adds expenses (staying open for the next one) or edits [expense]. Lives in a side sheet;
@@ -59,6 +67,19 @@ export function ExpenseForm({
   const [amount, setAmount] = useState(expense ? toInputValue(expense.amountMinor, household.currency) : "");
   const [merchant, setMerchant] = useState(expense?.merchant ?? "");
   const [categoryId, setCategoryId] = useState(expense?.categoryId ?? "");
+  const [hasLines, setHasLines] = useState((expense?.lines.length ?? 0) > 0);
+  const [lines, setLines] = useState<LineDraft[]>(() =>
+    expense && expense.lines.length > 0
+      ? expense.lines.map((l) => ({
+          categoryId: l.categoryId ?? "",
+          amount: toInputValue(l.amountMinor, household.currency),
+          notes: l.notes,
+        }))
+      : [
+          { categoryId: expense?.categoryId ?? "", amount: "", notes: "" },
+          { categoryId: "", amount: "", notes: "" },
+        ],
+  );
   const [accountId, setAccountId] = useState(expense?.accountId ?? "");
   const [paidByUserId, setPaidByUserId] = useState(expense?.paidByUserId ?? "");
   // Whose it is follows the account until someone picks it.
@@ -81,10 +102,27 @@ export function ExpenseForm({
   const [lastAdded, setLastAdded] = useState<string | null>(null);
 
   // Archived categories and closed accounts stay selectable only for rows that already use them.
-  const tree = categoryTree(categories.filter((c) => !c.archived || c.id === expense?.categoryId));
+  const usedCategoryIds = new Set([expense?.categoryId, ...(expense?.lines.map((l) => l.categoryId) ?? [])]);
+  const tree = categoryTree(categories.filter((c) => !c.archived || usedCategoryIds.has(c.id)));
   const accountOptions = accounts.filter((a) => a.status === "active" || a.id === expense?.accountId);
   const knownMerchant = merchants.find((m) => m.name.toLowerCase() === merchant.trim().toLowerCase());
   const merchantHint = merchant.trim() && !knownMerchant && merchants.length > 0 ? "New merchant: it'll be added to your list." : null;
+  const totalMinor = parseMoney(amount, household.currency);
+  const linesTotalMinor = lines.reduce((sum, l) => sum + (parseMoney(l.amount, household.currency) ?? 0), 0);
+  const remainingMinor = totalMinor !== null ? totalMinor - linesTotalMinor : null;
+
+  function updateLine(index: number, patch: Partial<LineDraft>) {
+    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
+  }
+
+  function addLine() {
+    const nextAmount = remainingMinor !== null && remainingMinor !== 0 ? toInputValue(remainingMinor, household.currency) : "";
+    setLines((prev) => [...prev, { categoryId: "", amount: nextAmount, notes: "" }]);
+  }
+
+  function removeLine(index: number) {
+    setLines((prev) => (prev.length <= 2 ? prev : prev.filter((_, i) => i !== index)));
+  }
 
   // Typing a known merchant on a new expense files it under the merchant's category, unless one was picked.
   function changeMerchant(value: string) {
@@ -126,6 +164,29 @@ export function ExpenseForm({
       amountRef.current?.focus();
       return;
     }
+    const parsedLines = hasLines
+      ? lines.map((l) => ({
+          categoryId: l.categoryId || null,
+          amountMinor: parseMoney(l.amount, household.currency),
+          notes: l.notes,
+        }))
+      : [];
+    if (hasLines) {
+      if (
+        parsedLines.length < 2 ||
+        parsedLines.some((l) => l.amountMinor === null || l.amountMinor === 0 || Math.sign(l.amountMinor) !== Math.sign(amountMinor))
+      ) {
+        setAmountError("Give each split line an amount with the same sign as the total.");
+        return;
+      }
+      const lineSum = parsedLines.reduce((sum, l) => sum + (l.amountMinor ?? 0), 0);
+      if (lineSum !== amountMinor) {
+        setAmountError(
+          `Split lines add up to ${formatMoney(lineSum, household.currency)}, which doesn't match ${formatMoney(amountMinor, household.currency)}.`,
+        );
+        return;
+      }
+    }
     const currency = originalCurrency.trim().toUpperCase();
     const originalAmountMinor = foreign ? parseMoney(originalAmount, /^[A-Z]{3}$/.test(currency) ? currency : "EUR") : null;
     if (foreign && (originalAmountMinor === null || originalAmountMinor === 0)) {
@@ -140,7 +201,7 @@ export function ExpenseForm({
           date,
           amountMinor,
           merchant,
-          categoryId: categoryId || null,
+          categoryId: hasLines ? null : categoryId || null,
           accountId: accountId || null,
           paidByUserId: paidByUserId || null,
           tripId: tripId || null,
@@ -149,6 +210,9 @@ export function ExpenseForm({
           notes,
           split,
           createsDebt,
+          lines: hasLines
+            ? parsedLines.map((l) => ({ categoryId: l.categoryId, amountMinor: l.amountMinor!, notes: l.notes }))
+            : [],
           version: expense?.version,
         },
       },
@@ -165,6 +229,11 @@ export function ExpenseForm({
           setOriginalAmount("");
           setMerchant("");
           setNotes("");
+          setHasLines(false);
+          setLines([
+            { categoryId: "", amount: "", notes: "" },
+            { categoryId: "", amount: "", notes: "" },
+          ]);
           amountRef.current?.focus();
         },
       },
@@ -231,21 +300,105 @@ export function ExpenseForm({
           ))}
         </datalist>
         {merchantHint && <p className="-mt-2 text-xs text-muted-foreground">{merchantHint}</p>}
-        <Field label="Category" name="categoryId" error={save.error}>
-          <NativeSelect className="w-full" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <NativeSelectOption value="">Uncategorized</NativeSelectOption>
-            {tree.map((parent) => (
-              <NativeSelectOptGroup key={parent.id} label={parent.name}>
-                <NativeSelectOption value={parent.id}>{parent.name}</NativeSelectOption>
-                {parent.children.map((child) => (
-                  <NativeSelectOption key={child.id} value={child.id}>
-                    {parent.name} › {child.name}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelectOptGroup>
-            ))}
-          </NativeSelect>
-        </Field>
+        {!hasLines && (
+          <Field label="Category" name="categoryId" error={save.error}>
+            <NativeSelect className="w-full" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <NativeSelectOption value="">Uncategorized</NativeSelectOption>
+              {tree.map((parent) => (
+                <NativeSelectOptGroup key={parent.id} label={parent.name}>
+                  <NativeSelectOption value={parent.id}>{parent.name}</NativeSelectOption>
+                  {parent.children.map((child) => (
+                    <NativeSelectOption key={child.id} value={child.id}>
+                      {parent.name} › {child.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelectOptGroup>
+              ))}
+            </NativeSelect>
+          </Field>
+        )}
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="expense-lines"
+            checked={hasLines}
+            onCheckedChange={(checked) => {
+              const next = checked === true;
+              setHasLines(next);
+              if (next && !lines[0]?.categoryId && categoryId) {
+                updateLine(0, { categoryId });
+              }
+            }}
+          />
+          <Label htmlFor="expense-lines" className="font-normal">
+            Split across categories
+          </Label>
+        </div>
+        {hasLines && (
+          <Field label="Category lines" name="lines" error={save.error}>
+            <div className="flex flex-col gap-2 rounded-md border p-3">
+              {lines.map((line, i) => (
+                <div key={i} className="flex flex-col gap-1.5">
+                  <div className="grid grid-cols-[1fr_7rem_auto] items-center gap-2">
+                    <NativeSelect
+                      aria-label={`Line ${i + 1} category`}
+                      className="w-full"
+                      value={line.categoryId}
+                      onChange={(e) => updateLine(i, { categoryId: e.target.value })}
+                    >
+                      <NativeSelectOption value="">Uncategorized</NativeSelectOption>
+                      {tree.map((parent) => (
+                        <NativeSelectOptGroup key={parent.id} label={parent.name}>
+                          <NativeSelectOption value={parent.id}>{parent.name}</NativeSelectOption>
+                          {parent.children.map((child) => (
+                            <NativeSelectOption key={child.id} value={child.id}>
+                              {parent.name} › {child.name}
+                            </NativeSelectOption>
+                          ))}
+                        </NativeSelectOptGroup>
+                      ))}
+                    </NativeSelect>
+                    <Input
+                      aria-label={`Line ${i + 1} amount`}
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      className="amount"
+                      value={line.amount}
+                      onChange={(e) => updateLine(i, { amount: e.target.value })}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Remove line ${i + 1}`}
+                      disabled={lines.length <= 2}
+                      onClick={() => removeLine(i)}
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                  <Input
+                    aria-label={`Line ${i + 1} note`}
+                    placeholder="Optional note for this line"
+                    value={line.notes}
+                    onChange={(e) => updateLine(i, { notes: e.target.value })}
+                  />
+                </div>
+              ))}
+              <div className="flex items-center justify-between pt-1">
+                <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                  <Plus /> Add line
+                </Button>
+                <span className="amount text-xs text-muted-foreground">
+                  {remainingMinor === null
+                    ? `${formatMoney(linesTotalMinor, household.currency)} allocated`
+                    : remainingMinor === 0
+                      ? `Matches ${formatMoney(totalMinor!, household.currency)}`
+                      : `${formatMoney(remainingMinor, household.currency)} left`}
+                </span>
+              </div>
+            </div>
+          </Field>
+        )}
         <Field label="Account" name="accountId" error={save.error}>
           <NativeSelect className="w-full" value={accountId} onChange={(e) => changeAccount(e.target.value)}>
             <NativeSelectOption value="">None</NativeSelectOption>

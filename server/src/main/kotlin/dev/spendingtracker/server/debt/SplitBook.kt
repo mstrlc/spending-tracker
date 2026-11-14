@@ -16,6 +16,9 @@ import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import kotlin.uuid.Uuid
 
+/** One line of a split expense, for working out category-dependent debts. */
+data class ExpenseLineFacts(val categoryId: Uuid?, val amountMinor: Long)
+
 /** What deciding an expense's debts needs to know about it. A null [ownerUserId] is a joint expense. */
 data class ExpenseFacts(
     val id: Uuid,
@@ -25,6 +28,7 @@ data class ExpenseFacts(
     val accountId: Uuid?,
     val ownerUserId: Uuid?,
     val createsDebt: Boolean,
+    val lines: List<ExpenseLineFacts> = emptyList(),
 )
 
 /** Weights by member. */
@@ -59,7 +63,7 @@ class SplitBook internal constructor(
         val owner = expense.ownerUserId
         return when {
             owner == null && payer != null ->
-                allocate(expense.amountMinor, splitFor(expense))
+                allocateJoint(expense)
                     .filter { (member, part) -> member != payer && part != 0L }
                     .map { (member, part) -> Debt(member.toString(), payer.toString(), part) }
             owner != null && payer == null ->
@@ -75,11 +79,28 @@ class SplitBook internal constructor(
     /** How a joint expense is shared: its own split, its category's (or the parent's), the household's, or equally. */
     fun splitFor(expense: ExpenseFacts): Weights {
         overrides[expense.id]?.let { return it }
-        val category = expense.categoryId
+        return splitForCategory(expense.categoryId, expense.date)
+    }
+
+    private fun allocateJoint(expense: ExpenseFacts): Map<Uuid, Long> {
+        if (expense.id in overrides || expense.lines.isEmpty()) {
+            return allocate(expense.amountMinor, splitFor(expense))
+        }
+        // Lines that share the same split rule are summed before rounding so parts don't drift by a penny.
+        val totals = mutableMapOf<Uuid, Long>()
+        for ((weights, group) in expense.lines.groupBy { splitForCategory(it.categoryId, expense.date) }) {
+            for ((member, part) in allocate(group.sumOf { it.amountMinor }, weights)) {
+                totals.merge(member, part, Long::plus)
+            }
+        }
+        return totals
+    }
+
+    private fun splitForCategory(category: Uuid?, date: LocalDate): Weights {
         val parent = category?.let { parents[it] }
-        return category?.let { dated(it, expense.date) }
-            ?: parent?.let { dated(it, expense.date) }
-            ?: dated(null, expense.date)
+        return category?.let { dated(it, date) }
+            ?: parent?.let { dated(it, date) }
+            ?: dated(null, date)
             ?: equal()
     }
 

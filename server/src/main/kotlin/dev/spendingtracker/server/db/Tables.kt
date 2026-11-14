@@ -87,6 +87,17 @@ object Expenses : Table("expenses") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object ExpenseLines : Table("expense_lines") {
+    val id = uuid("id").clientDefault { kotlin.uuid.Uuid.random() }
+    val householdId = uuid("household_id")
+    val expenseId = uuid("expense_id")
+    val sortOrder = integer("sort_order")
+    val categoryId = uuid("category_id").nullable()
+    val amountMinor = long("amount_minor")
+    val notes = text("notes")
+    override val primaryKey = PrimaryKey(id)
+}
+
 /** V16: the household default (no category, no expense), a category's override, or one expense's. */
 object SplitRules : Table("split_rules") {
     val id = uuid("id")
