@@ -14,7 +14,10 @@ import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.common.versionParam
 import dev.spendingtracker.server.db.Accounts
+import dev.spendingtracker.server.bank.startOfPragueDay
+import dev.spendingtracker.server.db.BankBalances
 import dev.spendingtracker.server.db.BankFeeds
+import dev.spendingtracker.server.db.BankSyncs
 import dev.spendingtracker.server.db.BankRows
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Income
@@ -26,6 +29,7 @@ import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.BankFeed
 import dev.spendingtracker.shared.api.BankFeedInput
 import dev.spendingtracker.shared.api.BankRow
+import dev.spendingtracker.shared.api.FeedBalance
 import dev.spendingtracker.shared.api.LinkBankRows
 import dev.spendingtracker.shared.api.SkipBankRows
 import dev.spendingtracker.shared.api.StatementResult
@@ -407,7 +411,7 @@ private suspend fun <T> uniqueName(block: suspend () -> T): T =
     }
 
 /** The household's feeds (or just [id]) with their row counts. Call inside a transaction. */
-private fun loadFeeds(householdId: Uuid, id: Uuid? = null): List<BankFeed> {
+fun loadFeeds(householdId: Uuid, id: Uuid? = null): List<BankFeed> {
     val total = BankRows.id.count()
     val lastDate = BankRows.date.max()
     val stats = BankRows.select(BankRows.feedId, total, lastDate)
@@ -419,6 +423,23 @@ private fun loadFeeds(householdId: Uuid, id: Uuid? = null): List<BankFeed> {
         .where { (BankRows.householdId eq householdId) and pendingRows() }
         .groupBy(BankRows.feedId)
         .associate { it[BankRows.feedId] to it[pendingCount].toInt() }
+    val syncCount = BankSyncs.id.count()
+    val syncs = BankSyncs.select(BankSyncs.feedId, syncCount)
+        .where { (BankSyncs.householdId eq householdId) and (BankSyncs.startedAt greaterEq startOfPragueDay(Clock.System.now())) }
+        .groupBy(BankSyncs.feedId)
+        .associate { it[BankSyncs.feedId] to it[syncCount].toInt() }
+    val latestRead = BankBalances.readAt.max()
+    val latest = BankBalances.select(BankBalances.feedId, latestRead).where { BankBalances.householdId eq householdId }
+        .groupBy(BankBalances.feedId).associate { it[BankBalances.feedId] to it[latestRead] }
+    val balances = if (latest.isEmpty()) emptyMap() else BankBalances.selectAll()
+        .where { (BankBalances.householdId eq householdId) and (BankBalances.readAt inList latest.values.filterNotNull()) }
+        .filter { latest[it[BankBalances.feedId]] == it[BankBalances.readAt] }
+        .associate {
+            it[BankBalances.feedId] to FeedBalance(
+                it[BankBalances.amountMinor], it[BankBalances.currency], it[BankBalances.readAt].toString(),
+                it[BankBalances.balanceDate], it[BankBalances.balanceType],
+            )
+        }
     var filter: Op<Boolean> = BankFeeds.householdId eq householdId
     if (id != null) filter = filter and (BankFeeds.id eq id)
     return BankFeeds.selectAll().where(filter).orderBy(BankFeeds.name to SortOrder.ASC).map {
@@ -436,6 +457,10 @@ private fun loadFeeds(householdId: Uuid, id: Uuid? = null): List<BankFeed> {
             rowCount = stats[feedId]?.first ?: 0,
             pendingCount = pending[feedId] ?: 0,
             lastDate = stats[feedId]?.second,
+            connectionId = it[BankFeeds.connectionId]?.toString(),
+            lastSyncedAt = it[BankFeeds.lastSyncedAt]?.toString(),
+            syncsToday = syncs[feedId] ?: 0,
+            balance = balances[feedId],
         )
     }
 }

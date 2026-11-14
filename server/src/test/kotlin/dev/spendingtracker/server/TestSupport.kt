@@ -1,6 +1,8 @@
 package dev.spendingtracker.server
 
 import com.zaxxer.hikari.HikariDataSource
+import dev.spendingtracker.server.bank.BankData
+import dev.spendingtracker.server.bank.BankSetup
 import dev.spendingtracker.server.db.connectDatabase
 import dev.spendingtracker.server.market.MarketData
 import dev.spendingtracker.shared.api.ApiError
@@ -38,10 +40,15 @@ object TestDatabase {
     }
 }
 
-/** Runs [block] against a fresh app and empty database, with [market] standing in for the market-data providers. */
-fun apiTest(market: MarketData = FakeMarketData(), block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
+/** Runs [block] against a fresh app and empty database, with [market] and [bank] standing in for external providers. */
+fun apiTest(
+    market: MarketData = FakeMarketData(),
+    bank: BankData? = null,
+    block: suspend ApplicationTestBuilder.() -> Unit,
+) = testApplication {
     TestDatabase.reset()
-    application { module(TestDatabase.dataSource, marketData = market) }
+    val setup = bank?.let { BankSetup(it, "http://localhost:5173") }
+    application { module(TestDatabase.dataSource, marketData = market, bankSetup = setup) }
     block()
 }
 

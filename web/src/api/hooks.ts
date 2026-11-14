@@ -9,6 +9,7 @@ import type {
   CategoryInput,
   ContributionInput,
   FeeInput,
+  FeedFromAccount,
   ExpenseInput,
   Household,
   HouseholdImport,
@@ -52,6 +53,8 @@ export const keys = {
   splitRules: (id: string) => ["households", id, "split-rules"] as const,
   inboxRules: (id: string) => ["households", id, "inbox-rules"] as const,
   settings: (id: string) => ["households", id, "settings"] as const,
+  bankConnections: (id: string) => ["households", id, "bank-connections"] as const,
+  bankInstitutions: (id: string, country: string) => ["households", id, "bank-institutions", country] as const,
   bankFeeds: (id: string) => ["households", id, "bank-feeds"] as const,
   bankRows: (id: string, status?: BankRowStatus) =>
     status === undefined ? (["households", id, "bank-rows"] as const) : (["households", id, "bank-rows", status] as const),
@@ -879,8 +882,109 @@ export function useImport(householdId: string) {
 function invalidateInbox(qc: ReturnType<typeof useQueryClient>, householdId: string) {
   qc.invalidateQueries({ queryKey: keys.bankRows(householdId) });
   qc.invalidateQueries({ queryKey: keys.bankFeeds(householdId) });
+  qc.invalidateQueries({ queryKey: keys.bankConnections(householdId) });
   // Rules count the rows they filed.
   qc.invalidateQueries({ queryKey: keys.inboxRules(householdId) });
+}
+
+export function useBankConnections(householdId: string) {
+  return useQuery({
+    queryKey: keys.bankConnections(householdId),
+    queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/bank-connections", { params: { path: { householdId } } })),
+  });
+}
+
+export function useBankInstitutions(householdId: string, country: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.bankInstitutions(householdId, country),
+    enabled,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/bank-institutions", {
+          params: { path: { householdId }, query: { country } },
+        }),
+      ),
+  });
+}
+
+export function useStartBankConnection(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (institutionId: string) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/bank-connections", {
+          params: { path: { householdId } },
+          body: { institutionId },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.bankConnections(householdId) }),
+  });
+}
+
+export function useFinishBankConnection(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (connectionId: string) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/bank-connections/{connectionId}/finish", {
+          params: { path: { householdId, connectionId } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.bankConnections(householdId) }),
+  });
+}
+
+export function useCreateConnectionFeeds(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ connectionId, feeds }: { connectionId: string; feeds: FeedFromAccount[] }) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/bank-connections/{connectionId}/feeds", {
+          params: { path: { householdId, connectionId } },
+          body: { feeds },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
+export function useSyncBankConnection(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (connectionId: string) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/bank-connections/{connectionId}/sync", {
+          params: { path: { householdId, connectionId } },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
+export function useSyncBankFeed(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (feedId: string) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/bank-feeds/{feedId}/sync", {
+          params: { path: { householdId, feedId } },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
+export function useDeleteBankConnection(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/bank-connections/{connectionId}", {
+          params: { path: { householdId, connectionId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
 }
 
 export function useBankFeeds(householdId: string) {

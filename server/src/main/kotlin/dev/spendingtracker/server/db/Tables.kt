@@ -309,9 +309,55 @@ object BankFeeds : Table("bank_feeds") {
     val iban = text("iban").nullable()
     val currency = text("currency")
     val importFrom = date("import_from").nullable()
+    val connectionId = uuid("connection_id").nullable()
+    val lastSyncedAt = timestamp("last_synced_at").nullable()
     val version = integer("version").default(1)
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V23: one consent given at a bank; [accounts] is the bank's account list as JSON. */
+object BankConnections : Table("bank_connections") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val institutionId = text("institution_id")
+    val institutionName = text("institution_name")
+    val requisitionId = text("requisition_id")
+    val agreementId = text("agreement_id").nullable()
+    val status = text("status")
+    val consentExpiresAt = timestamp("consent_expires_at").nullable()
+    val accounts = jsonb("accounts")
+    val lastError = text("last_error")
+    val version = integer("version").default(1)
+    val createdBy = uuid("created_by").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V23: what the bank said a feed's balance was when a sync read it. */
+object BankBalances : Table("bank_balances") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val feedId = uuid("feed_id")
+    val readAt = timestamp("read_at").defaultExpression(CurrentTimestamp)
+    val balanceDate = date("balance_date").nullable()
+    val amountMinor = long("amount_minor")
+    val currency = text("currency")
+    val balanceType = text("balance_type")
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V23: each time a sync asked the bank for a feed's data, to hold to GoCardless's daily limit. */
+object BankSyncs : Table("bank_syncs") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val feedId = uuid("feed_id")
+    val startedAt = timestamp("started_at").defaultExpression(CurrentTimestamp)
+    val trigger = text("trigger")
+    val added = integer("added")
+    val error = text("error")
     override val primaryKey = PrimaryKey(id)
 }
 

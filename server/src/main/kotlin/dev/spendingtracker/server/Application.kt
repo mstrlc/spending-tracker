@@ -5,6 +5,11 @@ import dev.spendingtracker.server.auth.SESSION_AUTH
 import dev.spendingtracker.server.auth.UserPrincipal
 import dev.spendingtracker.server.auth.authRoutes
 import dev.spendingtracker.server.auth.sessionCookie
+import dev.spendingtracker.server.bank.BankSetup
+import dev.spendingtracker.server.bank.BankSync
+import dev.spendingtracker.server.bank.GoCardlessBankData
+import dev.spendingtracker.server.bank.bankSetup
+import dev.spendingtracker.server.bank.nextPragueRunDelay
 import dev.spendingtracker.server.common.apiErrors
 import dev.spendingtracker.server.db.AuditActor
 import dev.spendingtracker.server.db.connectDatabase
@@ -38,21 +43,54 @@ import io.ktor.server.plugins.ratelimit.RateLimitRouteSelector
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 import javax.sql.DataSource
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
+
+private val appLog = LoggerFactory.getLogger("Application")
 
 fun main() {
     val config = Config.fromEnv()
     val dataSource = connectDatabase(config.db)
-    embeddedServer(Netty, port = config.port) { module(dataSource, config.secureCookies) }.start(wait = true)
+    val bankSetup = config.goCardless?.let { BankSetup(GoCardlessBankData(it.secretId, it.secretKey), config.appUrl) }
+    embeddedServer(Netty, port = config.port) {
+        module(dataSource, config.secureCookies, bankSetup = bankSetup, bankSyncHour = config.bankSyncHour)
+    }.start(wait = true)
 }
 
 val apiJson = Json { ignoreUnknownKeys = true }
 
-fun Application.module(dataSource: DataSource, secureCookies: Boolean = false, marketData: MarketData = LiveMarketData()) {
+fun Application.module(
+    dataSource: DataSource,
+    secureCookies: Boolean = false,
+    marketData: MarketData = LiveMarketData(),
+    bankSetup: BankSetup? = null,
+    bankSyncHour: Int? = null,
+) {
     market = Market(marketData)
+    this.bankSetup = bankSetup
+    if (bankSetup != null && bankSyncHour != null) {
+        launch {
+            while (isActive) {
+                delay(nextPragueRunDelay(bankSyncHour, Clock.System.now()))
+                try {
+                    val results = withContext(AuditActor { null }) { BankSync(bankSetup.data, market).syncAll() }
+                    appLog.info("Daily bank sync finished across {} feeds", results.size)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    appLog.warn("Daily bank sync failed", e)
+                }
+            }
+        }
+    }
     install(CallLogging)
     install(ContentNegotiation) { json(apiJson) }
     install(StatusPages) { apiErrors() }

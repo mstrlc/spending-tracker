@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccounts, useBankFeeds, useBankRows, useCategories, useDecideBankRows, useInboxRules, useMembers } from "../api/hooks";
+import { useAccounts, useBankConnections, useBankFeeds, useBankRows, useCategories, useDecideBankRows, useInboxRules, useMembers } from "../api/hooks";
 import type { BankRow, BankRowRef, DuplicateCandidate, TransferCandidate } from "../api/types";
 import { formatDay, formatMonth } from "../lib/dates";
 import { formatMoney } from "../lib/money";
@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FeedsPanel } from "./FeedsPanel";
+import { connectionWarning } from "./connections";
 import { loadDecision } from "./decisions";
 import { draftExpense, draftIncome, oppositeSides, skipReason } from "./drafts";
 import { RuleForm } from "./RuleForm";
@@ -42,6 +43,7 @@ export function InboxPage() {
   // In the Decided tab: everything, or only what rules and the matcher filed.
   const [filter, setFilter] = useState<"all" | "auto">("all");
   const feeds = useBankFeeds(household.id);
+  const connections = useBankConnections(household.id);
   const rows = useBankRows(household.id, tab);
   const accounts = useAccounts(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
@@ -168,6 +170,24 @@ export function InboxPage() {
         Bank rows waiting for a decision: add each as an expense or income, file it under one you already entered, pair it
         with the other side of a transfer, or skip it. Suggestions come from what you decided before.
       </PageIntro>
+
+      {(connections.data?.connections ?? [])
+        .map((c) => ({ c, warning: connectionWarning(c) }))
+        .filter((x): x is { c: typeof x.c; warning: string } => x.warning !== null)
+        .map(({ c, warning }) => (
+          <div
+            key={c.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+            role="status"
+          >
+            <span>
+              <strong>{c.institutionName}:</strong> {warning}
+            </span>
+            <Button size="sm" variant="outline" onClick={() => setEditor({ mode: "feeds" })}>
+              Bank feeds
+            </Button>
+          </div>
+        ))}
 
       <div className="flex flex-wrap items-center gap-3">
         <Tabs value={tab} onValueChange={(v) => { setTab(v as "pending" | "decided"); clear(); }}>

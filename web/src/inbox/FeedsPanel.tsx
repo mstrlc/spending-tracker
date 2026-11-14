@@ -1,13 +1,30 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { useAccounts, useBankFeeds, useDeleteBankFeed, useSaveBankFeed, useUploadStatement } from "../api/hooks";
-import type { BankFeed, BankInstitution, StatementResult } from "../api/types";
+import {
+  useAccounts,
+  useBankConnections,
+  useBankFeeds,
+  useBankInstitutions,
+  useDeleteBankConnection,
+  useDeleteBankFeed,
+  useFinishBankConnection,
+  useSaveBankFeed,
+  useStartBankConnection,
+  useSyncBankConnection,
+  useSyncBankFeed,
+  useUploadStatement,
+} from "../api/hooks";
+import type { BankConnection, BankFeed, BankInstitution, FeedSyncResult, StatementResult } from "../api/types";
 import { formatDate } from "../lib/dates";
+import { formatMoney } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError, RowMenu, SheetBody } from "../ui";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ConnectionFeedsForm } from "./ConnectionFeedsForm";
+import { connectionWarning } from "./connections";
 
 export const INSTITUTIONS: { value: BankInstitution; label: string }[] = [
   { value: "revolut", label: "Revolut" },
@@ -38,18 +55,48 @@ function describeResult(r: StatementResult) {
   return `${r.format}: ${parts.join(", ")}.`;
 }
 
-/** The household's bank feeds: what each reads into, statement uploads, and adding or editing one. */
+function describeSync(feeds: FeedSyncResult[]) {
+  return feeds.map((f) => `${f.feedName}: ${f.message}`).join(" ");
+}
+
+const COUNTRIES = [
+  { code: "CZ", label: "Czechia" },
+  { code: "SK", label: "Slovakia" },
+  { code: "DE", label: "Germany" },
+  { code: "AT", label: "Austria" },
+  { code: "PL", label: "Poland" },
+  { code: "GB", label: "United Kingdom" },
+  { code: "LT", label: "Lithuania" },
+];
+
+type PanelView =
+  | { mode: "list" }
+  | { mode: "editFeed"; feed?: BankFeed }
+  | { mode: "connectBank" }
+  | { mode: "mapAccounts"; connection: BankConnection };
+
+/** The household's bank feeds: live bank connections, statement uploads, and adding or editing feeds. */
 export function FeedsPanel({ onDone }: { onDone: () => void }) {
   const household = useHousehold();
+  const isOwner = household.role === "owner";
   const feeds = useBankFeeds(household.id);
+  const connections = useBankConnections(household.id);
   const accounts = useAccounts(household.id).data ?? [];
   const upload = useUploadStatement(household.id);
   const remove = useDeleteBankFeed(household.id);
+  const startConn = useStartBankConnection(household.id);
+  const finishConn = useFinishBankConnection(household.id);
+  const syncConn = useSyncBankConnection(household.id);
+  const syncFeed = useSyncBankFeed(household.id);
+  const deleteConn = useDeleteBankConnection(household.id);
   const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploadingTo, setUploadingTo] = useState<BankFeed | null>(null);
+  const [syncingFeedId, setSyncingFeedId] = useState<string | null>(null);
+  const [syncingConnId, setSyncingConnId] = useState<string | null>(null);
   const [result, setResult] = useState<{ feedId: string; text: string } | null>(null);
-  const [editing, setEditing] = useState<BankFeed | "new" | null>(null);
+  const [connResult, setConnResult] = useState<{ connId: string; text: string } | null>(null);
+  const [view, setView] = useState<PanelView>({ mode: "list" });
 
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? "";
 
@@ -72,6 +119,31 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
     );
   }
 
+  function runFeedSync(feed: BankFeed) {
+    setSyncingFeedId(feed.id);
+    setResult(null);
+    syncFeed.mutate(feed.id, {
+      onSuccess: (res) => {
+        const msg = res.feeds[0]?.message ?? "Synced.";
+        setResult({ feedId: feed.id, text: msg });
+      },
+    });
+  }
+
+  function runConnectionSync(conn: BankConnection) {
+    setSyncingConnId(conn.id);
+    setConnResult(null);
+    syncConn.mutate(conn.id, {
+      onSuccess: (res) => setConnResult({ connId: conn.id, text: describeSync(res.feeds) || "No feeds to sync." }),
+    });
+  }
+
+  function reconnect(institutionId: string) {
+    startConn.mutate(institutionId, {
+      onSuccess: (started) => window.location.assign(started.link),
+    });
+  }
+
   async function confirmDelete(feed: BankFeed) {
     if (
       await confirm({
@@ -83,9 +155,33 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
     }
   }
 
-  if (editing) {
-    return <FeedForm feed={editing === "new" ? undefined : editing} onDone={() => setEditing(null)} />;
+  async function confirmDisconnect(conn: BankConnection) {
+    if (
+      await confirm({
+        title: `Disconnect ${conn.institutionName}?`,
+        description: "Your existing feeds and bank rows stay, they just stop syncing automatically.",
+      })
+    ) {
+      deleteConn.mutate({ id: conn.id, version: conn.version });
+    }
   }
+
+  if (view.mode === "editFeed") {
+    return <FeedForm feed={view.feed} onDone={() => setView({ mode: "list" })} />;
+  }
+  if (view.mode === "connectBank") {
+    return <ConnectBankView onDone={() => setView({ mode: "list" })} />;
+  }
+  if (view.mode === "mapAccounts") {
+    return (
+      <SheetBody>
+        <ConnectionFeedsForm connection={view.connection} onDone={() => setView({ mode: "list" })} />
+      </SheetBody>
+    );
+  }
+
+  const configured = connections.data?.configured ?? false;
+  const connList = connections.data?.connections ?? [];
 
   return (
     <SheetBody
@@ -95,17 +191,110 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
           <Button type="button" variant="outline" onClick={onDone}>
             Done
           </Button>
-          <Button type="button" onClick={() => setEditing("new")}>
+          {configured && isOwner && (
+            <Button type="button" variant="outline" onClick={() => setView({ mode: "connectBank" })}>
+              Connect bank
+            </Button>
+          )}
+          <Button type="button" onClick={() => setView({ mode: "editFeed" })}>
             Add feed
           </Button>
         </>
       }
     >
       <p className="text-sm text-muted-foreground">
-        A feed is what a bank gives you for one account and currency. Upload its statements (CSV from Revolut, ČSOB,
-        KB or Raiffeisenbank, or GoCardless JSON) and the rows land in the inbox. Uploading overlapping statements is
-        fine: rows already here are left alone.
+        A feed is what a bank gives you for one account and currency. Connect a bank for daily syncs, or upload
+        statements (CSV from Revolut, ČSOB, KB or Raiffeisenbank, or GoCardless JSON).
       </p>
+
+      {connections.data && !configured && (
+        <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+          Live bank connections aren&apos;t set up on this server. You can still add feeds and upload statements.
+        </p>
+      )}
+
+      {configured && connList.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Connected banks</div>
+          <ErrorText error={startConn.error} />
+          <ErrorText error={finishConn.error} />
+          <ErrorText error={deleteConn.error} />
+          <ul className="flex flex-col divide-y rounded-md border">
+            {connList.map((conn) => {
+              const warning = connectionWarning(conn);
+              const unlinkedCount = conn.accounts.filter((a) => !a.feedId).length;
+              return (
+                <li key={conn.id} className="flex flex-col gap-2 p-3">
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 font-medium">
+                        {conn.institutionName}
+                        <Badge variant={conn.status === "active" ? "secondary" : "outline"}>{conn.status}</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {conn.accounts.length} {conn.accounts.length === 1 ? "account" : "accounts"}
+                        {conn.consentExpiresAt ? ` · expires ${formatDate(conn.consentExpiresAt.slice(0, 10))}` : ""}
+                      </div>
+                      {warning && <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{warning}</div>}
+                    </div>
+                    {conn.status === "pending" && isOwner && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => finishConn.mutate(conn.id)}
+                        disabled={finishConn.isPending}
+                      >
+                        Check status
+                      </Button>
+                    )}
+                    {conn.status === "active" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => runConnectionSync(conn)}
+                        disabled={syncConn.isPending}
+                      >
+                        {syncConn.isPending && syncingConnId === conn.id ? "Syncing…" : "Sync now"}
+                      </Button>
+                    )}
+                    {conn.status !== "active" && conn.status !== "pending" && isOwner && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => reconnect(conn.institutionId)}
+                        disabled={startConn.isPending}
+                      >
+                        Reconnect
+                      </Button>
+                    )}
+                    {isOwner && (
+                      <RowMenu
+                        label={conn.institutionName}
+                        actions={[
+                          ...(conn.status === "active" && unlinkedCount > 0
+                            ? [{ label: `Add feeds (${unlinkedCount})`, onSelect: () => setView({ mode: "mapAccounts", connection: conn }) }]
+                            : []),
+                          { label: "Disconnect", destructive: true, onSelect: () => confirmDisconnect(conn) },
+                        ]}
+                      />
+                    )}
+                  </div>
+                  {syncingConnId === conn.id && <ErrorText error={syncConn.error} />}
+                  {connResult?.connId === conn.id && (
+                    <p className="rounded-md bg-muted px-3 py-2 text-xs" role="status">
+                      {connResult.text}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       <input ref={fileRef} type="file" accept=".csv,.json,text/csv,application/json" className="hidden" onChange={sendFile} />
       <ErrorText error={feeds.error} />
       <ErrorText error={remove.error} />
@@ -125,19 +314,45 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
                     : `${feed.rowCount} rows, ${feed.pendingCount} to decide${feed.lastDate ? `, up to ${formatDate(feed.lastDate)}` : ""}`}
                   {feed.importFrom && ` · from ${formatDate(feed.importFrom)}`}
                 </div>
+                {feed.balance && (
+                  <div className="text-xs text-muted-foreground">
+                    Balance: {formatMoney(feed.balance.amountMinor, feed.balance.currency)}
+                    {feed.balance.balanceDate ? ` (${formatDate(feed.balance.balanceDate)})` : ""}
+                  </div>
+                )}
+                {feed.connectionId && (
+                  <div className="text-xs text-muted-foreground">
+                    Live sync · {feed.syncsToday}/4 today
+                    {feed.lastSyncedAt ? ` · last ${formatDate(feed.lastSyncedAt.slice(0, 10))}` : ""}
+                  </div>
+                )}
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => pickFile(feed)} disabled={upload.isPending}>
-                {upload.isPending && uploadingTo?.id === feed.id ? "Reading…" : "Upload statement"}
-              </Button>
+              {feed.connectionId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => runFeedSync(feed)}
+                  disabled={syncFeed.isPending || feed.syncsToday >= 4}
+                >
+                  {syncFeed.isPending && syncingFeedId === feed.id ? "Syncing…" : "Sync now"}
+                </Button>
+              ) : (
+                <Button type="button" variant="outline" size="sm" onClick={() => pickFile(feed)} disabled={upload.isPending}>
+                  {upload.isPending && uploadingTo?.id === feed.id ? "Reading…" : "Upload statement"}
+                </Button>
+              )}
               <RowMenu
                 label={feed.name}
                 actions={[
-                  { label: "Edit", onSelect: () => setEditing(feed) },
+                  ...(feed.connectionId ? [{ label: "Upload statement", onSelect: () => pickFile(feed) }] : []),
+                  { label: "Edit", onSelect: () => setView({ mode: "editFeed", feed }) },
                   { label: "Delete", destructive: true, onSelect: () => confirmDelete(feed) },
                 ]}
               />
             </div>
             {uploadingTo?.id === feed.id && <ErrorText error={upload.error} />}
+            {syncingFeedId === feed.id && <ErrorText error={syncFeed.error} />}
             {result?.feedId === feed.id && (
               <p className="rounded-md bg-muted px-3 py-2 text-sm" role="status">
                 {result.text}
@@ -145,6 +360,80 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
             )}
           </li>
         ))}
+      </ul>
+    </SheetBody>
+  );
+}
+
+function ConnectBankView({ onDone }: { onDone: () => void }) {
+  const household = useHousehold();
+  const [country, setCountry] = useState("CZ");
+  const [search, setSearch] = useState("");
+  const institutions = useBankInstitutions(household.id, country);
+  const start = useStartBankConnection(household.id);
+
+  const q = search.trim().toLowerCase();
+  const filtered = (institutions.data ?? []).filter((b) => !q || b.name.toLowerCase().includes(q));
+
+  return (
+    <SheetBody
+      footer={
+        <>
+          <span className="flex-1" />
+          <Button type="button" variant="outline" onClick={onDone}>
+            Cancel
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm text-muted-foreground">
+        Pick your bank to open its login page. Once you agree to share read-only access, you&apos;ll come right back here.
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        <NativeSelect aria-label="Country" value={country} onChange={(e) => setCountry(e.target.value)}>
+          {COUNTRIES.map((c) => (
+            <NativeSelectOption key={c.code} value={c.code}>
+              {c.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <Input
+          className="col-span-2"
+          placeholder="Search bank…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          data-autofocus
+        />
+      </div>
+      <ErrorText error={institutions.error} />
+      <ErrorText error={start.error} />
+      {institutions.isPending && <p className="text-sm text-muted-foreground">Loading banks…</p>}
+      <ul className="flex max-h-80 flex-col divide-y overflow-y-auto rounded-md border">
+        {filtered.map((bank) => (
+          <li key={bank.id} className="flex items-center justify-between gap-2 p-2.5">
+            <div className="flex items-center gap-2.5">
+              {bank.logo && <img src={bank.logo} alt="" className="size-6 rounded-sm object-contain" />}
+              <div>
+                <div className="text-sm font-medium">{bank.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  Up to {bank.historyDays} days history · {bank.accessDays} days access
+                </div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={start.isPending}
+              onClick={() => start.mutate(bank.id, { onSuccess: (s) => window.location.assign(s.link) })}
+            >
+              Connect
+            </Button>
+          </li>
+        ))}
+        {!institutions.isPending && filtered.length === 0 && (
+          <li className="p-3 text-sm text-muted-foreground">No banks match.</li>
+        )}
       </ul>
     </SheetBody>
   );

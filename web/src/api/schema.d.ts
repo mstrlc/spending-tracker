@@ -743,6 +743,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/bank-feeds/{feedId}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Reads the feed's new rows and balance now. A feed is read at most 4 times a day. */
+        post: operations["syncBankFeed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/bank-rows": {
         parameters: {
             query?: never;
@@ -927,6 +944,109 @@ export interface paths {
         post?: never;
         /** @description Deletes the rule. Rows it filed stay filed. */
         delete: operations["deleteInboxRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/bank-institutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The banks that can be connected in a country (CZ by default). */
+        get: operations["listBankInstitutions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/bank-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The household's bank connections with consent expiry. `configured` is false when the server has no GoCardless keys. */
+        get: operations["listBankConnections"];
+        put?: never;
+        /** @description Owners only. Asks the aggregator for the bank's consent page: send the person to `link`; the bank sends them back to the app's /bank-connected page, which finishes the connection. */
+        post: operations["startBankConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/bank-connections/{connectionId}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Owners only. Asks the aggregator how the person's visit to the bank went. When linked, reads the bank's accounts and the consent's expiry; a connection still waiting at the bank stays pending. Safe to repeat. */
+        post: operations["finishBankConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/bank-connections/{connectionId}/feeds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Owners only. Makes a feed (source gocardless) of each chosen bank account, read into the chosen ledger account. */
+        post: operations["createConnectionFeeds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/bank-connections/{connectionId}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Reads the new rows and balances of every feed of the connection, as the daily sync does. A feed is read at most 4 times a day. */
+        post: operations["syncBankConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/bank-connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Owners only. Withdraws the consent at the bank (as far as it can) and forgets the connection. Its feeds and rows stay, but stop syncing. */
+        delete: operations["deleteBankConnection"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2142,6 +2262,32 @@ export interface components {
             pendingCount: number;
             /** LocalDate */
             lastDate: null | string;
+            /** String */
+            connectionId: null | string;
+            /** String */
+            lastSyncedAt: null | string;
+            /**
+             * Int
+             * Format: int32
+             */
+            syncsToday: number;
+            balance: null | components["schemas"]["FeedBalance"];
+        };
+        /** FeedBalance */
+        FeedBalance: {
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            currency: string;
+            /** String */
+            readAt: string;
+            /** LocalDate */
+            balanceDate: null | string;
+            /** String */
+            type: string;
         };
         /** BankFeedInput */
         BankFeedInput: {
@@ -2193,6 +2339,37 @@ export interface components {
              * Format: int32
              */
             notBooked: number;
+        };
+        /** FeedSyncResult */
+        FeedSyncResult: {
+            /** String */
+            feedId: string;
+            /** String */
+            feedName: string;
+            /** String */
+            status: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            added: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            existing: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            filed: number;
+            /** String */
+            message: string;
+        };
+        /** SyncResult */
+        SyncResult: {
+            /** ArrayList<FeedSyncResult> */
+            feeds: components["schemas"]["FeedSyncResult"][];
         };
         /** BankRow */
         BankRow: {
@@ -2565,6 +2742,103 @@ export interface components {
              * Format: int32
              */
             version?: null | number;
+        };
+        /** ConnectableBank */
+        ConnectableBank: {
+            /** String */
+            id: string;
+            /** String */
+            name: string;
+            /** String */
+            logo: null | string;
+            /**
+             * Int
+             * Format: int32
+             */
+            historyDays: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            accessDays: number;
+        };
+        /** BankConnection */
+        BankConnection: {
+            /** String */
+            id: string;
+            /** String */
+            institutionId: string;
+            /** String */
+            institutionName: string;
+            status: components["schemas"]["BankConnectionStatus"];
+            /** String */
+            consentExpiresAt: null | string;
+            /** String */
+            lastError: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+            /** ArrayList<BankConnectionAccount> */
+            accounts: components["schemas"]["BankConnectionAccount"][];
+        };
+        /**
+         * BankConnectionStatus
+         * @enum {string}
+         */
+        BankConnectionStatus: "pending" | "active" | "expired" | "revoked" | "failed";
+        /** BankConnectionAccount */
+        BankConnectionAccount: {
+            /** String */
+            externalId: string;
+            /** String */
+            iban: null | string;
+            /** String */
+            maskedPan: null | string;
+            /** String */
+            currency: string;
+            /** String */
+            name: string;
+            /** String */
+            ownerName: string;
+            /** String */
+            feedId: null | string;
+        };
+        /** BankConnections */
+        BankConnections: {
+            /** Boolean */
+            configured: boolean;
+            /** ArrayList<BankConnection> */
+            connections: components["schemas"]["BankConnection"][];
+        };
+        /** StartBankConnection */
+        StartBankConnection: {
+            /** String */
+            institutionId: string;
+        };
+        /** BankConnectionStarted */
+        BankConnectionStarted: {
+            /** String */
+            connectionId: string;
+            /** String */
+            link: string;
+        };
+        /** FeedFromAccount */
+        FeedFromAccount: {
+            /** String */
+            externalId: string;
+            /** String */
+            accountId: string;
+            /** String */
+            name?: null | string;
+            /** LocalDate */
+            importFrom?: null | string;
+        };
+        /** CreateConnectionFeeds */
+        CreateConnectionFeeds: {
+            /** ArrayList<FeedFromAccount> */
+            feeds: components["schemas"]["FeedFromAccount"][];
         };
         /**
          * ActivityEntity
@@ -5786,6 +6060,44 @@ export interface operations {
             };
         };
     };
+    syncBankFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                feedId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listBankRows: {
         parameters: {
             query?: {
@@ -6319,6 +6631,341 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listBankInstitutions: {
+        parameters: {
+            query?: {
+                /** @description Two-letter country code */
+                country?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectableBank"][];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listBankConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankConnections"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    startBankConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StartBankConnection"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankConnectionStarted"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    finishBankConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankConnection"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createConnectionFeeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateConnectionFeeds"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankFeed"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    syncBankConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteBankConnection: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
             };
             404: {
                 headers: {

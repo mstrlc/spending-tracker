@@ -17,7 +17,7 @@ enum class BankInstitution {
 /**
  * What a bank provides (one currency pocket, one card), read into the ledger account [accountId]; several feeds can
  * belong to one account. Rows booked before [importFrom] aren't brought in: the ledger already has that history.
- * [source] is "file" for uploaded statements.
+ * [source] is "file" for uploaded statements and "gocardless" for a feed read live through a bank connection.
  */
 @Serializable
 data class BankFeed(
@@ -34,6 +34,14 @@ data class BankFeed(
     val pendingCount: Int,
     /** The latest row's date: how far the feed reaches. */
     val lastDate: LocalDate?,
+    /** The bank connection a live feed is read through; null for statement files and for a connection since deleted. */
+    val connectionId: String?,
+    /** ISO timestamp of the last sync that reached the bank. */
+    val lastSyncedAt: String?,
+    /** Times today (Prague time) the bank was asked for this feed; the bank allows [BANK_SYNCS_PER_DAY]. */
+    val syncsToday: Int,
+    /** The latest balance a sync read. */
+    val balance: FeedBalance?,
 )
 
 /** Body for creating and updating a feed; [version] is required when updating. */

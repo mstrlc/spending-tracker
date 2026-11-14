@@ -34,6 +34,9 @@ dependencies {
     implementation(libs.ktor.server.rate.limit)
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.java)
+    implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.openapi)
     implementation(libs.ktor.swagger.ui)
     implementation(libs.schema.kenerator.core)
@@ -51,8 +54,22 @@ dependencies {
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.ktor.server.test.host)
-    testImplementation(libs.ktor.client.content.negotiation)
     testImplementation(libs.testcontainers.postgresql)
+}
+
+// The root .env (gitignored, local secrets such as the GoCardless keys) is loaded into the server's environment;
+// variables already set win.
+tasks.named<JavaExec>("run") {
+    val envFile = rootProject.file(".env")
+    if (envFile.isFile) {
+        envFile.readLines().map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+            .forEach { line ->
+                val key = line.substringBefore("=").removePrefix("export ").trim()
+                val value = line.substringAfter("=").trim().removeSurrounding("\"").removeSurrounding("'")
+                if (key.isNotEmpty() && System.getenv(key) == null) environment(key, value)
+            }
+    }
 }
 
 tasks.test {
