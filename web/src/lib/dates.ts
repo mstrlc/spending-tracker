@@ -36,3 +36,9 @@ export function formatDay(iso: string, locale?: string): string {
   const [year, m, d] = iso.split("-").map(Number);
   return new Date(year, m - 1, d).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
 }
+
+/** "1 Jan 2026" style label for an ISO date, in the user's locale. */
+export function formatDate(iso: string, locale?: string): string {
+  const [year, m, d] = iso.split("-").map(Number);
+  return new Date(year, m - 1, d).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
+}

@@ -55,7 +55,7 @@ test("a deleted record is summed up by the fields that carry something", () => {
     }),
     lookups,
   );
-  expect(changes.map((c) => c.label)).toEqual(["Date", "Paid by"]);
+  expect(changes.map((c) => c.label)).toEqual(["Date", "Whose"]);
   expect(changes[1].after).toBe("Alice");
 });
 

@@ -42,7 +42,7 @@ private const val MAX_LIMIT = 200
 // Bookkeeping columns: they change with every write or never, and say nothing a person would look for.
 private val HIDDEN_FIELDS = setOf(
     "id", "household_id", "user_id", "version", "created_at", "updated_at", "joined_at",
-    "created_by", "external_ref", "invited_by", "accepted_by", "asset_id",
+    "created_by", "external_ref", "invited_by", "accepted_by", "asset_id", "rule_id", "expense_id",
 )
 
 /** Must be inside a HouseholdAccess scope. */
@@ -101,10 +101,18 @@ fun Route.activityRoutes() = route("/activity") {
 
 fun ActivityEntity.dbValue() = name.lowercase()
 
-/** Display names of everyone an entry mentions: the actors, and the users that member entries are about. */
+/**
+ * Display names of everyone an entry mentions: the actors, the users that member entries are about, the member a
+ * split share belongs to and the two sides of a settlement.
+ */
 private fun userNames(rows: List<ResultRow>): Map<Uuid, String> {
     val ids = rows.flatMap { row ->
-        listOfNotNull(row[AuditLog.actorUserId], row[AuditLog.entityId].takeIf { row[AuditLog.entity] == "member" })
+        val record = when (row[AuditLog.entity]) {
+            "split_share", "settlement" -> (row[AuditLog.after] ?: row[AuditLog.before])?.let(::parseRow).orEmpty()
+            else -> emptyMap()
+        }
+        listOfNotNull(row[AuditLog.actorUserId], row[AuditLog.entityId].takeIf { row[AuditLog.entity] == "member" }) +
+            listOf("user_id", "from_user_id", "to_user_id").mapNotNull { record.text(it)?.let(Uuid::parse) }
     }.distinct()
     if (ids.isEmpty()) return emptyMap()
     return Users.selectAll().where { Users.id inList ids }.associate { it[Users.id] to it[Users.displayName] }
@@ -150,6 +158,16 @@ private fun ResultRow.toEntry(
         ActivityEntity.MEMBER -> names[this[AuditLog.entityId]]
         ActivityEntity.ASSET_CONTRIBUTION, ActivityEntity.ASSET_VALUATION, ActivityEntity.ASSET_FEE ->
             current.text("asset_id")?.let(holdings::get)
+        ActivityEntity.SPLIT_RULE -> when {
+            current.text("expense_id") != null -> "an expense's split"
+            current.text("category_id") != null -> "a category's split"
+            else -> "the household split"
+        }
+        ActivityEntity.SPLIT_SHARE -> current.text("user_id")?.let(Uuid::parse)?.let(names::get)
+        ActivityEntity.SETTLEMENT -> listOfNotNull(
+            current.text("from_user_id")?.let(Uuid::parse)?.let(names::get),
+            current.text("to_user_id")?.let(Uuid::parse)?.let(names::get),
+        ).joinToString(" → ")
         ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET,
         ActivityEntity.TRIP, ActivityEntity.MERCHANT -> current.text("name")
     }
@@ -180,6 +198,7 @@ private fun JsonElement.asText(): String? = when (this) {
 // jsonb keeps keys in its own order; this is the order a person reads a record in. Unlisted fields go last.
 private val FIELD_ORDER = listOf(
     "name", "symbol", "date", "amount_minor", "quantity", "value_minor", "merchant_id", "merchant", "source", "email", "role", "category_id", "default_category_id", "parent_id", "kind",
+    "valid_from", "from_user_id", "to_user_id", "weight",
     "account_id", "paid_by_user_id", "recipient_user_id", "owner_user_id", "currency", "status", "archived",
     "sort_order", "notes", "expires_at", "accepted_at",
 )

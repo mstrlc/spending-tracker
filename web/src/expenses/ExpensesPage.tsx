@@ -109,7 +109,7 @@ export function ExpensesPage() {
                 <TableHead>Merchant</TableHead>
                 <TableHead className="max-md:hidden">Category</TableHead>
                 <TableHead className="max-md:hidden">Account</TableHead>
-                {showPaidBy && <TableHead className="max-md:hidden">Paid by</TableHead>}
+                {showPaidBy && <TableHead className="max-md:hidden">Whose</TableHead>}
                 <TableHead className="text-right">Amount ({household.currency})</TableHead>
               </TableRow>
             </TableHeader>
@@ -156,7 +156,7 @@ export function ExpensesPage() {
                     </TableCell>
                     {showPaidBy && (
                       <TableCell className="text-muted-foreground max-md:hidden">
-                        {members.find((m) => m.userId === e.paidByUserId)?.displayName ?? "Shared"}
+                        {members.find((m) => m.userId === e.paidByUserId)?.displayName ?? "Joint"}
                       </TableCell>
                     )}
                     <TableCell className="amount text-right">

@@ -80,7 +80,44 @@ object Expenses : Table("expenses") {
     val originalAmountMinor = long("original_amount_minor").nullable()
     val originalCurrency = text("original_currency").nullable()
     val externalRef = text("external_ref").nullable()
+    val createsDebt = bool("creates_debt").default(true)
     val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V16: the household default (no category, no expense), a category's override, or one expense's. */
+object SplitRules : Table("split_rules") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val categoryId = uuid("category_id").nullable()
+    val expenseId = uuid("expense_id").nullable()
+    val validFrom = date("valid_from").nullable()
+    val version = integer("version").default(1)
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object SplitShares : Table("split_shares") {
+    val id = uuid("id").clientDefault { kotlin.uuid.Uuid.random() }
+    val householdId = uuid("household_id")
+    val ruleId = uuid("rule_id")
+    val userId = uuid("user_id")
+    val weight = integer("weight")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Settlements : Table("settlements") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val date = date("date")
+    val fromUserId = uuid("from_user_id")
+    val toUserId = uuid("to_user_id")
+    val amountMinor = long("amount_minor")
+    val notes = text("notes")
+    val version = integer("version").default(1)
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)

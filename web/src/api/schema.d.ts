@@ -524,6 +524,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/split-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The household default and category split rules, by category (the default first), latest first. Expenses' own splits are on the expenses. */
+        get: operations["listSplitRules"];
+        put?: never;
+        post: operations["createSplitRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/split-rules/{ruleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateSplitRule"];
+        post?: never;
+        delete: operations["deleteSplitRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Settlements newest first, filtered by inclusive date range. */
+        get: operations["listSettlements"];
+        put?: never;
+        post: operations["createSettlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/settlements/{settlementId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateSettlement"];
+        post?: never;
+        delete: operations["deleteSettlement"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Who owes whom after every expense and settlement so far, and what moved the balance between from and to (both inclusive and optional). */
+        get: operations["getBalances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/merchants": {
         parameters: {
             query?: never;
@@ -896,6 +979,34 @@ export interface components {
             originalAmountMinor: null | number;
             /** String */
             originalCurrency: null | string;
+            /** ArrayList<Share> */
+            split: null | components["schemas"]["Share"][];
+            /** Boolean */
+            createsDebt: boolean;
+            /** ArrayList<Debt> */
+            debts: components["schemas"]["Debt"][];
+        };
+        /** Share */
+        Share: {
+            /** String */
+            userId: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            weight: number;
+        };
+        /** Debt */
+        Debt: {
+            /** String */
+            fromUserId: string;
+            /** String */
+            toUserId: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
         };
         /** ExpenseInput */
         ExpenseInput: {
@@ -930,6 +1041,10 @@ export interface components {
             originalAmountMinor?: null | number;
             /** String */
             originalCurrency?: null | string;
+            /** ArrayList<Share> */
+            split?: null | components["schemas"]["Share"][];
+            /** Boolean */
+            createsDebt?: boolean;
         };
         /** Income */
         Income: {
@@ -1264,6 +1379,109 @@ export interface components {
              */
             version?: null | number;
         };
+        /** SplitRule */
+        SplitRule: {
+            /** String */
+            id: string;
+            /** String */
+            categoryId: null | string;
+            /** LocalDate */
+            validFrom: string;
+            /** ArrayList<Share> */
+            shares: components["schemas"]["Share"][];
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** SplitRuleInput */
+        SplitRuleInput: {
+            /** LocalDate */
+            validFrom: string;
+            /** ArrayList<Share> */
+            shares: components["schemas"]["Share"][];
+            /** String */
+            categoryId?: null | string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
+        /** Settlement */
+        Settlement: {
+            /** String */
+            id: string;
+            /** LocalDate */
+            date: string;
+            /** String */
+            fromUserId: string;
+            /** String */
+            toUserId: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** SettlementInput */
+        SettlementInput: {
+            /** LocalDate */
+            date: string;
+            /** String */
+            fromUserId: string;
+            /** String */
+            toUserId: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
+        /** BalanceEntry */
+        BalanceEntry: {
+            kind: components["schemas"]["BalanceEntryKind"];
+            /** String */
+            id: string;
+            /** LocalDate */
+            date: string;
+            /** String */
+            label: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** ArrayList<Debt> */
+            debts: components["schemas"]["Debt"][];
+        };
+        /**
+         * BalanceEntryKind
+         * @enum {string}
+         */
+        BalanceEntryKind: "expense" | "settlement";
+        /** Balances */
+        Balances: {
+            /** ArrayList<Debt> */
+            balances: components["schemas"]["Debt"][];
+            /** ArrayList<BalanceEntry> */
+            entries: components["schemas"]["BalanceEntry"][];
+        };
         /** Merchant */
         Merchant: {
             /** String */
@@ -1508,7 +1726,7 @@ export interface components {
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -3809,6 +4027,380 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiError"];
                 };
+            };
+        };
+    };
+    listSplitRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SplitRule"][];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createSplitRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SplitRuleInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SplitRule"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateSplitRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SplitRuleInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SplitRule"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteSplitRule: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listSettlements: {
+        parameters: {
+            query?: {
+                /** @description Inclusive start date, YYYY-MM-DD */
+                from?: string;
+                /** @description Inclusive end date, YYYY-MM-DD */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settlement"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createSettlement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SettlementInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settlement"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateSettlement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                settlementId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SettlementInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settlement"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteSettlement: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                settlementId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getBalances: {
+        parameters: {
+            query?: {
+                /** @description Inclusive start date, YYYY-MM-DD */
+                from?: string;
+                /** @description Inclusive end date, YYYY-MM-DD */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Balances"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

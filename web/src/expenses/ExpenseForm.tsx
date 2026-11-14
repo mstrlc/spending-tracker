@@ -12,6 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
+import { SplitEditor } from "../debts/SplitEditor";
+import { draftFrom, owesLine, sharesFrom } from "../debts/split";
 
 const FIELDS = [
   "date",
@@ -24,6 +26,7 @@ const FIELDS = [
   "originalAmountMinor",
   "originalCurrency",
   "notes",
+  "split",
 ];
 
 /**
@@ -58,6 +61,13 @@ export function ExpenseForm({
   const [categoryId, setCategoryId] = useState(expense?.categoryId ?? "");
   const [accountId, setAccountId] = useState(expense?.accountId ?? "");
   const [paidByUserId, setPaidByUserId] = useState(expense?.paidByUserId ?? "");
+  // Whose it is follows the account until someone picks it.
+  const [ownerPicked, setOwnerPicked] = useState(expense !== undefined);
+  const [createsDebt, setCreatesDebt] = useState(expense?.createsDebt ?? true);
+  const [ownSplit, setOwnSplit] = useState(expense?.split != null);
+  const [splitDraft, setSplitDraft] = useState(() =>
+    draftFrom(expense?.split ?? members.map((m) => ({ userId: m.userId, weight: 1 })), members),
+  );
   const [notes, setNotes] = useState(expense?.notes ?? "");
   const [tripId, setTripId] = useState(expense?.tripId ?? "");
   const [foreign, setForeign] = useState(expense?.originalCurrency != null);
@@ -86,8 +96,30 @@ export function ExpenseForm({
     }
   }
 
+  function changeAccount(value: string) {
+    setAccountId(value);
+    if (ownerPicked) return;
+    setPaidByUserId(accounts.find((a) => a.id === value)?.ownerUserId ?? "");
+  }
+
+  // Who paid: the account's owner, null for a joint account, undefined when there's no account.
+  const account = accounts.find((a) => a.id === accountId);
+  const payer = account ? (account.ownerUserId ?? null) : undefined;
+  const mismatch = payer !== undefined && payer !== (paidByUserId || null);
+  const name = (userId: string | null) => members.find((m) => m.userId === userId)?.displayName ?? "Someone";
+  const debtLabel = !paidByUserId
+    ? `The others owe ${name(payer ?? null)} their share`
+    : payer === null
+      ? `${name(paidByUserId)} owes the others their share of the joint account`
+      : `${name(paidByUserId)} owes ${name(payer ?? null)} for it`;
+
   function submit(e: FormEvent) {
     e.preventDefault();
+    const split = ownSplit ? sharesFrom(splitDraft) : null;
+    if (ownSplit && !split) {
+      setAmountError('Give at least one person a share of this expense, in whole numbers, or untick "Split this one differently".');
+      return;
+    }
     const amountMinor = parseMoney(amount, household.currency);
     if (amountMinor === null || amountMinor === 0) {
       setAmountError("Enter an amount like 129.90. Use a minus sign for a refund.");
@@ -115,6 +147,8 @@ export function ExpenseForm({
           originalAmountMinor: foreign ? originalAmountMinor : null,
           originalCurrency: foreign ? currency : null,
           notes,
+          split,
+          createsDebt,
           version: expense?.version,
         },
       },
@@ -213,7 +247,7 @@ export function ExpenseForm({
           </NativeSelect>
         </Field>
         <Field label="Account" name="accountId" error={save.error}>
-          <NativeSelect className="w-full" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <NativeSelect className="w-full" value={accountId} onChange={(e) => changeAccount(e.target.value)}>
             <NativeSelectOption value="">None</NativeSelectOption>
             {accountOptions.map((a) => (
               <NativeSelectOption key={a.id} value={a.id}>
@@ -223,9 +257,16 @@ export function ExpenseForm({
           </NativeSelect>
         </Field>
         {members.length > 1 && (
-          <Field label="Paid by" name="paidByUserId" error={save.error}>
-            <NativeSelect className="w-full" value={paidByUserId} onChange={(e) => setPaidByUserId(e.target.value)}>
-              <NativeSelectOption value="">Shared</NativeSelectOption>
+          <Field label="Whose" name="paidByUserId" error={save.error}>
+            <NativeSelect
+              className="w-full"
+              value={paidByUserId}
+              onChange={(e) => {
+                setPaidByUserId(e.target.value);
+                setOwnerPicked(true);
+              }}
+            >
+              <NativeSelectOption value="">Joint</NativeSelectOption>
               {members.map((m) => (
                 <NativeSelectOption key={m.userId} value={m.userId}>
                   {m.displayName}
@@ -233,6 +274,28 @@ export function ExpenseForm({
               ))}
             </NativeSelect>
           </Field>
+        )}
+        {members.length > 1 && mismatch && (
+          <div className="flex items-center gap-2">
+            <Checkbox id="expense-debt" checked={createsDebt} onCheckedChange={(checked) => setCreatesDebt(checked === true)} />
+            <Label htmlFor="expense-debt" className="font-normal">
+              {debtLabel}
+            </Label>
+          </div>
+        )}
+        {members.length > 1 && (
+          <div className="flex items-center gap-2">
+            <Checkbox id="expense-split" checked={ownSplit} onCheckedChange={(checked) => setOwnSplit(checked === true)} />
+            <Label htmlFor="expense-split" className="font-normal">
+              Split this one differently
+            </Label>
+          </div>
+        )}
+        {ownSplit && <SplitEditor label="Shares of this expense" members={members} draft={splitDraft} onChange={setSplitDraft} />}
+        {expense && expense.debts.length > 0 && (
+          <p className="rounded-md bg-muted px-3 py-2 text-sm">
+            {expense.debts.map((d) => `${owesLine(d, members)} ${formatMoney(d.amountMinor, household.currency)}`).join(" · ")}
+          </p>
         )}
         {(trips.length > 0 || tripId) && (
           <Field label="Trip" name="tripId" error={save.error}>

@@ -16,6 +16,14 @@ import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Merchants
 import dev.spendingtracker.server.db.Trips
 import dev.spendingtracker.server.db.dbQuery
+import dev.spendingtracker.server.debt.SplitBook
+import dev.spendingtracker.server.debt.Weights
+import dev.spendingtracker.server.debt.checkMembers
+import dev.spendingtracker.server.debt.loadSplitBook
+import dev.spendingtracker.server.debt.toExpenseFacts
+import dev.spendingtracker.server.debt.toShares
+import dev.spendingtracker.server.debt.validatedWeights
+import dev.spendingtracker.server.debt.writeExpenseSplit
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.server.merchant.resolveMerchant
@@ -76,6 +84,7 @@ fun Route.expenseRoutes() = route("/expenses") {
         val accountId = parseId(call.request.queryParameters["accountId"], "accountId")
         val merchantId = parseId(call.request.queryParameters["merchantId"], "merchantId")
         val expenses = dbQuery {
+            val book = loadSplitBook(householdId)
             var filter: Op<Boolean> = Expenses.householdId eq householdId
             if (from != null) filter = filter and (Expenses.date greaterEq from)
             if (to != null) filter = filter and (Expenses.date lessEq to)
@@ -90,7 +99,7 @@ fun Route.expenseRoutes() = route("/expenses") {
                 .where(filter)
                 .orderBy(Expenses.date to SortOrder.DESC, Expenses.id to SortOrder.ASC)
                 .limit(LIST_LIMIT)
-                .map { it.toExpense() }
+                .map { it.toExpense(book) }
         }
         call.respond(expenses)
     }
@@ -116,7 +125,8 @@ fun Route.expenseRoutes() = route("/expenses") {
                 it[version] = 1
                 it[createdBy] = call.userId
             }
-            withMerchant().where { Expenses.id eq id }.single().toExpense()
+            writeExpenseSplit(householdId, id, input.split, call.userId)
+            loadExpense(householdId, id)
         }
         call.respond(HttpStatusCode.Created, expense)
     }
@@ -148,7 +158,8 @@ fun Route.expenseRoutes() = route("/expenses") {
                 it[updatedAt] = Clock.System.now()
             }
             checkVersioned(affected, { exists(householdId, id) }, "Expense")
-            withMerchant().where { Expenses.id eq id }.single().toExpense()
+            writeExpenseSplit(householdId, id, input.split, call.userId)
+            loadExpense(householdId, id)
         }
         call.respond(expense)
     }
@@ -187,6 +198,8 @@ private data class ValidExpense(
     val tripId: Uuid?,
     val originalAmountMinor: Long?,
     val originalCurrency: String?,
+    val split: Weights?,
+    val createsDebt: Boolean,
 )
 
 private fun ExpenseInput.validated(): ValidExpense {
@@ -203,6 +216,8 @@ private fun ExpenseInput.validated(): ValidExpense {
         originalCurrency = originalCurrency?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }?.also {
             if (!Regex("^[A-Z]{3}$").matches(it)) throw badRequest("invalid_currency", "Use a 3-letter currency code", "originalCurrency")
         },
+        split = split?.validatedWeights("split"),
+        createsDebt = createsDebt,
     ).also {
         if ((it.originalAmountMinor == null) != (it.originalCurrency == null)) {
             val field = if (it.originalAmountMinor == null) "originalAmountMinor" else "originalCurrency"
@@ -229,6 +244,7 @@ private fun ValidExpense.checkReferences(householdId: Uuid) {
     if (paidByUserId != null && !isMember(householdId, paidByUserId)) {
         throw badRequest("invalid_member", "Paid by must be a member of the household", "paidByUserId")
     }
+    split?.checkMembers(householdId, "split")
 }
 
 private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(input: ValidExpense, merchantId: Uuid?) {
@@ -242,7 +258,12 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[Expenses.tripId] = input.tripId
     this[Expenses.originalAmountMinor] = input.originalAmountMinor
     this[Expenses.originalCurrency] = input.originalCurrency
+    this[Expenses.createsDebt] = input.createsDebt
 }
+
+/** One expense as the API returns it. Call inside a transaction. */
+private fun loadExpense(householdId: Uuid, id: Uuid): Expense =
+    withMerchant().where { Expenses.id eq id }.single().toExpense(loadSplitBook(householdId, listOf(id)))
 
 private fun match(householdId: Uuid, id: Uuid) = (Expenses.id eq id) and (Expenses.householdId eq householdId)
 
@@ -251,8 +272,8 @@ private fun exists(householdId: Uuid, id: Uuid) = !Expenses.selectAll().where { 
 private fun withMerchant() =
     Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id).selectAll()
 
-/** A row of [withMerchant]. */
-private fun ResultRow.toExpense() = Expense(
+/** A row of [withMerchant]; [book] holds its split, if it has its own. */
+private fun ResultRow.toExpense(book: SplitBook) = Expense(
     id = this[Expenses.id].toString(),
     date = this[Expenses.date],
     amountMinor = this[Expenses.amountMinor],
@@ -266,4 +287,7 @@ private fun ResultRow.toExpense() = Expense(
     tripId = this[Expenses.tripId]?.toString(),
     originalAmountMinor = this[Expenses.originalAmountMinor],
     originalCurrency = this[Expenses.originalCurrency],
+    split = book.overrides[this[Expenses.id]]?.toShares(),
+    createsDebt = this[Expenses.createsDebt],
+    debts = book.debtsFor(toExpenseFacts()),
 )

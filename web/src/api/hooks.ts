@@ -14,6 +14,8 @@ import type {
   IncomeInput,
   AssetInput,
   MerchantInput,
+  SettlementInput,
+  SplitRuleInput,
   TripInput,
   ValuationInput,
 } from "./types";
@@ -41,6 +43,9 @@ export const keys = {
   securitySearch: (query: string) => ["securities", query] as const,
   activity: (id: string, entity?: ActivityEntity) => ["households", id, "activity", entity ?? "all"] as const,
   overview: (id: string, month: string) => ["households", id, "overview", month] as const,
+  splitRules: (id: string) => ["households", id, "split-rules"] as const,
+  balances: (id: string, from?: string, to?: string) =>
+    from === undefined ? (["households", id, "balances"] as const) : (["households", id, "balances", from, to] as const),
 };
 
 // ---- Auth ----
@@ -235,7 +240,12 @@ export function useSaveAccount(householdId: string) {
               body: input,
             }),
           ),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.accounts(householdId) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.accounts(householdId) });
+      // Whose an account is decides who paid.
+      qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+      qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
+    },
   });
 }
 
@@ -249,6 +259,105 @@ export function useDeleteAccount(householdId: string) {
         }),
       ),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.accounts(householdId) }),
+  });
+}
+
+// ---- Debts ----
+
+export function useBalances(householdId: string, from: string, to: string) {
+  return useQuery({
+    queryKey: keys.balances(householdId, from, to),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/balances", {
+          params: { path: { householdId }, query: { from, to } },
+        }),
+      ),
+  });
+}
+
+export function useSplitRules(householdId: string) {
+  return useQuery({
+    queryKey: keys.splitRules(householdId),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/households/{householdId}/split-rules", { params: { path: { householdId } } })),
+  });
+}
+
+/** A rule changes who owes what on every expense it covers. */
+function invalidateSplits(qc: ReturnType<typeof useQueryClient>, householdId: string) {
+  qc.invalidateQueries({ queryKey: keys.splitRules(householdId) });
+  qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+  qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
+}
+
+export function useSaveSplitRule(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: SplitRuleInput }) =>
+      id === undefined
+        ? unwrap(await api.POST("/api/households/{householdId}/split-rules", { params: { path: { householdId } }, body: input }))
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/split-rules/{ruleId}", {
+              params: { path: { householdId, ruleId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => invalidateSplits(qc, householdId),
+  });
+}
+
+export function useDeleteSplitRule(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/split-rules/{ruleId}", {
+          params: { path: { householdId, ruleId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => invalidateSplits(qc, householdId),
+  });
+}
+
+export function useSettlements(householdId: string, from: string, to: string) {
+  return useQuery({
+    queryKey: [...keys.balances(householdId), "settlements", from, to],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/settlements", {
+          params: { path: { householdId }, query: { from, to } },
+        }),
+      ),
+  });
+}
+
+export function useSaveSettlement(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: SettlementInput }) =>
+      id === undefined
+        ? unwrap(await api.POST("/api/households/{householdId}/settlements", { params: { path: { householdId } }, body: input }))
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/settlements/{settlementId}", {
+              params: { path: { householdId, settlementId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.balances(householdId) }),
+  });
+}
+
+export function useDeleteSettlement(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/settlements/{settlementId}", {
+          params: { path: { householdId, settlementId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.balances(householdId) }),
   });
 }
 
@@ -415,6 +524,7 @@ export function useSaveExpense(householdId: string) {
           ),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
+      qc.invalidateQueries({ queryKey: keys.balances(householdId) });
       // It may have added a merchant, and moves the totals of the others.
       qc.invalidateQueries({ queryKey: keys.merchants(householdId) });
     },
@@ -430,7 +540,10 @@ export function useDeleteExpense(householdId: string) {
           params: { path: { householdId, expenseId: id }, query: { version } },
         }),
       ),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.expenses(householdId) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
+      qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+    },
   });
 }
 

@@ -26,6 +26,9 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   asset_fee: "fee on",
   trip: "trip",
   merchant: "merchant",
+  split_rule: "split",
+  split_share: "share of",
+  settlement: "settlement",
 };
 
 const LABELS: Record<string, string> = {
@@ -43,7 +46,7 @@ const LABELS: Record<string, string> = {
   parentId: "Under",
   kind: "Counts as",
   accountId: "Account",
-  paidByUserId: "Paid by",
+  paidByUserId: "Whose",
   recipientUserId: "Received by",
   tripId: "Trip",
   originalAmountMinor: "Amount paid",
@@ -58,6 +61,11 @@ const LABELS: Record<string, string> = {
   archived: "Archived",
   sortOrder: "Order",
   notes: "Notes",
+  validFrom: "From",
+  weight: "Share",
+  fromUserId: "Paid by",
+  toUserId: "To",
+  createsDebt: "Creates a debt",
   expiresAt: "Expires",
   acceptedAt: "Accepted",
 };
@@ -108,6 +116,9 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
     case "ownerUserId":
       if (value === null) return "Shared";
       return lookups.members.find((m) => m.userId === value)?.displayName ?? "a former member";
+    case "fromUserId":
+    case "toUserId":
+      return lookups.members.find((m) => m.userId === value)?.displayName ?? "a former member";
     case "merchantId":
       if (value === null) return "No merchant";
       return lookups.merchants.find((m) => m.id === value)?.name ?? "a merged or deleted merchant";
@@ -115,6 +126,7 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
       if (value === null) return "No trip";
       return lookups.trips.find((t) => t.id === value)?.name ?? "a deleted trip";
     case "date":
+    case "validFrom":
     case "startDate":
     case "endDate":
       return value === null ? "–" : formatDay(value);
@@ -122,6 +134,7 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
     case "acceptedAt":
       return value === null ? "–" : new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
     case "archived":
+    case "createsDebt":
       return value === "true" ? "Yes" : "No";
     case "kind":
       // Category kinds; asset kinds (fund, stock, …) read as they are.

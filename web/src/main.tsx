@@ -11,6 +11,7 @@ import { ExpensesPage } from "./expenses/ExpensesPage";
 import { IncomePage } from "./income/IncomePage";
 import { AssetsPage } from "./assets/AssetsPage";
 import { TripsPage } from "./trips/TripsPage";
+import { BalancesPage } from "./debts/BalancesPage";
 import { MerchantsPage } from "./merchants/MerchantsPage";
 import { ImportPage } from "./import/ImportPage";
 import { HomeRedirect, HouseholdLayout, OnboardingPage } from "./households/HouseholdPages";
@@ -45,6 +46,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="income" element={<IncomePage />} />
               <Route path="assets" element={<AssetsPage />} />
               <Route path="merchants" element={<MerchantsPage />} />
+              <Route path="balances" element={<BalancesPage />} />
               <Route path="trips" element={<TripsPage />} />
               <Route path="accounts" element={<AccountsPage />} />
               <Route path="categories" element={<CategoriesPage />} />

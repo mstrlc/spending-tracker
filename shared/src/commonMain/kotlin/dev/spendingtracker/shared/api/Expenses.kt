@@ -8,6 +8,9 @@ import kotlinx.serialization.Serializable
  * merchant [merchantId] ("" for none);
  * a null [paidByUserId] means a shared expense. Paid in another currency, [originalAmountMinor] and [originalCurrency]
  * say what it cost in that currency (both or neither).
+ *
+ * [paidByUserId] is whose expense it is; the account says who paid. When they don't match, [debts] says who owes whom
+ * because of it, unless [createsDebt] is off. [split] overrides the household's split rules for this expense.
  */
 @Serializable
 data class Expense(
@@ -24,6 +27,9 @@ data class Expense(
     val tripId: String?,
     val originalAmountMinor: Long?,
     val originalCurrency: String?,
+    val split: List<Share>?,
+    val createsDebt: Boolean,
+    val debts: List<Debt>,
 )
 
 /**
@@ -43,4 +49,7 @@ data class ExpenseInput(
     val tripId: String? = null,
     val originalAmountMinor: Long? = null,
     val originalCurrency: String? = null,
+    /** Null: the household's split rules apply. */
+    val split: List<Share>? = null,
+    val createsDebt: Boolean = true,
 )
