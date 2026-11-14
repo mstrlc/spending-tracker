@@ -26,8 +26,6 @@
   --flash: #e6e6e6;
   --danger: #c4261d;
   --danger-soft: #fdecea;
-  --backdrop: rgb(0 0 0 / 0.28);
-  --shadow-sheet: -16px 0 40px rgb(0 0 0 / 0.08);
   /* Category bar: the biggest category leads in the accent, the rest step down toward the page. */
   --chart-1: #111111;
   --chart-2: #5c5c5c;
@@ -64,8 +62,6 @@
     --flash: #2e2e2e;
     --danger: #f28b82;
     --danger-soft: #3a1d1b;
-    --backdrop: rgb(0 0 0 / 0.55);
-    --shadow-sheet: -16px 0 40px rgb(0 0 0 / 0.5);
     --chart-1: #f2f2f2;
     --chart-2: #a8a8a8;
     --chart-3: #7a7a7a;
@@ -394,7 +390,7 @@ button.ghost.danger:focus-visible {
 
 .app {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr) auto;
   min-height: 100vh;
 }
 
@@ -504,7 +500,6 @@ button.ghost.danger:focus-visible {
 
 .page {
   width: 100%;
-  max-width: 1280px;
   padding: 32px 40px 64px;
   display: flex;
   flex-direction: column;
@@ -961,68 +956,45 @@ td.num {
 
 /* ---- Side sheet ---- */
 
-dialog.sheet {
-  position: fixed;
-  inset: 0 0 0 auto;
-  width: min(440px, 100vw);
-  height: 100dvh;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  border: 0;
+/*
+ * A third column of the shell, beside the page: opening it narrows the page instead of covering it.
+ * The slot is empty (zero width) while no sheet is open. It has no scroll box of its own: a long sheet
+ * scrolls with the page, its header and footer sticking to the window's edges.
+ */
+.sheet-slot {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 440px;
+  min-height: 100dvh;
   border-left: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  box-shadow: var(--shadow-sheet);
-  transform: translateX(0);
-  transition:
-    transform 160ms var(--ease-out),
-    overlay 160ms allow-discrete,
-    display 160ms allow-discrete;
+  animation: sheet-in 160ms var(--ease-out);
 }
 
-dialog.sheet[open] {
-  transition-duration: 220ms;
-}
-
-@starting-style {
-  dialog.sheet[open] {
-    transform: translateX(100%);
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
   }
-}
-
-dialog.sheet:not([open]) {
-  transform: translateX(100%);
-}
-
-dialog.sheet::backdrop {
-  background: var(--backdrop);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  dialog.sheet,
-  dialog.sheet:not([open]) {
-    transform: none;
-    transition: opacity 160ms ease-out, overlay 160ms allow-discrete, display 160ms allow-discrete;
-  }
-
-  dialog.sheet:not([open]) {
-    opacity: 0;
-  }
-
-  @starting-style {
-    dialog.sheet[open] {
-      transform: none;
-      opacity: 0;
-    }
+  .sheet {
+    animation-name: none;
   }
 }
 
 .sheet-body {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
 }
 
 .sheet-header {
@@ -1031,18 +1003,20 @@ dialog.sheet::backdrop {
   justify-content: space-between;
   padding: 16px 16px 16px 24px;
   border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
 }
 
 .sheet-form {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 0;
 }
 
 .sheet-fields {
   flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1077,6 +1051,9 @@ dialog.sheet::backdrop {
   gap: 8px;
   padding: 16px 24px;
   border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
 }
 
 .spacer {
@@ -1085,21 +1062,12 @@ dialog.sheet::backdrop {
 
 /* ---- Investments: a holding's sheet ---- */
 
-/*
- * The sheet itself stays put; only the history list scrolls, so the figures and actions stay in view.
- * The sheet scrolls only on a window too short for the figures and an open entry form.
- */
-.sheet-fields.holding-detail {
-  overflow-y: auto;
-}
-
+/* The history runs its full length, with the page. */
 .holding-detail > * {
   flex-shrink: 0;
 }
 
 .holding-detail > .holding-history {
-  flex: 1 1 0;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1111,10 +1079,75 @@ dialog.sheet::backdrop {
 
 .holding-history .history-list {
   margin: 0;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: thin;
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-tabs button {
+  height: auto;
+  padding: 0 0 6px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.panel-tabs button[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.holding-history .history-list[hidden] {
+  display: none;
+}
+
+.fee-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.fee-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.fee-facts dt {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.fee-facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.fee-years th,
+.fee-years td {
+  padding: 6px 8px;
+}
+
+.fee-years th:first-child,
+.fee-years td:first-child {
+  padding-left: 0;
+}
+
+.fee-years th:last-child,
+.fee-years td:last-child {
+  padding-right: 0;
 }
 
 .entry-buttons {
@@ -1521,6 +1554,17 @@ dialog.sheet::backdrop {
 
   .sidebar {
     display: none;
+  }
+
+  /* No room beside the page on a phone: the sheet takes the whole screen. */
+  .sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    width: auto;
+    min-height: 0;
+    overflow-y: auto;
+    border-left: 0;
   }
 
   .mobile-bar {

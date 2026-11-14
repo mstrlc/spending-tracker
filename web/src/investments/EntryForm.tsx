@@ -2,11 +2,13 @@ import { useRef, useState, type FormEvent } from "react";
 import {
   useAccounts,
   useDeleteContribution,
+  useDeleteFee,
   useDeleteValuation,
   useSaveContribution,
+  useSaveFee,
   useSaveValuation,
 } from "../api/hooks";
-import type { Contribution, SecurityQuote, Valuation } from "../api/types";
+import type { Contribution, Fee, SecurityQuote, Valuation } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { todayIso } from "../lib/dates";
 import { parseMoney, toInputValue } from "../lib/money";
@@ -14,11 +16,40 @@ import { ErrorText, Field, FormError } from "../ui";
 
 export type EntryTarget =
   | { type: "contribution"; contribution?: Contribution }
-  | { type: "valuation"; valuation?: Valuation };
+  | { type: "valuation"; valuation?: Valuation }
+  | { type: "fee"; fee?: Fee };
+
+// Per kind of entry: its wording, and what an amount may be.
+const KINDS = {
+  contribution: {
+    noun: "contribution",
+    add: "Add contribution",
+    amountLabel: "Amount",
+    amountField: "amountMinor",
+    invalid: (minor: number) => minor === 0,
+    hint: "Enter an amount like 5000. Use a minus sign for money taken out.",
+  },
+  valuation: {
+    noun: "value",
+    add: "Update value",
+    amountLabel: "Worth",
+    amountField: "valueMinor",
+    invalid: (minor: number) => minor < 0,
+    hint: "Enter what it's worth, like 125000.",
+  },
+  fee: {
+    noun: "fee",
+    add: "Add fee",
+    amountLabel: "Fee",
+    amountField: "amountMinor",
+    invalid: (minor: number) => minor === 0,
+    hint: "Enter the fee, like 85.50. Use a minus sign for a discount.",
+  },
+} as const;
 
 /**
- * Records money put into (or taken out of) a holding, or what it's worth on a day; with an existing entry in
- * [target], edits or deletes it. Sits at the top of the holding's sheet; [onDone] closes it.
+ * Records money put into (or taken out of) a holding, what it's worth on a day, or a fee charged on it; with an
+ * existing entry in [target], edits or deletes it. Sits at the top of the holding's sheet; [onDone] closes it.
  */
 export function EntryForm({
   investmentId,
@@ -36,16 +67,19 @@ export function EntryForm({
   const accounts = useAccounts(household.id).data ?? [];
   const saveContribution = useSaveContribution(household.id, investmentId);
   const saveValuation = useSaveValuation(household.id, investmentId);
+  const saveFee = useSaveFee(household.id, investmentId);
   const deleteContribution = useDeleteContribution(household.id, investmentId);
   const deleteValuation = useDeleteValuation(household.id, investmentId);
-  const isValuation = target.type === "valuation";
-  const existing = target.type === "valuation" ? target.valuation : target.contribution;
-  const save = isValuation ? saveValuation : saveContribution;
-  const remove = isValuation ? deleteValuation : deleteContribution;
+  const deleteFee = useDeleteFee(household.id, investmentId);
+  const kind = KINDS[target.type];
+  const existing = target.type === "valuation" ? target.valuation : target.type === "fee" ? target.fee : target.contribution;
+  const save = { contribution: saveContribution, valuation: saveValuation, fee: saveFee }[target.type];
+  const remove = { contribution: deleteContribution, valuation: deleteValuation, fee: deleteFee }[target.type];
+  const isContribution = target.type === "contribution";
   const amountRef = useRef<HTMLInputElement>(null);
 
   const initialAmount =
-    target.type === "valuation" ? target.valuation?.valueMinor : target.contribution?.amountMinor;
+    target.type === "valuation" ? target.valuation?.valueMinor : target.type === "fee" ? target.fee?.amountMinor : target.contribution?.amountMinor;
   const [amount, setAmount] = useState(initialAmount === undefined ? "" : toInputValue(initialAmount, household.currency));
   const [date, setDate] = useState(existing?.date ?? todayIso());
   const [accountId, setAccountId] = useState(target.type === "contribution" ? (target.contribution?.accountId ?? "") : "");
@@ -55,20 +89,18 @@ export function EntryForm({
   const [sharesError, setSharesError] = useState<string | null>(null);
   const [amountError, setAmountError] = useState<string | null>(null);
   const accountOptions = accounts.filter((a) => a.status === "active" || a.id === accountId);
-  const amountField = isValuation ? "valueMinor" : "amountMinor";
 
   function submit(e: FormEvent) {
     e.preventDefault();
     const minor = parseMoney(amount, household.currency);
-    const invalid = minor === null || (isValuation ? minor < 0 : minor === 0);
-    if (invalid) {
-      setAmountError(isValuation ? "Enter what it's worth, like 125000." : "Enter an amount like 5000. Use a minus sign for money taken out.");
+    if (minor === null || kind.invalid(minor)) {
+      setAmountError(kind.hint);
       amountRef.current?.focus();
       return;
     }
     setAmountError(null);
     let quantity: number | null = null;
-    if (!isValuation && shares.trim()) {
+    if (isContribution && shares.trim()) {
       const parsed = Number(shares.trim().replace(",", "."));
       if (!Number.isFinite(parsed) || parsed <= 0) {
         setSharesError("Enter how many shares, like 5 or 0.25.");
@@ -78,12 +110,15 @@ export function EntryForm({
       quantity = minor < 0 ? -parsed : parsed;
     }
     setSharesError(null);
+    const id = existing?.id;
     const version = existing?.version;
-    if (isValuation) {
-      saveValuation.mutate({ id: existing?.id, input: { date, valueMinor: minor, notes, version } }, { onSuccess: onDone });
+    if (target.type === "valuation") {
+      saveValuation.mutate({ id, input: { date, valueMinor: minor, notes, version } }, { onSuccess: onDone });
+    } else if (target.type === "fee") {
+      saveFee.mutate({ id, input: { date, amountMinor: minor, notes, version } }, { onSuccess: onDone });
     } else {
       saveContribution.mutate(
-        { id: existing?.id, input: { date, amountMinor: minor, quantity, accountId: accountId || null, notes, version } },
+        { id, input: { date, amountMinor: minor, quantity, accountId: accountId || null, notes, version } },
         { onSuccess: onDone },
       );
     }
@@ -91,22 +126,17 @@ export function EntryForm({
 
   function confirmDelete() {
     if (!existing) return;
-    if (window.confirm(isValuation ? "Delete this value?" : "Delete this contribution?")) {
+    if (window.confirm(`Delete this ${kind.noun}?`)) {
       remove.mutate({ id: existing.id, version: existing.version }, { onSuccess: onDone });
     }
   }
 
-  const title = isValuation ? (existing ? "Edit value" : "Update value") : existing ? "Edit contribution" : "Add contribution";
+  const title = existing ? `Edit ${kind.noun}` : kind.add;
   return (
     <form onSubmit={submit} className="entry-form" aria-label={title}>
       <h3 className="entry-form-title">{title}</h3>
       <div className="field-pair">
-        <Field
-          label={`${isValuation ? "Worth" : "Amount"} (${household.currency})`}
-          name={amountField}
-          error={save.error}
-          hint={amountError}
-        >
+        <Field label={`${kind.amountLabel} (${household.currency})`} name={kind.amountField} error={save.error} hint={amountError}>
           <input
             ref={amountRef}
             autoFocus
@@ -119,16 +149,16 @@ export function EntryForm({
             aria-invalid={amountError !== null}
           />
         </Field>
-        <Field label={isValuation ? "On" : "Date"} name="date" error={save.error}>
+        <Field label={target.type === "valuation" ? "On" : "Date"} name="date" error={save.error}>
           <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
       </div>
-      {!isValuation && security && (
+      {isContribution && security && (
         <Field label={`Shares of ${security.symbol}`} name="quantity" error={save.error} hint={sharesError}>
           <input inputMode="decimal" placeholder="5" value={shares} onChange={(e) => setShares(e.target.value)} aria-invalid={sharesError !== null} />
         </Field>
       )}
-      {!isValuation && (
+      {isContribution && (
         <Field label="From account" name="accountId" error={save.error}>
           <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <option value="">None</option>
@@ -143,7 +173,7 @@ export function EntryForm({
       <Field label="Notes" name="notes" error={save.error}>
         <input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <FormError error={save.error} fields={[amountField, "date", "quantity", "accountId", "notes"]} />
+      <FormError error={save.error} fields={[kind.amountField, "date", "quantity", "accountId", "notes"]} />
       <ErrorText error={remove.error} />
       <div className="entry-form-actions">
         {existing && (
@@ -156,7 +186,7 @@ export function EntryForm({
           Cancel
         </button>
         <button type="submit" disabled={save.isPending}>
-          {existing ? "Save" : isValuation ? "Save value" : "Add contribution"}
+          {existing ? "Save" : target.type === "valuation" ? "Save value" : kind.add}
         </button>
       </div>
     </form>

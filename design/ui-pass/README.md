@@ -128,3 +128,13 @@ and figure columns. Moment: the month's category bar. Signature: every amount in
 
 Checked in renders at 1440 light and dark, 375 light (no horizontal scroll), the add sheet, categories
 and accounts. Not verified: signup and onboarding renders.
+
+## Shell width and the side panel
+
+- The page has no width cap: it fills what the sidebar and side panel leave.
+- The editor is no longer a modal `<dialog>` over the page. It renders into a third column of the shell
+  (`SheetSlot` in `ui.tsx`), so opening it narrows the page instead of covering it. Esc and Close shut
+  it; focus goes to the `data-autofocus` field and back to the opener. On phones it still takes the
+  whole screen.
+- Nothing in the panel scrolls on its own: a long panel (a holding's full history) scrolls with the page,
+  its header and footer sticking to the window's top and bottom.

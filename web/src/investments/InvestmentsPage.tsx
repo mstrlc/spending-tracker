@@ -2,21 +2,31 @@ import { useState } from "react";
 import {
   useAccounts,
   useContributions,
+  useFees,
   useInvestmentHistory,
   useInvestments,
   useMembers,
   useValuations,
 } from "../api/hooks";
-import type { Investment, SecurityQuote } from "../api/types";
+import type { Fee, HistoryPoint, Investment, SecurityQuote } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { Plus } from "../icons";
 import { formatDay } from "../lib/dates";
-import { formatAmount } from "../lib/money";
 import { ErrorText, PageHeader, Sheet, SkeletonRows } from "../ui";
 import { EntryForm, type EntryTarget } from "./EntryForm";
 import { HistoryChart } from "./HistoryChart";
 import { HoldingForm } from "./HoldingForm";
-import { formatPercent, formatSigned, gainRatio, historyEntries, kindLabel, portfolioTotals } from "./holdings";
+import {
+  feeSummary,
+  feesByYear,
+  formatInvestment,
+  formatPercent,
+  formatSigned,
+  gainRatio,
+  historyEntries,
+  kindLabel,
+  portfolioTotals,
+} from "./holdings";
 
 /** "€168.06" in the security's own currency. */
 function formatClose(security: SecurityQuote): string {
@@ -55,8 +65,6 @@ export function InvestmentsPage() {
   const viewing = editor.mode === "view" ? rows.find((i) => i.id === editor.id) : undefined;
   const openAdd = () => setEditor({ mode: "add" });
   const close = () => setEditor({ mode: "closed" });
-  // A sheet also reports closing when the page swaps it for the other one; only close what is still showing.
-  const closeIf = (modes: Editor["mode"][]) => () => setEditor((e) => (modes.includes(e.mode) ? { mode: "closed" } : e));
   const { currency } = household;
 
   return (
@@ -73,14 +81,14 @@ export function InvestmentsPage() {
             <div>
               <dt>Worth</dt>
               <dd className="summary-primary">
-                {formatAmount(totals.valueMinor, currency)}
+                {formatInvestment(totals.valueMinor, currency)}
                 <span className="currency">{currency}</span>
               </dd>
             </div>
             <div>
               <dt>Put in</dt>
               <dd>
-                {formatAmount(totals.contributedMinor, currency)}
+                {formatInvestment(totals.contributedMinor, currency)}
                 <span className="currency">{currency}</span>
               </dd>
             </div>
@@ -91,6 +99,18 @@ export function InvestmentsPage() {
                 <span className="currency">{currency}</span>
               </dd>
             </div>
+            {totals.feesMinor !== 0 && (
+              <div>
+                <dt>
+                  Fees paid
+                  {totals.contributedMinor > 0 && ` · ${((totals.feesMinor / totals.contributedMinor) * 100).toFixed(1)}% of put in`}
+                </dt>
+                <dd>
+                  {formatInvestment(totals.feesMinor, currency)}
+                  <span className="currency">{currency}</span>
+                </dd>
+              </div>
+            )}
           </dl>
           {history.data && <HistoryChart points={history.data.points} currency={currency} />}
         </div>
@@ -150,8 +170,8 @@ export function InvestmentsPage() {
                           {members.find((m) => m.userId === i.ownerUserId)?.displayName ?? "Shared"}
                         </td>
                       )}
-                      <td className="num hide-narrow">{formatAmount(i.contributedMinor, currency)}</td>
-                      <td className="num">{formatAmount(i.valueMinor, currency)}</td>
+                      <td className="num hide-narrow">{formatInvestment(i.contributedMinor, currency)}</td>
+                      <td className="num">{formatInvestment(i.valueMinor, currency)}</td>
                       <td className="num hide-narrow">{formatSigned(i.gainMinor, currency)}</td>
                       <td className="num">{r === null ? "–" : formatPercent(r)}</td>
                     </tr>
@@ -165,7 +185,7 @@ export function InvestmentsPage() {
 
       <Sheet
         open={editor.mode === "add" || editor.mode === "edit"}
-        onClose={closeIf(["add", "edit"])}
+        onClose={close}
         title={editor.mode === "edit" ? "Edit investment" : "Add investment"}
       >
         <HoldingForm
@@ -181,7 +201,7 @@ export function InvestmentsPage() {
         />
       </Sheet>
 
-      <Sheet open={viewing !== undefined} onClose={closeIf(["view"])} title={viewing?.name ?? ""}>
+      <Sheet open={viewing !== undefined} onClose={close} title={viewing?.name ?? ""}>
         {viewing && <HoldingDetail key={viewing.id} investment={viewing} onEdit={() => setEditor({ mode: "edit", investment: viewing })} />}
       </Sheet>
     </>
@@ -194,36 +214,47 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
   const { currency } = household;
   const contributions = useContributions(household.id, investment.id);
   const valuations = useValuations(household.id, investment.id);
+  const fees = useFees(household.id, investment.id);
   const timeline = useInvestmentHistory(household.id, investment.id);
   const accounts = useAccounts(household.id).data ?? [];
   // A holding with nothing in it yet starts on its first contribution.
   const [entry, setEntry] = useState<EntryTarget | null>(investment.contributedMinor === 0 ? { type: "contribution" } : null);
+  const [panel, setPanel] = useState<"history" | "fees">("history");
+  const hasFees = (fees.data?.length ?? 0) > 0;
+  const showingFees = hasFees && panel === "fees";
   const ratio = gainRatio(investment);
-  const history = historyEntries(contributions.data ?? [], valuations.data ?? []);
+  const history = historyEntries(contributions.data ?? [], valuations.data ?? [], fees.data ?? []);
 
   return (
     <div className="sheet-form">
-      {/* Fixed in place, with only the history scrolling; while an entry is open, it's the figures and the form. */}
+      {/* The figures, then the history in full; while an entry is open, the figures and the form. */}
       <div className="sheet-fields holding-detail">
         <dl className="summary">
           <div>
             <dt>Worth</dt>
             <dd className="summary-primary">
-              {formatAmount(investment.valueMinor, currency)}
+              {formatInvestment(investment.valueMinor, currency)}
               <span className="currency">{currency}</span>
             </dd>
           </div>
           <div>
             <dt>Put in</dt>
-            <dd>{formatAmount(investment.contributedMinor, currency)}</dd>
+            <dd>{formatInvestment(investment.contributedMinor, currency)}</dd>
           </div>
           <div>
             <dt>Gain{ratio !== null && ` · ${formatPercent(ratio)}`}</dt>
             <dd>{formatSigned(investment.gainMinor, currency)}</dd>
           </div>
+          {investment.feesMinor !== 0 && (
+            <div>
+              <dt>Fees paid</dt>
+              <dd>{formatInvestment(investment.feesMinor, currency)}</dd>
+            </div>
+          )}
         </dl>
-        {!entry && <p className="muted small">{valuationNote(investment)}</p>}
-        {!entry && timeline.data && <HistoryChart points={timeline.data.points} currency={currency} height={110} />}
+        {/* The fee breakdown needs the room; the chart and note come back with the history. */}
+        {!entry && !showingFees && <p className="muted small">{valuationNote(investment)}</p>}
+        {!entry && !showingFees && timeline.data && <HistoryChart points={timeline.data.points} currency={currency} height={110} />}
 
         {entry ? (
           <EntryForm
@@ -244,30 +275,62 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
                 Update value
               </button>
             )}
+            <button type="button" className="secondary" onClick={() => setEntry({ type: "fee" })}>
+              Add fee
+            </button>
           </div>
         )}
 
         <div className="holding-history" hidden={entry !== null}>
-          <h3 className="sheet-section-title">History</h3>
-          <ErrorText error={contributions.error ?? valuations.error} />
-          {history.length === 0 && !contributions.isPending && <p className="muted small">Nothing recorded yet.</p>}
-          <ul className="card-list history-list">
+          {hasFees ? (
+            <div className="panel-tabs" role="tablist" aria-label="Show">
+              {(["history", "fees"] as const).map((p) => (
+                <button key={p} type="button" role="tab" aria-selected={panel === p} onClick={() => setPanel(p)}>
+                  {p === "history" ? "History" : "Fees"}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <h3 className="sheet-section-title">History</h3>
+          )}
+          <ErrorText error={contributions.error ?? valuations.error ?? fees.error} />
+          {showingFees && (
+            <FeeBreakdown fees={fees.data ?? []} points={timeline.data?.points ?? []} investment={investment} currency={currency} />
+          )}
+          {!showingFees && history.length === 0 && !contributions.isPending && (
+            <p className="muted small">Nothing recorded yet.</p>
+          )}
+          <ul className="card-list history-list" hidden={showingFees}>
             {history.map((h) => {
               const isValuation = h.type === "valuation";
-              const item = h.type === "valuation" ? h.valuation : h.contribution;
-              const amount = h.type === "valuation" ? h.valuation.valueMinor : h.contribution.amountMinor;
+              const item = h.type === "valuation" ? h.valuation : h.type === "fee" ? h.fee : h.contribution;
+              const amount = h.type === "valuation" ? h.valuation.valueMinor : h.type === "fee" ? h.fee.amountMinor : h.contribution.amountMinor;
               const account = h.type === "contribution" ? accounts.find((a) => a.id === h.contribution.accountId)?.name : undefined;
               // Market prices value the holding now; a value entered by hand earlier stays listed but isn't used.
-              const label = isValuation ? (investment.marketValued ? "Worth, by hand · not used" : "Worth") : amount < 0 ? "Took out" : "Put in";
+              const label = isValuation
+                ? investment.marketValued ? "Worth, by hand · not used" : "Worth"
+                : h.type === "fee"
+                  ? amount < 0 ? "Fee discount" : "Fee"
+                  : amount < 0 ? "Took out" : "Put in";
+              // Fees are already in the gain: shown muted, as costs rather than money moving.
+              const muted = isValuation || h.type === "fee";
               return (
                 <li key={`${h.type}-${item.id}`}>
                   <button
                     type="button"
                     className="history-item"
-                    onClick={() => setEntry(h.type === "valuation" ? { type: "valuation", valuation: h.valuation } : { type: "contribution", contribution: h.contribution })}
+                    onClick={() =>
+                      setEntry(
+                        h.type === "valuation"
+                          ? { type: "valuation", valuation: h.valuation }
+                          : h.type === "fee"
+                            ? { type: "fee", fee: h.fee }
+                            : { type: "contribution", contribution: h.contribution },
+                      )
+                    }
                   >
                     <span>
-                      <span className={isValuation ? "muted" : undefined}>{label}</span>
+                      <span className={muted ? "muted" : undefined}>{label}</span>
                       <span className="muted small block">
                         {formatDay(h.date)}
                         {h.type === "contribution" && h.contribution.quantity !== null && ` · ${formatShares(Math.abs(h.contribution.quantity))}`}
@@ -275,8 +338,8 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
                         {item.notes && ` · ${item.notes}`}
                       </span>
                     </span>
-                    <span className={isValuation ? "num muted" : "num"}>
-                      {isValuation ? formatAmount(amount, currency) : formatSigned(amount, currency)}
+                    <span className={muted ? "num muted" : "num"}>
+                      {h.type === "contribution" ? formatSigned(amount, currency) : formatInvestment(amount, currency)}
                     </span>
                   </button>
                 </li>
@@ -294,6 +357,72 @@ function HoldingDetail({ investment, onEdit }: { investment: Investment; onEdit:
   );
 }
 
+const percent = (ratio: number | null, digits = 2) => (ratio === null ? "–" : `${(ratio * 100).toFixed(digits)}%`);
+
+/** What the holding's fees came to: per year against its worth then, and overall against what went in and came out. */
+function FeeBreakdown({
+  fees,
+  points,
+  investment,
+  currency,
+}: {
+  fees: Fee[];
+  points: HistoryPoint[];
+  investment: Investment;
+  currency: string;
+}) {
+  const years = feesByYear(fees, points);
+  const summary = feeSummary(fees, points, investment);
+  return (
+    <div className="fee-breakdown">
+      <dl className="fee-facts">
+        <div>
+          <dt>Paid in all</dt>
+          <dd>
+            {formatInvestment(summary.feesMinor, currency)} <span className="currency">{currency}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>A year, of worth</dt>
+          <dd>{percent(summary.yearlyRate)}</dd>
+        </div>
+        <div>
+          <dt>Of money put in</dt>
+          <dd>{percent(summary.ofContributed)}</dd>
+        </div>
+        <div>
+          <dt>Of the gain before fees</dt>
+          <dd>{percent(summary.ofGainBeforeFees, 1)}</dd>
+        </div>
+      </dl>
+      <table className="data-table fee-years">
+        <thead>
+          <tr>
+            <th>Year</th>
+            <th className="num">Fees</th>
+            <th className="num">Avg worth</th>
+            <th className="num" title="Fees as a share of average worth, scaled to a full year">A year</th>
+          </tr>
+        </thead>
+        <tbody>
+          {years.map((y) => (
+            <tr key={y.year}>
+              <td>{y.year}</td>
+              <td className="num">{formatInvestment(y.feesMinor, currency)}</td>
+              <td className="num">{y.averageWorthMinor === null ? "–" : formatInvestment(y.averageWorthMinor, currency)}</td>
+              <td className="num">{percent(y.yearlyRate)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">
+        Fees are already taken out of the worth, so they don't change the gain shown above. Part years are scaled to a full
+        year from the months that charged a fee.
+      </p>
+    </div>
+  );
+}
+
 function valuationNote(i: Investment): string {
   if (i.marketValued && i.security && i.shares !== null && i.valuedOn) {
     return `${formatShares(i.shares)} of ${i.security.name} at ${formatClose(i.security)}, the close on ${formatDay(i.valuedOn)}, converted at the ČNB rate. Anything put in without shares counts at cost.`;
@@ -304,4 +433,8 @@ function valuationNote(i: Investment): string {
 }
 
 const entryKey = (entry: EntryTarget) =>
-  entry.type === "valuation" ? `v-${entry.valuation?.id ?? "new"}` : `c-${entry.contribution?.id ?? "new"}`;
+  entry.type === "valuation"
+    ? `v-${entry.valuation?.id ?? "new"}`
+    : entry.type === "fee"
+      ? `f-${entry.fee?.id ?? "new"}`
+      : `c-${entry.contribution?.id ?? "new"}`;

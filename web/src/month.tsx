@@ -61,7 +61,7 @@ export function useMonthShortcuts(month: Month, goTo: (m: Month) => void, onAdd:
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const target = e.target as HTMLElement;
-      if (target.closest("input, select, textarea, dialog[open]") || document.querySelector("dialog[open]")) return;
+      if (target.closest("input, select, textarea, .sheet") || document.querySelector(".sheet")) return;
       if (e.key === "n" || e.key === "N") {
         e.preventDefault();
         onAdd();

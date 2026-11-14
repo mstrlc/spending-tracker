@@ -8,6 +8,8 @@ import dev.spendingtracker.shared.api.ActivityEntity
 import dev.spendingtracker.shared.api.ActivityPage
 import dev.spendingtracker.shared.api.Contribution
 import dev.spendingtracker.shared.api.ContributionInput
+import dev.spendingtracker.shared.api.Fee
+import dev.spendingtracker.shared.api.FeeInput
 import dev.spendingtracker.shared.api.Investment
 import dev.spendingtracker.shared.api.InvestmentInput
 import dev.spendingtracker.shared.api.InvestmentKind
@@ -125,5 +127,27 @@ class InvestmentTest {
         assertEquals(ActivityEntity.INVESTMENT_CONTRIBUTION, entry.entity)
         assertEquals("World ETF", entry.label)
         assertEquals(listOf("date", "amountMinor", "quantity", "accountId", "notes"), entry.changes.map { it.field })
+    }
+
+    @Test
+    fun feesAreTotalledWithoutTouchingWorthOrMoneyPutIn() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+        val fund = client.post("$household/investments") { setBody(InvestmentInput("Portu")) }.body<Investment>()
+        client.post("$household/investments/${fund.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 1, 5), 100_000)) }
+        val fees = "$household/investments/${fund.id}/fees"
+        val fee = client.post(fees) { setBody(FeeInput(LocalDate(2026, 2, 4), 9_000, "Správcovský poplatek")) }.body<Fee>()
+        // A discount comes off.
+        client.post(fees) { setBody(FeeInput(LocalDate(2026, 2, 4), -4_000, "Sleva na poplatku")) }
+        client.post(fees) { setBody(FeeInput(LocalDate(2026, 2, 4), 0)) }.assertError(HttpStatusCode.BadRequest, "invalid_amount")
+
+        val held = client.get("$household/investments").body<List<Investment>>().single()
+        assertEquals(5_000, held.feesMinor)
+        assertEquals(100_000L to 100_000L, held.contributedMinor to held.valueMinor)
+        assertEquals(2, client.get(fees).body<List<Fee>>().size)
+
+        client.put("$fees/${fee.id}") { setBody(FeeInput(LocalDate(2026, 2, 4), 8_000, version = 1)) }
+        assertEquals(4_000, client.get("$household/investments").body<List<Investment>>().single().feesMinor)
+        assertEquals(HttpStatusCode.NoContent, client.delete("$fees/${fee.id}?version=2").status)
     }
 }

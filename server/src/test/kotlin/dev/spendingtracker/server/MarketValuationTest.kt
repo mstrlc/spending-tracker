@@ -4,6 +4,7 @@ import dev.spendingtracker.server.investment.Prices
 import dev.spendingtracker.server.market.CzkRate
 import dev.spendingtracker.server.market.SecurityInfo
 import dev.spendingtracker.shared.api.ContributionInput
+import dev.spendingtracker.shared.api.FeeInput
 import dev.spendingtracker.shared.api.HistoryPoint
 import dev.spendingtracker.shared.api.Investment
 import dev.spendingtracker.shared.api.InvestmentHistory
@@ -68,14 +69,20 @@ class MarketValuationTest {
             assertEquals(38_000, held.gainMinor)
             assertEquals(LocalDate(2026, 3, 31), held.valuedOn)
 
+            // A commission was paid on top of the share: money put in that the worth doesn't hold.
+            client.post("$household/investments/${fund.id}/fees") { setBody(FeeInput(LocalDate(2026, 1, 15), 3_100)) }
+            val charged = client.get("$household/investments").body<List<Investment>>().single()
+            assertEquals(253_100L to 288_000L, charged.contributedMinor to charged.valueMinor)
+            assertEquals(34_900L to 3_100L, charged.gainMinor to charged.feesMinor)
+
             // Money recorded without shares counts at cost on top.
             client.post(contributions) { setBody(ContributionInput(LocalDate(2026, 2, 10), 10_000)) }
             val history = client.get("$household/investments/history").body<InvestmentHistory>().points
             assertEquals(
                 listOf(
-                    HistoryPoint(LocalDate(2026, 1, 31), 250_000, 250_000),
-                    HistoryPoint(LocalDate(2026, 2, 28), 260_000, 285_000),
-                    HistoryPoint(LocalDate(2026, 3, 31), 260_000, 298_000),
+                    HistoryPoint(LocalDate(2026, 1, 31), 253_100, 250_000),
+                    HistoryPoint(LocalDate(2026, 2, 28), 263_100, 285_000),
+                    HistoryPoint(LocalDate(2026, 3, 31), 263_100, 298_000),
                 ),
                 history.take(3),
             )

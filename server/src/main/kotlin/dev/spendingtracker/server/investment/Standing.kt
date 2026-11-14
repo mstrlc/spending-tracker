@@ -3,7 +3,7 @@ package dev.spendingtracker.server.investment
 import kotlinx.datetime.LocalDate
 import java.math.BigDecimal
 
-/** A dated amount: a contribution (signed) or a valuation. */
+/** A dated amount: a contribution (signed), a valuation or a fee. */
 data class Dated(val date: LocalDate, val amountMinor: Long)
 
 /** A contribution with the shares it bought (negative: sold), or null shares when recorded without them. */
@@ -43,11 +43,14 @@ fun standing(contributions: List<Dated>, valuations: List<Dated>): Standing {
 /**
  * Where a holding stood at the end of [on], counting only what was recorded by then. A holding following a
  * security, with shares on its contributions, is valued at the market through [price]: the shares held at the latest
- * close, plus contributions recorded without shares at cost. Otherwise, or before its first close, as [standing].
+ * close, plus contributions recorded without shares at cost. Its [fees] (broker commissions) were paid on top of the
+ * shares rather than out of them, so they count as money put in. Otherwise, or before its first close, as [standing],
+ * where fees are already in the valuations.
  */
 fun standingOn(
     lots: List<Lot>,
     valuations: List<Dated>,
+    fees: List<Dated>,
     on: LocalDate,
     price: ((shares: BigDecimal, on: LocalDate) -> Priced?)?,
 ): Standing {
@@ -58,5 +61,6 @@ fun standingOn(
         return standing(held.map { Dated(it.date, it.amountMinor) }, valuations.filter { it.date <= on })
     }
     val atCost = held.filter { it.quantity == null }.sumOf { it.amountMinor }
-    return Standing(held.sumOf { it.amountMinor }, priced.valueMinor + atCost, priced.date, held.minOfOrNull { it.date }, marketValued = true)
+    val contributed = held.sumOf { it.amountMinor } + fees.filter { it.date <= on }.sumOf { it.amountMinor }
+    return Standing(contributed, priced.valueMinor + atCost, priced.date, held.minOfOrNull { it.date }, marketValued = true)
 }

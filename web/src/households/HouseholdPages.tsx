@@ -3,7 +3,7 @@ import { Link, Navigate, NavLink, Outlet, useNavigate, useParams } from "react-r
 import { useCreateHousehold, useHouseholds, useLogout, useMe } from "../api/hooks";
 import type { Household } from "../api/types";
 import { Gauge, History, Inbound, LogOut, Receipt, Tag, TrendUp, Users, Wallet } from "../icons";
-import { ErrorText, Field, FormError, Loading } from "../ui";
+import { ErrorText, Field, FormError, Loading, SheetSlot } from "../ui";
 
 const CURRENCIES = ["CZK", "EUR", "USD", "GBP", "PLN", "CHF", "SEK", "NOK", "DKK", "HUF"];
 
@@ -89,6 +89,7 @@ export function HouseholdLayout() {
   const me = useMe();
   const logout = useLogout();
   const navigate = useNavigate();
+  const [sheetSlot, setSheetSlot] = useState<HTMLElement | null>(null);
 
   if (households.isPending) return <Loading />;
   if (households.isError) return <ErrorText error={households.error} />;
@@ -147,9 +148,12 @@ export function HouseholdLayout() {
           </button>
         </header>
 
-        <main className="page">
-          <Outlet />
-        </main>
+        <SheetSlot.Provider value={sheetSlot}>
+          <main className="page">
+            <Outlet />
+          </main>
+        </SheetSlot.Provider>
+        <div ref={setSheetSlot} className="sheet-slot" />
 
         <nav className="bottom-nav" aria-label="Sections">
           {SECTIONS.map((s) => (

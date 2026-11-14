@@ -16,7 +16,8 @@ enum class InvestmentKind {
 /**
  * A market holding, with its standing as of today in the household currency. A null [ownerUserId] means held jointly.
  *
- * [contributedMinor] is everything put in less everything taken out. A holding following a [security] whose
+ * [contributedMinor] is everything put in less everything taken out; for a market-valued holding, its fees too, since
+ * commissions are paid on top of the shares rather than out of them. A holding following a [security] whose
  * contributions record shares is valued at the market: [shares] at the latest close ([valuedOn]), converted at
  * the ČNB fixing, plus any contributions without shares at cost. Otherwise [valueMinor] is the latest valuation plus
  * contributions made after it (at cost), or just [contributedMinor] while the holding has never been valued
@@ -40,6 +41,11 @@ data class Investment(
     val valuedOn: LocalDate?,
     val gainMinor: Long,
     val firstContributedOn: LocalDate?,
+    /**
+     * Fees charged so far, less discounts. Taken out of a holding valued by hand, so already in [valueMinor]; paid on
+     * top for a [marketValued] one, so in [contributedMinor]. Either way already in [gainMinor].
+     */
+    val feesMinor: Long,
 )
 
 /**
@@ -100,6 +106,25 @@ data class ContributionInput(
     val amountMinor: Long,
     val quantity: Double? = null,
     val accountId: String? = null,
+    val notes: String = "",
+    val version: Int? = null,
+)
+
+/** A fee the provider charged on [date]; negative for a discount. Informational: it's already in the value. */
+@Serializable
+data class Fee(
+    val id: String,
+    val investmentId: String,
+    val date: LocalDate,
+    val amountMinor: Long,
+    val notes: String,
+    val version: Int,
+)
+
+@Serializable
+data class FeeInput(
+    val date: LocalDate,
+    val amountMinor: Long,
     val notes: String = "",
     val version: Int? = null,
 )

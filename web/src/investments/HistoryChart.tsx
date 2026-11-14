@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { HistoryPoint } from "../api/types";
-import { formatAmount } from "../lib/money";
+import { fractionDigits } from "../lib/money";
+import { formatInvestment } from "./holdings";
 
 const PAD = { top: 8, right: 8, bottom: 22, left: 8 };
 
@@ -65,7 +66,7 @@ export function HistoryChart({ points, currency, height = 160 }: { points: Histo
   }
 
   const last = points[points.length - 1];
-  const summary = `Worth ${formatAmount(last.valueMinor, currency)} against ${formatAmount(last.contributedMinor, currency)} ${currency} put in, from ${fullDate(points[0].date)}`;
+  const summary = `Worth ${formatInvestment(last.valueMinor, currency)} against ${formatInvestment(last.contributedMinor, currency)} ${currency} put in, from ${fullDate(points[0].date)}`;
 
   return (
     <figure className="history-chart">
@@ -107,7 +108,7 @@ export function HistoryChart({ points, currency, height = 160 }: { points: Histo
               </text>
             ))}
             <text className="history-tick" x={PAD.left} y={y(max) + 12}>
-              {formatAmount(max, currency).replace(/[.,]0+$/, "")}
+              {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(max / 10 ** fractionDigits(currency))}
             </text>
             {shown && (
               <g>
@@ -125,10 +126,10 @@ export function HistoryChart({ points, currency, height = 160 }: { points: Histo
           >
             <div className="muted small">{fullDate(shown.date)}</div>
             <div>
-              Worth <span className="mono">{formatAmount(shown.valueMinor, currency)}</span>
+              Worth <span className="mono">{formatInvestment(shown.valueMinor, currency)}</span>
             </div>
             <div>
-              Put in <span className="mono">{formatAmount(shown.contributedMinor, currency)}</span>
+              Put in <span className="mono">{formatInvestment(shown.contributedMinor, currency)}</span>
             </div>
           </div>
         )}

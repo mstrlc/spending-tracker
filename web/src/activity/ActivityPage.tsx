@@ -12,6 +12,7 @@ const FILTERS: { value: ActivityEntity | ""; label: string }[] = [
   { value: "investment", label: "Investments" },
   { value: "investment_contribution", label: "Contributions" },
   { value: "investment_valuation", label: "Investment values" },
+  { value: "investment_fee", label: "Investment fees" },
   { value: "account", label: "Accounts" },
   { value: "category", label: "Categories" },
   { value: "member", label: "Members" },

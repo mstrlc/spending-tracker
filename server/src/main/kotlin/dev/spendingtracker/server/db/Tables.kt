@@ -139,6 +139,19 @@ object InvestmentValuations : Table("investment_valuations") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object InvestmentFees : Table("investment_fees") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val investmentId = uuid("investment_id")
+    val date = date("date")
+    val amountMinor = long("amount_minor")
+    val notes = text("notes")
+    val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
 // Market data (V7): shared by every household.
 
 object Securities : Table("securities") {

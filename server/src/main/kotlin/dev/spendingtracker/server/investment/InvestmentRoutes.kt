@@ -16,6 +16,7 @@ import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.common.versionParam
 import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.InvestmentContributions
+import dev.spendingtracker.server.db.InvestmentFees
 import dev.spendingtracker.server.db.InvestmentValuations
 import dev.spendingtracker.server.db.Investments
 import dev.spendingtracker.server.db.dbQuery
@@ -188,6 +189,7 @@ fun Route.investmentRoutes() = route("/investments") {
 
     route("/{investmentId}/contributions") { contributionRoutes() }
     route("/{investmentId}/valuations") { valuationRoutes() }
+    route("/{investmentId}/fees") { feeRoutes() }
 }
 
 private fun Route.contributionRoutes() {
@@ -473,11 +475,11 @@ private fun matchInvestment(householdId: Uuid, id: Uuid) = (Investments.id eq id
 
 private fun investmentExists(householdId: Uuid, id: Uuid) = !Investments.selectAll().where { matchInvestment(householdId, id) }.empty()
 
-private fun requireInvestment(householdId: Uuid, id: Uuid) {
+internal fun requireInvestment(householdId: Uuid, id: Uuid) {
     if (!investmentExists(householdId, id)) throw notFound("Investment")
 }
 
-private fun RoutingCall.investmentId() = pathId("investmentId", "Investment")
+internal fun RoutingCall.investmentId() = pathId("investmentId", "Investment")
 
 /**
  * A household's holdings (or one of them) with their contributions, valuations and market data, ready to value
@@ -487,13 +489,14 @@ private class Book(
     val holdings: List<ResultRow>,
     val lots: Map<Uuid, List<Lot>>,
     val valuations: Map<Uuid, List<Dated>>,
+    val fees: Map<Uuid, List<Dated>>,
     val prices: Prices,
     val today: LocalDate,
 ) {
     fun standing(row: ResultRow, on: LocalDate): Standing {
         val id = row[Investments.id]
         val price = row[Investments.symbol]?.let { symbol -> { shares: BigDecimal, day: LocalDate -> prices.value(symbol, shares, day) } }
-        return standingOn(lots[id].orEmpty(), valuations[id].orEmpty(), on, price)
+        return standingOn(lots[id].orEmpty(), valuations[id].orEmpty(), fees[id].orEmpty(), on, price)
     }
 
     fun investment(row: ResultRow): Investment {
@@ -526,6 +529,7 @@ private class Book(
             valuedOn = standing.valuedOn,
             gainMinor = standing.gainMinor,
             firstContributedOn = standing.firstContributedOn,
+            feesMinor = fees[row[Investments.id]].orEmpty().sumOf { it.amountMinor },
         )
     }
 }
@@ -572,7 +576,14 @@ private suspend fun RoutingCall.book(investmentId: Uuid? = null): Book {
         val valuations = InvestmentValuations.selectAll().where(valuationFilter).groupBy({ it[InvestmentValuations.investmentId] }) {
             Dated(it[InvestmentValuations.date], it[InvestmentValuations.valueMinor])
         }
-        Book(holdings, lots, valuations, loadPrices(currency, symbols), today)
+        val feeFilter = if (investmentId == null) {
+            InvestmentFees.householdId eq householdId
+        } else {
+            (InvestmentFees.householdId eq householdId) and (InvestmentFees.investmentId eq investmentId)
+        }
+        val fees = InvestmentFees.selectAll().where(feeFilter)
+            .groupBy({ it[InvestmentFees.investmentId] }) { Dated(it[InvestmentFees.date], it[InvestmentFees.amountMinor]) }
+        Book(holdings, lots, valuations, fees, loadPrices(currency, symbols), today)
     }.also { if (investmentId != null && it.holdings.isEmpty()) throw notFound("Investment") }
 }
 

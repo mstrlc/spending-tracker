@@ -455,6 +455,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/investments/{investmentId}/fees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The holding's fees, newest first. */
+        get: operations["listFees"];
+        put?: never;
+        post: operations["createFee"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/investments/{investmentId}/fees/{feeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateFee"];
+        post?: never;
+        delete: operations["deleteFee"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/activity": {
         parameters: {
             query?: never;
@@ -838,6 +871,11 @@ export interface components {
             gainMinor: number;
             /** LocalDate */
             firstContributedOn: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            feesMinor: number;
         };
         /**
          * InvestmentKind
@@ -989,11 +1027,49 @@ export interface components {
              */
             version?: null | number;
         };
+        /** Fee */
+        Fee: {
+            /** String */
+            id: string;
+            /** String */
+            investmentId: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** FeeInput */
+        FeeInput: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
         /**
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "investment" | "investment_contribution" | "investment_valuation";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "investment" | "investment_contribution" | "investment_valuation" | "investment_fee";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -2835,6 +2911,168 @@ export interface operations {
                 householdId: string;
                 investmentId: string;
                 valuationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listFees: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fee"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createFee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["FeeInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fee"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateFee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+                feeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["FeeInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fee"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFee: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                investmentId: string;
+                feeId: string;
             };
             cookie?: never;
         };
