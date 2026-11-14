@@ -39,6 +39,10 @@ class OverviewTest {
         }
         client.post("$household/expenses") { setBody(ExpenseInput(LocalDate(2026, 10, 20), 30_000, "Albert", produce.id)) }
         client.post("$household/assets/${fund.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 10, 25), -1_000)) }
+        // Borrowing on a loan and repaying it are neither invested nor the start of the ledger.
+        val loan = client.post("$household/assets") { setBody(AssetInput("Mortgage", kind = dev.spendingtracker.shared.api.AssetKind.LOAN)) }.body<Asset>()
+        client.post("$household/assets/${loan.id}/contributions") { setBody(ContributionInput(LocalDate(2020, 3, 1), -3_000_000)) }
+        client.post("$household/assets/${loan.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 10, 10), 12_000)) }
 
         val overview = client.get("$household/overview?month=2026-10&today=2026-10-31").body<Overview>()
 

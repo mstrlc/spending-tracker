@@ -8,12 +8,14 @@ import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.income.dbValue
 import dev.spendingtracker.server.income.netIncomeMinor
 import dev.spendingtracker.server.db.AssetContributions
+import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.expense.loadSpendingParts
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.merchant.merchantNames
 import dev.spendingtracker.server.asset.Dated
 import dev.spendingtracker.shared.api.ApiError
+import dev.spendingtracker.shared.api.AssetKind
 import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.Overview
 import io.github.smiley4.ktoropenapi.get
@@ -25,11 +27,13 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.YearMonth
 import kotlinx.datetime.todayIn
 import kotlinx.datetime.yearMonth
+import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.between
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.min
+import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import kotlin.time.Clock
@@ -82,17 +86,23 @@ fun Route.overviewRoutes() = route("/overview") {
                     val deduction = it[Income.kind] == IncomeKind.DEDUCTION.dbValue
                     Earning(it[Income.earnedMonth], it.netIncomeMinor(), it[Income.sourceName], deduction)
                 }
-            val contributions = AssetContributions.selectAll()
+            // Money borrowed on or repaid to a liability (a loan, card debt) isn't invested.
+            val liabilityKinds = AssetKind.entries.filter { it.liability }.map { it.name.lowercase() }
+            val contributions = AssetContributions.join(Assets, JoinType.INNER, AssetContributions.assetId, Assets.id)
+                .select(AssetContributions.date, AssetContributions.amountMinor)
                 .where {
                     (AssetContributions.householdId eq householdId) and
-                        (AssetContributions.date.between(windowStart.firstDay, month.lastDay))
+                        (AssetContributions.date.between(windowStart.firstDay, month.lastDay)) and
+                        (Assets.kind notInList liabilityKinds)
                 }
                 .map { Dated(it[AssetContributions.date], it[AssetContributions.amountMinor]) }
             // Where the ledger starts: months before it are unknown, not empty.
             val firstExpense = Expenses.select(Expenses.date.min()).where { Expenses.householdId eq householdId }.single()[Expenses.date.min()]
             val firstIncome = Income.select(Income.earnedMonth.min()).where { Income.householdId eq householdId }.single()[Income.earnedMonth.min()]
-            val firstContribution = AssetContributions.select(AssetContributions.date.min())
-                .where { AssetContributions.householdId eq householdId }.single()[AssetContributions.date.min()]
+            val firstContribution = AssetContributions.join(Assets, JoinType.INNER, AssetContributions.assetId, Assets.id)
+                .select(AssetContributions.date.min())
+                .where { (AssetContributions.householdId eq householdId) and (Assets.kind notInList liabilityKinds) }
+                .single()[AssetContributions.date.min()]
             Flows(spends, earnings, contributions) to listOfNotNull(firstExpense, firstIncome, firstContribution).minOrNull()?.yearMonth
         }
         val (spends, earnings, contributions) = flows

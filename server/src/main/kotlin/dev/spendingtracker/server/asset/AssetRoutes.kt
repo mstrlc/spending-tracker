@@ -98,8 +98,11 @@ fun Route.assetRoutes() = route("/assets") {
         val owed = assets.filter { it.second.kind.liability }
         val assetsMinor = owned.sumOf { it.second.valueMinor }
         val liabilitiesMinor = owed.sumOf { it.second.valueMinor }
-        val portfolioFlows = owned.flatMap { (row, asset) -> book.outflows(row, asset.marketValued) } +
-            CashFlow(book.today, assetsMinor.toDouble())
+        // Only what money was put into: a car valued by hand or a savings account read from the bank, with nothing
+        // recorded going in, would otherwise count its whole worth as return.
+        val invested = owned.filter { (row, _) -> book.lots[row[Assets.id]].orEmpty().isNotEmpty() }
+        val portfolioFlows = invested.flatMap { (row, asset) -> book.outflows(row, asset.marketValued) } +
+            CashFlow(book.today, invested.sumOf { it.second.valueMinor }.toDouble())
         call.respond(
             AssetSummary(
                 assetsMinor = assetsMinor,

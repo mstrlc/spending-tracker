@@ -38,7 +38,11 @@ import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.HttpStatusCode
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.todayIn
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -226,6 +230,17 @@ class AssetTest {
         assertEquals(500_000, summary.assetsMinor)
         assertEquals(-170_000, summary.liabilitiesMinor)
         assertEquals(330_000, summary.netMinor)
+        // Nothing was put into the savings (only valued), so there's no return to speak of.
+        assertEquals(null, summary.annualReturn)
+
+        // With a fund bought for 100,000 now worth 110,000 a year on, the savings' worth isn't counted as return.
+        val fund = client.post("$household/assets") { setBody(AssetInput("Fund", kind = AssetKind.FUND)) }.body<Asset>()
+        val today = kotlin.time.Clock.System.todayIn(TimeZone.currentSystemDefault())
+        val yearAgo = today.minus(1, DateTimeUnit.YEAR)
+        client.post("$household/assets/${fund.id}/contributions") { setBody(ContributionInput(yearAgo, 100_000)) }
+        client.post("$household/assets/${fund.id}/valuations") { setBody(ValuationInput(today, 110_000)) }
+        val withFund = client.get("$household/assets/summary").body<AssetSummary>()
+        assertEquals(0.10, withFund.annualReturn!!, 0.005)
     }
 
     @Test

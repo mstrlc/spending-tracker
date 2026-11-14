@@ -103,9 +103,15 @@ internal fun undoImport(householdId: Uuid, importId: Uuid, userId: Uuid, dryRun:
     fun anyExists(query: org.jetbrains.exposed.v1.jdbc.Query): Boolean = !query.limit(1).empty()
 
     // 1. Leaf records first.
-    val bankRowVersions = BankRows.select(BankRows.version)
-        .where { (BankRows.householdId eq householdId) and (BankRows.importId eq importId) }
-        .map { it[BankRows.version] }
+    val importedRows = BankRows.select(
+        BankRows.version, BankRows.createdRecord, BankRows.decidedAuto,
+        BankRows.expenseId, BankRows.incomeId, BankRows.transferId, BankRows.settlementId,
+    ).where { (BankRows.householdId eq householdId) and (BankRows.importId eq importId) }.toList()
+    val bankRowVersions = importedRows.map { it[BankRows.version] }
+    // Records the inbox rules made from the import's rows when it stored them (or a later automatic pass) aren't
+    // stamped with the import, but they're the import's doing: they go with their rows, unless another row still
+    // points at them. Records a person made from these rows by hand stay.
+    val autoMade = importedRows.filter { it[BankRows.createdRecord] && it[BankRows.decidedAuto] }
     if (bankRowVersions.isNotEmpty()) {
         deleted.bankRows = bankRowVersions.size
         edited.bankRows = bankRowVersions.count { it > 1 }
@@ -157,6 +163,27 @@ internal fun undoImport(householdId: Uuid, importId: Uuid, userId: Uuid, dryRun:
     }
     if (expenseIds.isNotEmpty()) {
         Expenses.deleteWhere { (Expenses.householdId eq householdId) and (Expenses.importId eq importId) }
+    }
+
+    // The import's rows are gone now, so a record no remaining row points at was made only from them.
+    fun orphans(column: org.jetbrains.exposed.v1.core.Column<Uuid?>): Set<Uuid> {
+        val made = autoMade.mapNotNull { it[column] }.toSet()
+        if (made.isEmpty()) return emptySet()
+        val stillUsed = BankRows.select(column).where { (BankRows.householdId eq householdId) and (column inList made) }
+            .mapNotNull { it[column] }.toSet()
+        return made - stillUsed
+    }
+    orphans(BankRows.expenseId).takeIf { it.isNotEmpty() }?.let { gone ->
+        deleted.expenses += Expenses.deleteWhere { (Expenses.householdId eq householdId) and (Expenses.id inList gone) }
+    }
+    orphans(BankRows.incomeId).takeIf { it.isNotEmpty() }?.let { gone ->
+        deleted.income += Income.deleteWhere { (Income.householdId eq householdId) and (Income.id inList gone) }
+    }
+    orphans(BankRows.transferId).takeIf { it.isNotEmpty() }?.let { gone ->
+        Transfers.deleteWhere { (Transfers.householdId eq householdId) and (Transfers.id inList gone) }
+    }
+    orphans(BankRows.settlementId).takeIf { it.isNotEmpty() }?.let { gone ->
+        Settlements.deleteWhere { (Settlements.householdId eq householdId) and (Settlements.id inList gone) }
     }
 
     // 2. Containers, in dependency order.

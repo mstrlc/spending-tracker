@@ -148,6 +148,39 @@ class ImportUndoTest {
     }
 
     @Test
+    fun undoRemovesWhatAutoRulesMadeFromTheImportsRows() = apiTest {
+        val alice = newClient().also { it.signup() }
+        val base = "/api/households/${alice.createHousehold().id}"
+        alice.post("$base/inbox-rules") {
+            setBody(
+                dev.spendingtracker.shared.api.InboxRuleInput(
+                    name = "Billa", textContains = "BILLA", outcome = dev.spendingtracker.shared.api.RuleOutcome.EXPENSE,
+                    merchant = "Billa", auto = true,
+                ),
+            )
+        }.also { assertEquals(HttpStatusCode.Created, it.status) }
+
+        alice.post("$base/import") {
+            setBody(
+                HouseholdImport(
+                    currency = "CZK",
+                    accounts = listOf(ImportAccount("Joint")),
+                    bankFeeds = listOf(ImportBankFeed("Joint feed", "Joint", "CZK", BankInstitution.OTHER)),
+                    bankRows = listOf(ImportBankRow("Joint feed", sampleRaw)),
+                ),
+            )
+        }.body<ImportResult>()
+        // The rule filed the imported row as an expense the import itself didn't create.
+        assertEquals(1, alice.get("$base/expenses").body<List<Expense>>().size)
+
+        val imp = alice.get("$base/imports").body<List<ImportSummary>>().single()
+        val undo = alice.post("$base/imports/${imp.id}/undo").body<ImportUndoResult>()
+        assertEquals(1, undo.deleted.expenses)
+        assertEquals(emptyList(), alice.get("$base/expenses").body<List<Expense>>())
+        assertEquals(emptyList(), alice.get("$base/accounts").body<List<Account>>())
+    }
+
+    @Test
     fun undoKeepsAnAccountAHandMadeAssetTracks() = apiTest {
         val alice = newClient().also { it.signup() }
         val base = "/api/households/${alice.createHousehold().id}"
