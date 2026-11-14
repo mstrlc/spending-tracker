@@ -14,6 +14,7 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
 | Auth | Own email + password (argon2), server-side sessions in httpOnly cookies; OAuth / magic link later |
 | API contract | Ktor publishes OpenAPI; web generates TS types + client with `openapi-typescript` |
 | Web frontend | TypeScript 6 (TS 7 lacks the JS API openapi-typescript needs), React, Vite, TanStack Query, React Router, pnpm |
+| Web UI | shadcn/ui (Radix, Nova style) on Tailwind CSS 4, lucide icons; components live in `web/src/components/ui` and are ours to edit. Theme tokens in `web/src/styles.css`; dark mode follows the system |
 | Money | Integer minor units + currency code (household default currency) |
 | Repo layout | Monorepo: `server/`, `shared/`, `web/`; Gradle Kotlin DSL |
 | Tests | Ktor `testApplication` + Testcontainers Postgres; Vitest for web |
@@ -27,6 +28,17 @@ A multi-tenant SaaS rewrite of `../household-spending-tracker`, built from scrat
 - Every insert, update and delete of household data lands in `audit_log` (before/after JSON, actor) via Postgres triggers, so routes don't record anything themselves. The actor comes from `app.actor_id`, which `dbQuery` sets from the request's session user; new household tables need an `audit` trigger in their migration.
 - API request/response models live in `shared` (`dev.spendingtracker.shared.api`) so mobile clients can reuse them. Response models have no default values: the JSON leaves out fields equal to their default, which would reach the web as `undefined`. Request models may have defaults.
 - New references to a member are `(household_id, user_id) REFERENCES household_members ... ON UPDATE CASCADE`: claiming a member without a login moves the membership to another user id, and everything follows it.
+
+### Web UI
+
+- Build screens from shadcn/ui components (`web/src/components/ui`, imported as `@/components/ui/...`) and Tailwind utility classes. No hand-written CSS files; `web/src/styles.css` only holds the theme tokens and a few utilities.
+- The components are copied into the repo, not a dependency: edit them when the design needs it (the table's padding and muted headers are such edits).
+- App-level building blocks live in `web/src/ui.tsx`: `PageHeader`, `PageIntro`, `Field` (label, id and API field error for one control), `FormError`, `Surface` (the card a table sits on), `EmptyState`, `Summary` and `Money` (the figures at the top of a page), `RowMenu` (a row's actions behind "⋯"), and `Sheet` / `SheetBody` (the editor panel).
+- The editor is a column beside the page (`Sheet` renders into the layout's `SheetSlot`), not shadcn's modal Sheet: opening it narrows the page instead of covering it. On phones it takes the whole screen.
+- Confirm destructive actions with `useConfirm()` and ask for one line of text with `usePrompt()` (`web/src/dialogs.tsx`); never `window.confirm` or `window.prompt`.
+- Forms use `NativeSelect`, not the Radix `Select`: real `<select>` elements work better on phones and in tests.
+- Every amount gets the `amount` utility (Geist Mono, tabular figures). Colours come from the theme tokens only: neutral greys, the near-black (white in dark mode) primary, and `destructive` for errors and deletes. Charts use `chart-1` (the largest) to `chart-6`.
+- Icons come from `lucide-react`.
 
 ## Data model decisions (2026-11-14)
 

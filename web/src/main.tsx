@@ -15,8 +15,8 @@ import { HomeRedirect, HouseholdLayout, OnboardingPage } from "./households/Hous
 import { InvitePage } from "./households/InvitePage";
 import { OverviewPage } from "./overview/OverviewPage";
 import { MembersPage } from "./households/MembersPage";
-import "@fontsource-variable/geist";
-import "@fontsource-variable/geist-mono";
+import { DialogsProvider } from "./dialogs";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./styles.css";
 
 const queryClient = new QueryClient({
@@ -26,6 +26,8 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+      <DialogsProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -50,6 +52,8 @@ createRoot(document.getElementById("root")!).render(
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </DialogsProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

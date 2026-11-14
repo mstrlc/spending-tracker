@@ -13,3 +13,5 @@ Read `ARCHITECTURE.md` first: stack, conventions, the data-model decisions and t
 - Typecheck the web app with `pnpm --dir web exec tsc --noEmit`. Plain `tsc -b` writes `.js` files next to the sources.
 - Tests: `./gradlew build` (Testcontainers, needs Docker) and `pnpm --dir web test`.
 - Migrations are append-only (`server/src/main/resources/db/migration/V*.sql`); new household tables need an `audit` trigger.
+- Add shadcn components with `pnpm --dir web dlx shadcn@latest add <name>`. Then check the new files' imports: the CLI has written `import { cn } from "cn"` (and installed an unrelated `cn` package) instead of `@/lib/utils`. Fix the imports and `pnpm --dir web remove cn` if it reappears.
+- Web UI conventions (which components, `ui.tsx` helpers, confirm dialogs, the side panel) are under "Web UI" in `ARCHITECTURE.md`.

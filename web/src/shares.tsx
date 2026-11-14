@@ -20,18 +20,19 @@ export function ShareBar({ slices, label }: { slices: Slice[]; label: string }) 
   if (total === 0) return null;
   const percent = (s: Slice) => Math.round((s.amountMinor / total) * 100);
   return (
-    <figure className="breakdown" aria-label={label}>
-      <div className="category-bar" aria-hidden="true">
+    <figure className="flex flex-col gap-3" aria-label={label}>
+      <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
         {slices.map((s, i) => (
-          <span key={s.name} style={{ flexGrow: s.amountMinor, background: `var(--chart-${i + 1})` }} />
+          <span key={s.name} className="min-w-1" style={{ flexGrow: s.amountMinor, background: `var(--chart-${i + 1})` }} />
         ))}
       </div>
-      <ul className="category-legend">
+      <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
         {slices.map((s, i) => (
-          <li key={s.name}>
-            <span className="swatch" style={{ background: `var(--chart-${i + 1})` }} />
+          // Phones show the top three.
+          <li key={s.name} className={i >= 3 ? "hidden items-center gap-2 sm:flex" : "flex items-center gap-2"}>
+            <span className="size-2.5 rounded-full" style={{ background: `var(--chart-${i + 1})` }} />
             {s.name}
-            <span className="share">{percent(s) < 1 ? "<1" : percent(s)}%</span>
+            <span className="amount text-muted-foreground">{percent(s) < 1 ? "<1" : percent(s)}%</span>
           </li>
         ))}
       </ul>

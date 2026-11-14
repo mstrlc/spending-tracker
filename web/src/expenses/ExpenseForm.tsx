@@ -5,7 +5,13 @@ import { categoryTree } from "../categories/tree";
 import { todayIso } from "../lib/dates";
 import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
-import { ErrorText, Field, FormError } from "../ui";
+import { useConfirm } from "../dialogs";
+import { ErrorText, Field, FormError, SheetBody } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 
 const FIELDS = [
   "date",
@@ -43,6 +49,7 @@ export function ExpenseForm({
   const save = useSaveExpense(household.id);
   const remove = useDeleteExpense(household.id);
   const amountRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
 
   const [date, setDate] = useState(expense?.date ?? defaultDate ?? todayIso());
   const [amount, setAmount] = useState(expense ? toInputValue(expense.amountMinor, household.currency) : "");
@@ -117,97 +124,122 @@ export function ExpenseForm({
     );
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!expense) return;
-    if (window.confirm(`Delete ${expense.merchant || "this expense"}?`)) {
+    if (await confirm({ title: `Delete ${expense.merchant || "this expense"}?`, description: "This can't be undone." })) {
       remove.mutate({ id: expense.id, version: expense.version }, { onSuccess: onDone });
     }
   }
 
   return (
-    <form onSubmit={submit} className="sheet-form" aria-label={expense ? "Edit expense" : "Add expense"}>
-      <div className="sheet-fields">
-        <div className="field-pair">
+    <form onSubmit={submit} className="flex flex-1 flex-col" aria-label={expense ? "Edit expense" : "Add expense"}>
+      <SheetBody
+        footer={
+          <>
+            {expense && (
+              <Button type="button" variant="ghost" className="text-destructive" onClick={confirmDelete} disabled={remove.isPending}>
+                Delete
+              </Button>
+            )}
+            <span className="flex-1" />
+            <Button type="button" variant="outline" onClick={onDone}>
+              {expense ? "Cancel" : "Done"}
+            </Button>
+            <Button type="submit" disabled={save.isPending}>
+              {expense ? "Save" : "Add expense"}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3">
           <Field label={`Amount (${household.currency})`} name="amountMinor" error={save.error} hint={amountError}>
-            <input
+            <Input
               ref={amountRef}
               data-autofocus
               inputMode="decimal"
               required
               placeholder="0.00"
-              className="amount-input"
+              className="amount h-11 text-lg md:text-lg"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               aria-invalid={amountError !== null}
             />
           </Field>
           <Field label="Date" name="date" error={save.error}>
-            <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input type="date" required className="h-11" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
         </div>
         <Field label="Merchant" name="merchant" error={save.error}>
-          <input value={merchant} placeholder="Where you paid" onChange={(e) => setMerchant(e.target.value)} />
+          <Input value={merchant} placeholder="Where you paid" onChange={(e) => setMerchant(e.target.value)} />
         </Field>
         <Field label="Category" name="categoryId" error={save.error}>
-          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">Uncategorized</option>
+          <NativeSelect className="w-full" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <NativeSelectOption value="">Uncategorized</NativeSelectOption>
             {tree.map((parent) => (
-              <optgroup key={parent.id} label={parent.name}>
-                <option value={parent.id}>{parent.name}</option>
+              <NativeSelectOptGroup key={parent.id} label={parent.name}>
+                <NativeSelectOption value={parent.id}>{parent.name}</NativeSelectOption>
                 {parent.children.map((child) => (
-                  <option key={child.id} value={child.id}>
+                  <NativeSelectOption key={child.id} value={child.id}>
                     {parent.name} › {child.name}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </optgroup>
+              </NativeSelectOptGroup>
             ))}
-          </select>
+          </NativeSelect>
         </Field>
         <Field label="Account" name="accountId" error={save.error}>
-          <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-            <option value="">None</option>
+          <NativeSelect className="w-full" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <NativeSelectOption value="">None</NativeSelectOption>
             {accountOptions.map((a) => (
-              <option key={a.id} value={a.id}>
+              <NativeSelectOption key={a.id} value={a.id}>
                 {a.name}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </Field>
         {members.length > 1 && (
           <Field label="Paid by" name="paidByUserId" error={save.error}>
-            <select value={paidByUserId} onChange={(e) => setPaidByUserId(e.target.value)}>
-              <option value="">Shared</option>
+            <NativeSelect className="w-full" value={paidByUserId} onChange={(e) => setPaidByUserId(e.target.value)}>
+              <NativeSelectOption value="">Shared</NativeSelectOption>
               {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
+                <NativeSelectOption key={m.userId} value={m.userId}>
                   {m.displayName}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </Field>
         )}
         {(trips.length > 0 || tripId) && (
           <Field label="Trip" name="tripId" error={save.error}>
-            <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
-              <option value="">None</option>
+            <NativeSelect className="w-full" value={tripId} onChange={(e) => setTripId(e.target.value)}>
+              <NativeSelectOption value="">None</NativeSelectOption>
               {trips.map((t) => (
-                <option key={t.id} value={t.id}>
+                <NativeSelectOption key={t.id} value={t.id}>
                   {t.name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </Field>
         )}
-        <label className="check-row">
-          <input type="checkbox" checked={foreign} onChange={(e) => setForeign(e.target.checked)} />
-          Paid in another currency
-        </label>
+        <div className="flex items-center gap-2">
+          <Checkbox id="expense-foreign" checked={foreign} onCheckedChange={(checked) => setForeign(checked === true)} />
+          <Label htmlFor="expense-foreign" className="font-normal">
+            Paid in another currency
+          </Label>
+        </div>
         {foreign && (
-          <div className="field-pair">
+          <div className="grid grid-cols-2 gap-3">
             <Field label="Amount paid" name="originalAmountMinor" error={save.error}>
-              <input inputMode="decimal" placeholder="0.00" value={originalAmount} onChange={(e) => setOriginalAmount(e.target.value)} />
+              <Input
+                inputMode="decimal"
+                placeholder="0.00"
+                className="amount"
+                value={originalAmount}
+                onChange={(e) => setOriginalAmount(e.target.value)}
+              />
             </Field>
             <Field label="Currency" name="originalCurrency" error={save.error}>
-              <input
+              <Input
                 maxLength={3}
                 placeholder="EUR"
                 value={originalCurrency}
@@ -217,30 +249,16 @@ export function ExpenseForm({
           </div>
         )}
         <Field label="Notes" name="notes" error={save.error}>
-          <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
         <FormError error={save.error} fields={FIELDS} />
         <ErrorText error={remove.error} />
         {lastAdded && !save.error && (
-          <p className="confirmation" role="status">
+          <p className="rounded-md bg-muted px-3 py-2 text-sm" role="status">
             {lastAdded}
           </p>
         )}
-      </div>
-      <div className="sheet-footer">
-        {expense && (
-          <button type="button" className="ghost danger" onClick={confirmDelete} disabled={remove.isPending}>
-            Delete
-          </button>
-        )}
-        <span className="spacer" />
-        <button type="button" className="secondary" onClick={onDone}>
-          {expense ? "Cancel" : "Done"}
-        </button>
-        <button type="submit" disabled={save.isPending}>
-          {expense ? "Save" : "Add expense"}
-        </button>
-      </div>
+      </SheetBody>
     </form>
   );
 }

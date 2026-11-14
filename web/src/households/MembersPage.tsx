@@ -2,7 +2,14 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { useAddMember, useCreateInvite, useInvites, useMe, useMembers, useRemoveMember, useRevokeInvite } from "../api/hooks";
 import type { HouseholdRole, Invite, Member } from "../api/types";
-import { ErrorText, Field, FormError, PageHeader, SkeletonRows } from "../ui";
+import { useConfirm } from "../dialogs";
+import { ErrorText, Field, FormError, PageHeader, PageIntro, SkeletonRows, Surface } from "../ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { useHousehold } from "./HouseholdPages";
 
 const ROLE_LABEL: Record<HouseholdRole, string> = { owner: "Owner", member: "Member" };
@@ -23,74 +30,79 @@ export function MembersPage() {
   const invites = useInvites(household.id, isOwner);
   const remove = useRemoveMember(household.id);
   const navigate = useNavigate();
+  const confirm = useConfirm();
 
-  function removeMember(member: Member) {
+  async function removeMember(member: Member) {
     const leaving = member.userId === me?.id;
-    const question = leaving
-      ? `Leave ${household.name}? You'll lose access until someone invites you again.`
-      : `Remove ${member.displayName} from ${household.name}? Their accounts and expenses become shared.` +
-        (member.hasLogin ? "" : " They have no login, so they're deleted.");
-    if (!window.confirm(question)) return;
+    const ok = await confirm(
+      leaving
+        ? {
+            title: `Leave ${household.name}?`,
+            description: "You'll lose access until someone invites you again.",
+            action: "Leave",
+          }
+        : {
+            title: `Remove ${member.displayName} from ${household.name}?`,
+            description:
+              "Their accounts and expenses become shared." + (member.hasLogin ? "" : " They have no login, so they're deleted."),
+            action: "Remove",
+          },
+    );
+    if (!ok) return;
     remove.mutate({ userId: member.userId, leaving }, { onSuccess: () => leaving && navigate("/", { replace: true }) });
   }
 
   return (
     <>
       <PageHeader title="Members" />
-      <p className="page-intro muted">
+      <PageIntro>
         Everyone here sees and edits the same accounts and expenses. Owners can invite and remove people, and add
         people without a login (a partner who hasn't signed up yet, a child) so things can be theirs; an invite can
         hand such a member over to a real account later.
-      </p>
+      </PageIntro>
 
       {isOwner && <InviteForm claimable={(members.data ?? []).filter((m) => !m.hasLogin)} />}
       {isOwner && <AddMemberForm />}
 
-      <section className="surface">
-        <ErrorText error={remove.error} />
-        <ErrorText error={members.error} />
+      <Surface>
+        <ErrorText error={remove.error} className="p-4" />
+        <ErrorText error={members.error} className="p-4" />
         {members.isPending && <SkeletonRows rows={2} />}
         {members.data && (
-          <div className="table-wrap">
-            <table className="data-table align-middle">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th className="actions-col">
-                    <span className="visually-hidden">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.data.map((m) => (
-                  <tr key={m.userId}>
-                    <td className="strong">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Name</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.data.map((m) => (
+                <TableRow key={m.userId}>
+                  <TableCell className="font-medium">
+                    <span className="flex items-center gap-2">
                       {m.displayName}
-                      {m.userId === me?.id && <span className="muted"> (you)</span>}
-                      {!m.hasLogin && <span className="badge badge-muted">No login</span>}
-                    </td>
-                    <td className="muted">{ROLE_LABEL[m.role]}</td>
-                    <td className="row-actions">
-                      {m.userId === me?.id ? (
-                        <button className="ghost danger" onClick={() => removeMember(m)}>
-                          Leave
-                        </button>
-                      ) : (
-                        isOwner && (
-                          <button className="ghost danger" onClick={() => removeMember(m)}>
-                            Remove
-                          </button>
-                        )
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      {m.userId === me?.id && <span className="font-normal text-muted-foreground">(you)</span>}
+                      {!m.hasLogin && <Badge variant="secondary">No login</Badge>}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{ROLE_LABEL[m.role]}</TableCell>
+                  <TableCell className="text-right">
+                    {(m.userId === me?.id || isOwner) && (
+                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => removeMember(m)}>
+                        {m.userId === me?.id ? "Leave" : "Remove"}
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </section>
+      </Surface>
 
       {isOwner && invites.data && invites.data.length > 0 && <PendingInvites invites={invites.data} />}
     </>
@@ -109,17 +121,17 @@ function AddMemberForm() {
   }
 
   return (
-    <div className="add-block">
-      <form onSubmit={submit} className="toolbar-form" aria-label="Add someone without a login">
-        <Field label="Name" name="displayName" error={add.error}>
-          <input required placeholder="Without a login" value={name} onChange={(e) => setName(e.target.value)} />
+    <Surface className="p-4">
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-3" aria-label="Add someone without a login">
+        <Field label="Name" name="displayName" error={add.error} className="w-56">
+          <Input required placeholder="Without a login" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <button type="submit" className="secondary" disabled={add.isPending}>
+        <Button type="submit" variant="outline" disabled={add.isPending}>
           Add person
-        </button>
+        </Button>
       </form>
       <FormError error={add.error} fields={["displayName"]} />
-    </div>
+    </Surface>
   );
 }
 
@@ -155,50 +167,56 @@ function InviteForm({ claimable }: { claimable: Member[] }) {
   }
 
   return (
-    <div className="add-block">
-      <form onSubmit={submit} className="toolbar-form" aria-label="Invite someone">
-        <Field label="Email" name="email" error={create.error}>
-          <input type="email" required placeholder="partner@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+    <Surface className="gap-4 p-4">
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-3" aria-label="Invite someone">
+        <Field label="Email" name="email" error={create.error} className="w-64">
+          <Input type="email" required placeholder="partner@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
-        <Field label="Role" name="role" error={create.error}>
-          <select value={role} onChange={(e) => setRole(e.target.value as HouseholdRole)}>
-            <option value="member">Member</option>
-            <option value="owner">Owner</option>
-          </select>
+        <Field label="Role" name="role" error={create.error} className="w-36">
+          <NativeSelect className="w-full" value={role} onChange={(e) => setRole(e.target.value as HouseholdRole)}>
+            <NativeSelectOption value="member">Member</NativeSelectOption>
+            <NativeSelectOption value="owner">Owner</NativeSelectOption>
+          </NativeSelect>
         </Field>
         {claimable.length > 0 && (
-          <Field label="Takes the place of" name="claimUserId" error={create.error}>
-            <select value={claimUserId} onChange={(e) => setClaimUserId(e.target.value)}>
-              <option value="">Nobody (a new member)</option>
+          <Field label="Takes the place of" name="claimUserId" error={create.error} className="w-56">
+            <NativeSelect className="w-full" value={claimUserId} onChange={(e) => setClaimUserId(e.target.value)}>
+              <NativeSelectOption value="">Nobody (a new member)</NativeSelectOption>
               {claimable.map((m) => (
-                <option key={m.userId} value={m.userId}>
+                <NativeSelectOption key={m.userId} value={m.userId}>
                   {m.displayName}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </Field>
         )}
-        <button type="submit" disabled={create.isPending}>
+        <Button type="submit" disabled={create.isPending}>
           Create invite link
-        </button>
+        </Button>
       </form>
       <FormError error={create.error} fields={["email", "role", "claimUserId"]} />
       {created?.token && (
-        <div className="invite-link" role="status">
+        <div className="flex flex-col gap-3 rounded-lg bg-muted p-4 text-sm" role="status">
           <p>
-            Send this link to <span className="strong">{created.email}</span>. It works once, for that address, until{" "}
+            Send this link to <span className="font-medium">{created.email}</span>. It works once, for that address, until{" "}
             {formatDate(created.expiresAt)}.
             {created.claimName && <> Accepting it takes over {created.claimName}'s place, with everything that's theirs.</>}
           </p>
-          <div className="invite-link-row">
-            <input readOnly aria-label="Invite link" value={inviteLink(created.token)} onFocus={(e) => e.target.select()} />
-            <button type="button" onClick={() => copy(created.token!)}>
+          <div className="flex gap-2">
+            <Input
+              readOnly
+              aria-label="Invite link"
+              className="amount bg-background"
+              value={inviteLink(created.token)}
+              onFocus={(e) => e.target.select()}
+            />
+            <Button type="button" onClick={() => copy(created.token!)}>
               {copied ? "Copied" : "Copy link"}
-            </button>
+            </Button>
           </div>
         </div>
       )}
-    </div>
+    </Surface>
   );
 }
 
@@ -208,45 +226,43 @@ function PendingInvites({ invites }: { invites: Invite[] }) {
   const now = Date.now();
 
   return (
-    <section className="surface">
-      <h2 className="section-title">Pending invites</h2>
-      <ErrorText error={revoke.error} />
-      <div className="table-wrap">
-        <table className="data-table align-middle">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th className="hide-narrow">Role</th>
-              <th>Expires</th>
-              <th className="actions-col">
-                <span className="visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {invites.map((invite) => {
-              const expired = Date.parse(invite.expiresAt) <= now;
-              return (
-                <tr key={invite.id} className={expired ? "dimmed" : undefined}>
-                  <td className="strong">
-                    {invite.email}
-                    {invite.claimName && <span className="muted"> · as {invite.claimName}</span>}
-                  </td>
-                  <td className="muted hide-narrow">{ROLE_LABEL[invite.role]}</td>
-                  <td className="muted nowrap">
-                    {expired ? <span className="badge badge-muted">Expired</span> : formatDate(invite.expiresAt)}
-                  </td>
-                  <td className="row-actions">
-                    <button className="ghost danger" onClick={() => revoke.mutate(invite.id)}>
-                      {expired ? "Remove" : "Revoke"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <Surface>
+      <h2 className="border-b px-4 py-3 font-medium">Pending invites</h2>
+      <ErrorText error={revoke.error} className="p-4" />
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Email</TableHead>
+            <TableHead className="max-md:hidden">Role</TableHead>
+            <TableHead>Expires</TableHead>
+            <TableHead>
+              <span className="sr-only">Actions</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {invites.map((invite) => {
+            const expired = Date.parse(invite.expiresAt) <= now;
+            return (
+              <TableRow key={invite.id} className={cn(expired && "text-muted-foreground")}>
+                <TableCell className="whitespace-normal font-medium">
+                  {invite.email}
+                  {invite.claimName && <span className="font-normal text-muted-foreground"> · as {invite.claimName}</span>}
+                </TableCell>
+                <TableCell className="text-muted-foreground max-md:hidden">{ROLE_LABEL[invite.role]}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {expired ? <Badge variant="secondary">Expired</Badge> : formatDate(invite.expiresAt)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button variant="ghost" size="sm" className="text-destructive" onClick={() => revoke.mutate(invite.id)}>
+                    {expired ? "Remove" : "Revoke"}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </Surface>
   );
 }

@@ -2,6 +2,9 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { useLogin, useMe, useSignup } from "../api/hooks";
 import { Field, FormError } from "../ui";
+import { AuthShell } from "./AuthShell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 /** Router state the auth pages accept: where to go afterwards, and an email to prefill (from an invite). */
 type AuthState = { from?: string; email?: string } | null;
@@ -32,16 +35,23 @@ export function LoginPage() {
   }
 
   return (
-    <main className="auth">
-      <div className="auth-panel">
-      <p className="wordmark">Spending Tracker</p>
-      <h1>Log in</h1>
-      <form onSubmit={submit} className="stack">
+    <AuthShell
+      title="Log in"
+      footer={
+        <>
+          No account yet?{" "}
+          <Link to="/signup" state={state}>
+            Sign up
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={submit} className="flex flex-col gap-4">
         <Field label="Email" name="email" error={login.error}>
-          <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
         <Field label="Password" name="password" error={login.error}>
-          <input
+          <Input
             type="password"
             autoComplete="current-password"
             required
@@ -50,17 +60,11 @@ export function LoginPage() {
           />
         </Field>
         <FormError error={login.error} fields={["email", "password"]} />
-        <button type="submit" className="block" disabled={login.isPending}>
+        <Button type="submit" size="lg" className="w-full" disabled={login.isPending}>
           {login.isPending ? "Logging in…" : "Log in"}
-        </button>
+        </Button>
       </form>
-      <p className="auth-footer">
-        No account yet? <Link to="/signup" state={state}>
-          Sign up
-        </Link>
-      </p>
-      </div>
-    </main>
+    </AuthShell>
   );
 }
 
@@ -81,19 +85,26 @@ export function SignupPage() {
   }
 
   return (
-    <main className="auth">
-      <div className="auth-panel">
-      <p className="wordmark">Spending Tracker</p>
-      <h1>Create your account</h1>
-      <form onSubmit={submit} className="stack">
+    <AuthShell
+      title="Create your account"
+      footer={
+        <>
+          Already have an account?{" "}
+          <Link to="/login" state={state}>
+            Log in
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={submit} className="flex flex-col gap-4">
         <Field label="Your name" name="displayName" error={signup.error}>
-          <input autoComplete="name" required value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+          <Input autoComplete="name" required value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         </Field>
         <Field label="Email" name="email" error={signup.error}>
-          <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
         <Field label="Password (at least 8 characters)" name="password" error={signup.error}>
-          <input
+          <Input
             type="password"
             autoComplete="new-password"
             required
@@ -103,16 +114,10 @@ export function SignupPage() {
           />
         </Field>
         <FormError error={signup.error} fields={["email", "password", "displayName"]} />
-        <button type="submit" className="block" disabled={signup.isPending}>
+        <Button type="submit" size="lg" className="w-full" disabled={signup.isPending}>
           {signup.isPending ? "Creating account…" : "Sign up"}
-        </button>
+        </Button>
       </form>
-      <p className="auth-footer">
-        Already have an account? <Link to="/login" state={state}>
-          Log in
-        </Link>
-      </p>
-      </div>
-    </main>
+    </AuthShell>
   );
 }
