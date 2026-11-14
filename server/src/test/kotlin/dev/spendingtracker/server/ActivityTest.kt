@@ -44,7 +44,7 @@ class ActivityTest {
         assertTrue(history.entries.all { it.actorUserId == me.id && it.actorName == "Alice" && it.label == "Albert" })
         assertEquals(listOf(FieldChange("amountMinor", "12990", "13490")), history.entries[1].changes)
         val fields = history.entries[2].changes.associate { it.field to it.after }
-        assertEquals(listOf("date", "amountMinor", "merchant"), history.entries[2].changes.map { it.field }.take(3))
+        assertEquals(listOf("date", "amountMinor", "merchantId"), history.entries[2].changes.map { it.field }.take(3))
         assertEquals("2026-10-03", fields["date"])
         assertEquals("weekly shop", fields["notes"])
         assertNull(fields["paidByUserId"])

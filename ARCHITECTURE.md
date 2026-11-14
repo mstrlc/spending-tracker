@@ -70,7 +70,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 
 ### Spending
 
-- **Merchants are records** with a name, a default category and the bank texts that map to them, so top merchants and subscriptions don't split on spelling.
+- ~~**Merchants are records**~~ (done 2026-11-14) with a name and a default category, so top merchants and subscriptions don't split on spelling. The bank texts that map to them come with the rules table.
 - **Split lines**: an expense can have lines with their own category and amount that add up to its total. E-shop orders can fill them in later.
 - **Refunds attach to the original expense**, so it shows net in its own category and month.
 - ~~**Foreign currency**~~ (done 2026-11-14): an expense can store the original amount and currency next to the household-currency amount everything adds up in.
@@ -126,5 +126,6 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
      - Trips have optional dates and a Trips page with what each cost. An expense can belong to a trip.
      - An expense can record what it cost in another currency.
      - Income carries the month it was earned, which the Income page and Overview count it in, as well as the date it arrived.
-3. **Next**: merchants, the old-app import, debts and split ratios, split lines, income deductions, inbox (bank import), budget.
+   - ~~**Merchants**~~ (done 2026-11-14): a merchants table (name unique per household ignoring case, default category); expenses point at one instead of carrying the name. Existing names were folded into merchants by migration. The API still takes the merchant's name on an expense and finds or creates it, so clients and the import don't manage ids; a new merchant takes the expense's category as its default, and the web form fills a known merchant's category in. The Merchants page renames (on every expense), sets the default category, merges two spellings and deletes unused ones. Activity names expenses by their merchant's current name.
+3. **Next**: the old-app import, debts and split ratios, split lines, income deductions, inbox (bank import), budget.
 4. **Later**: net worth, forecast, MCP server, mobile apps, hosting, goals, wishlist.

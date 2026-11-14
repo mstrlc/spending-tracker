@@ -8,6 +8,7 @@ const lookups: Lookups = {
   accounts: [],
   members: [{ userId: "u1", displayName: "Alice", role: "owner", hasLogin: true }],
   trips: [],
+  merchants: [],
 };
 
 const entry = (overrides: Partial<ActivityEntry>): ActivityEntry => ({

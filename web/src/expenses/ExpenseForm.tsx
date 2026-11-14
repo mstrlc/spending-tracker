@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
-import { useAccounts, useCategories, useDeleteExpense, useMembers, useSaveExpense, useTrips } from "../api/hooks";
+import { useAccounts, useCategories, useDeleteExpense, useMembers, useMerchants, useSaveExpense, useTrips } from "../api/hooks";
 import type { Expense } from "../api/types";
 import { categoryTree } from "../categories/tree";
 import { todayIso } from "../lib/dates";
@@ -46,6 +46,7 @@ export function ExpenseForm({
   const accounts = useAccounts(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
   const trips = useTrips(household.id).data ?? [];
+  const merchants = useMerchants(household.id).data ?? [];
   const save = useSaveExpense(household.id);
   const remove = useDeleteExpense(household.id);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -72,6 +73,18 @@ export function ExpenseForm({
   // Archived categories and closed accounts stay selectable only for rows that already use them.
   const tree = categoryTree(categories.filter((c) => !c.archived || c.id === expense?.categoryId));
   const accountOptions = accounts.filter((a) => a.status === "active" || a.id === expense?.accountId);
+  const knownMerchant = merchants.find((m) => m.name.toLowerCase() === merchant.trim().toLowerCase());
+  const merchantHint = merchant.trim() && !knownMerchant && merchants.length > 0 ? "New merchant: it'll be added to your list." : null;
+
+  // Typing a known merchant on a new expense files it under the merchant's category, unless one was picked.
+  function changeMerchant(value: string) {
+    setMerchant(value);
+    if (expense || categoryId) return;
+    const known = merchants.find((m) => m.name.toLowerCase() === value.trim().toLowerCase());
+    if (known?.defaultCategoryId && categories.some((c) => c.id === known.defaultCategoryId && !c.archived)) {
+      setCategoryId(known.defaultCategoryId);
+    }
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -170,8 +183,20 @@ export function ExpenseForm({
           </Field>
         </div>
         <Field label="Merchant" name="merchant" error={save.error}>
-          <Input value={merchant} placeholder="Where you paid" onChange={(e) => setMerchant(e.target.value)} />
+          <Input
+            list="expense-merchants"
+            autoComplete="off"
+            value={merchant}
+            placeholder="Where you paid"
+            onChange={(e) => changeMerchant(e.target.value)}
+          />
         </Field>
+        <datalist id="expense-merchants">
+          {merchants.map((m) => (
+            <option key={m.id} value={m.name} />
+          ))}
+        </datalist>
+        {merchantHint && <p className="-mt-2 text-xs text-muted-foreground">{merchantHint}</p>}
         <Field label="Category" name="categoryId" error={save.error}>
           <NativeSelect className="w-full" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <NativeSelectOption value="">Uncategorized</NativeSelectOption>

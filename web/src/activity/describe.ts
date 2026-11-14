@@ -1,9 +1,16 @@
-import type { Account, ActivityEntry, Category, FieldChange, Member, Trip } from "../api/types";
+import type { Account, ActivityEntry, Category, FieldChange, Member, Merchant, Trip } from "../api/types";
 import { formatDay } from "../lib/dates";
 import { formatMoney } from "../lib/money";
 
 /** What the activity log needs to turn ids and minor units back into names and amounts. */
-export type Lookups = { currency: string; categories: Category[]; accounts: Account[]; members: Member[]; trips: Trip[] };
+export type Lookups = {
+  currency: string;
+  categories: Category[];
+  accounts: Account[];
+  members: Member[];
+  trips: Trip[];
+  merchants: Merchant[];
+};
 
 const NOUNS: Record<ActivityEntry["entity"], string> = {
   household: "household",
@@ -18,6 +25,7 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   asset_valuation: "value of",
   asset_fee: "fee on",
   trip: "trip",
+  merchant: "merchant",
 };
 
 const LABELS: Record<string, string> = {
@@ -26,6 +34,8 @@ const LABELS: Record<string, string> = {
   amountMinor: "Amount",
   valueMinor: "Worth",
   merchant: "Merchant",
+  merchantId: "Merchant",
+  defaultCategoryId: "Category",
   source: "Source",
   email: "Email",
   role: "Role",
@@ -87,7 +97,8 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
       return value === null ? "–" : formatMoney(Number(value), lookups.currency);
     case "categoryId":
     case "parentId":
-      if (value === null) return field === "parentId" ? "Top level" : "Uncategorized";
+    case "defaultCategoryId":
+      if (value === null) return field === "parentId" ? "Top level" : field === "defaultCategoryId" ? "None" : "Uncategorized";
       return lookups.categories.find((c) => c.id === value)?.name ?? "a deleted category";
     case "accountId":
       if (value === null) return "No account";
@@ -97,6 +108,9 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
     case "ownerUserId":
       if (value === null) return "Shared";
       return lookups.members.find((m) => m.userId === value)?.displayName ?? "a former member";
+    case "merchantId":
+      if (value === null) return "No merchant";
+      return lookups.merchants.find((m) => m.id === value)?.name ?? "a merged or deleted merchant";
     case "tripId":
       if (value === null) return "No trip";
       return lookups.trips.find((t) => t.id === value)?.name ?? "a deleted trip";
@@ -142,8 +156,8 @@ export function describeChanges(entry: ActivityEntry, lookups: Lookups): { label
 // The label already names the record, and empty or default fields say nothing about it.
 function isMeaningful(entry: ActivityEntry, change: FieldChange): boolean {
   const value = entry.action === "create" ? change.after : change.before;
-  const nameField = { expense: "merchant", income: "source", invite: "email" }[entry.entity as string] ?? "name";
-  if (change.field === nameField || value === null || value === "") return false;
+  const nameFields = { expense: ["merchant", "merchantId"], income: ["source"], invite: ["email"] }[entry.entity as string] ?? ["name"];
+  if (nameFields.includes(change.field) || value === null || value === "") return false;
   if (change.field === "archived" && value === "false") return false;
   if (change.field === "sortOrder" || change.field === "status" || change.field === "kind") return false;
   return true;

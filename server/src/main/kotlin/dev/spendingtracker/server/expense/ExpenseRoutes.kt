@@ -13,10 +13,12 @@ import dev.spendingtracker.server.common.versionParam
 import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
+import dev.spendingtracker.server.db.Merchants
 import dev.spendingtracker.server.db.Trips
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.household.isMember
+import dev.spendingtracker.server.merchant.resolveMerchant
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.Expense
 import dev.spendingtracker.shared.api.ExpenseInput
@@ -30,6 +32,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.route
 import kotlinx.datetime.LocalDate
+import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
@@ -53,12 +56,13 @@ private const val LIST_LIMIT = 5_000
 fun Route.expenseRoutes() = route("/expenses") {
     get({
         operationId = "listExpenses"
-        description = "Expenses newest first, filtered by inclusive date range, category (subcategories included) and account."
+        description = "Expenses newest first, filtered by inclusive date range, category (subcategories included), account and merchant."
         request {
             queryParameter<String>("from") { description = "Inclusive start date, YYYY-MM-DD" }
             queryParameter<String>("to") { description = "Inclusive end date, YYYY-MM-DD" }
             queryParameter<String>("categoryId")
             queryParameter<String>("accountId")
+            queryParameter<String>("merchantId")
         }
         response {
             code(HttpStatusCode.OK) { body<List<Expense>>() }
@@ -70,17 +74,19 @@ fun Route.expenseRoutes() = route("/expenses") {
         val to = call.dateParam("to")
         val categoryId = parseId(call.request.queryParameters["categoryId"], "categoryId")
         val accountId = parseId(call.request.queryParameters["accountId"], "accountId")
+        val merchantId = parseId(call.request.queryParameters["merchantId"], "merchantId")
         val expenses = dbQuery {
             var filter: Op<Boolean> = Expenses.householdId eq householdId
             if (from != null) filter = filter and (Expenses.date greaterEq from)
             if (to != null) filter = filter and (Expenses.date lessEq to)
             if (accountId != null) filter = filter and (Expenses.accountId eq accountId)
+            if (merchantId != null) filter = filter and (Expenses.merchantId eq merchantId)
             if (categoryId != null) {
                 val subcategories = Categories.select(Categories.id)
                     .where { (Categories.householdId eq householdId) and (Categories.parentId eq categoryId) }
                 filter = filter and ((Expenses.categoryId eq categoryId) or (Expenses.categoryId inSubQuery subcategories))
             }
-            Expenses.selectAll()
+            withMerchant()
                 .where(filter)
                 .orderBy(Expenses.date to SortOrder.DESC, Expenses.id to SortOrder.ASC)
                 .limit(LIST_LIMIT)
@@ -102,14 +108,15 @@ fun Route.expenseRoutes() = route("/expenses") {
         val id = Uuid.random()
         val expense = dbQuery {
             input.checkReferences(householdId)
+            val merchantId = resolveMerchant(householdId, input.merchant, input.categoryId, call.userId)
             Expenses.insert {
                 it[Expenses.id] = id
                 it[Expenses.householdId] = householdId
-                it.write(input)
+                it.write(input, merchantId)
                 it[version] = 1
                 it[createdBy] = call.userId
             }
-            Expenses.selectAll().where { Expenses.id eq id }.single().toExpense()
+            withMerchant().where { Expenses.id eq id }.single().toExpense()
         }
         call.respond(HttpStatusCode.Created, expense)
     }
@@ -134,13 +141,14 @@ fun Route.expenseRoutes() = route("/expenses") {
         val input = raw.validated()
         val expense = dbQuery {
             input.checkReferences(householdId)
+            val merchantId = resolveMerchant(householdId, input.merchant, input.categoryId, call.userId)
             val affected = Expenses.update({ match(householdId, id) and (Expenses.version eq version) }) {
-                it.write(input)
+                it.write(input, merchantId)
                 it[Expenses.version] = version + 1
                 it[updatedAt] = Clock.System.now()
             }
             checkVersioned(affected, { exists(householdId, id) }, "Expense")
-            Expenses.selectAll().where { Expenses.id eq id }.single().toExpense()
+            withMerchant().where { Expenses.id eq id }.single().toExpense()
         }
         call.respond(expense)
     }
@@ -223,10 +231,10 @@ private fun ValidExpense.checkReferences(householdId: Uuid) {
     }
 }
 
-private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(input: ValidExpense) {
+private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(input: ValidExpense, merchantId: Uuid?) {
     this[Expenses.date] = input.date
     this[Expenses.amountMinor] = input.amountMinor
-    this[Expenses.merchant] = input.merchant
+    this[Expenses.merchantId] = merchantId
     this[Expenses.categoryId] = input.categoryId
     this[Expenses.accountId] = input.accountId
     this[Expenses.paidByUserId] = input.paidByUserId
@@ -240,11 +248,16 @@ private fun match(householdId: Uuid, id: Uuid) = (Expenses.id eq id) and (Expens
 
 private fun exists(householdId: Uuid, id: Uuid) = !Expenses.selectAll().where { match(householdId, id) }.empty()
 
+private fun withMerchant() =
+    Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id).selectAll()
+
+/** A row of [withMerchant]. */
 private fun ResultRow.toExpense() = Expense(
     id = this[Expenses.id].toString(),
     date = this[Expenses.date],
     amountMinor = this[Expenses.amountMinor],
-    merchant = this[Expenses.merchant],
+    merchantId = this[Expenses.merchantId]?.toString(),
+    merchant = this.getOrNull(Merchants.name).orEmpty(),
     categoryId = this[Expenses.categoryId]?.toString(),
     accountId = this[Expenses.accountId]?.toString(),
     paidByUserId = this[Expenses.paidByUserId]?.toString(),

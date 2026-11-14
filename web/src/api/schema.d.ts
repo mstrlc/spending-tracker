@@ -280,7 +280,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Expenses newest first, filtered by inclusive date range, category (subcategories included) and account. */
+        /** @description Expenses newest first, filtered by inclusive date range, category (subcategories included), account and merchant. */
         get: operations["listExpenses"];
         put?: never;
         post: operations["createExpense"];
@@ -519,6 +519,58 @@ export interface paths {
         post?: never;
         /** @description Fails with 409 trip_in_use while expenses belong to the trip. */
         delete: operations["deleteTrip"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/merchants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The household's merchants by name, each with what its expenses add up to and when it was last used. */
+        get: operations["listMerchants"];
+        put?: never;
+        post: operations["createMerchant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/merchants/{merchantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Renaming a merchant renames it on all its expenses. A name another merchant has is a 409 name_taken: merge them instead. */
+        put: operations["updateMerchant"];
+        post?: never;
+        /** @description Fails with 409 merchant_in_use while expenses use the merchant; merge it into another instead. */
+        delete: operations["deleteMerchant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/merchants/{merchantId}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Moves every expense of this merchant to intoId and deletes it, for two spellings of one place. The merchant merged into keeps its name, and takes this one's default category if it has none. */
+        post: operations["mergeMerchant"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -801,6 +853,8 @@ export interface components {
              * Format: int64
              */
             amountMinor: number;
+            /** String */
+            merchantId: null | string;
             /** String */
             merchant: string;
             /** String */
@@ -1193,11 +1247,59 @@ export interface components {
              */
             version?: null | number;
         };
+        /** Merchant */
+        Merchant: {
+            /** String */
+            id: string;
+            /** String */
+            name: string;
+            /** String */
+            defaultCategoryId: null | string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            spentMinor: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            expenseCount: number;
+            /** LocalDate */
+            lastDate: null | string;
+        };
+        /** MerchantInput */
+        MerchantInput: {
+            /** String */
+            name: string;
+            /** String */
+            defaultCategoryId?: null | string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
+        };
+        /** MerchantMerge */
+        MerchantMerge: {
+            /** String */
+            intoId: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
         /**
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -2314,6 +2416,7 @@ export interface operations {
                 to?: string;
                 categoryId?: string;
                 accountId?: string;
+                merchantId?: string;
             };
             header?: never;
             path: {
@@ -3481,6 +3584,220 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listMerchants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Merchant"][];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createMerchant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MerchantInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Merchant"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateMerchant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                merchantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MerchantInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Merchant"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteMerchant: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+                merchantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    mergeMerchant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                merchantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MerchantMerge"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Merchant"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
             };
             404: {
                 headers: {

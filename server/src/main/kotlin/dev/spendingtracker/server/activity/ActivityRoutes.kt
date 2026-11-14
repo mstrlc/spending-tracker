@@ -4,9 +4,11 @@ import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.parseId
 import dev.spendingtracker.server.db.AuditLog
 import dev.spendingtracker.server.db.Assets
+import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.Users
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
+import dev.spendingtracker.server.merchant.merchantNames
 import dev.spendingtracker.shared.api.ActivityAction
 import dev.spendingtracker.shared.api.ActivityEntity
 import dev.spendingtracker.shared.api.ActivityEntry
@@ -30,6 +32,7 @@ import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.less
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import kotlin.uuid.Uuid
 
@@ -85,8 +88,10 @@ fun Route.activityRoutes() = route("/activity") {
             val shown = rows.take(limit)
             val names = userNames(shown)
             val holdings = assetNames(shown)
+            val merchants = merchantNames(householdId)
+            val expenseMerchants = expenseMerchants(shown)
             ActivityPage(
-                entries = shown.map { it.toEntry(names, holdings) },
+                entries = shown.map { it.toEntry(names, holdings, merchants, expenseMerchants) },
                 nextBefore = if (rows.size > limit) shown.last()[AuditLog.id] else null,
             )
         }
@@ -115,20 +120,38 @@ private fun assetNames(rows: List<ResultRow>): Map<String, String> {
     return Assets.selectAll().where { Assets.id inList ids }.associate { it[Assets.id].toString() to it[Assets.name] }
 }
 
-private fun ResultRow.toEntry(names: Map<Uuid, String>, holdings: Map<String, String>): ActivityEntry {
+/** The current merchant of each expense the entries are about, for entries whose own merchant was merged away. */
+private fun expenseMerchants(rows: List<ResultRow>): Map<Uuid, Uuid> {
+    val ids = rows.filter { it[AuditLog.entity] == "expense" }.map { it[AuditLog.entityId] }.distinct()
+    if (ids.isEmpty()) return emptyMap()
+    return Expenses.select(Expenses.id, Expenses.merchantId).where { Expenses.id inList ids }
+        .mapNotNull { row -> row[Expenses.merchantId]?.let { row[Expenses.id] to it } }
+        .toMap()
+}
+
+private fun ResultRow.toEntry(
+    names: Map<Uuid, String>,
+    holdings: Map<String, String>,
+    merchants: Map<Uuid, String>,
+    expenseMerchants: Map<Uuid, Uuid>,
+): ActivityEntry {
     val entity = ActivityEntity.entries.first { it.dbValue() == this[AuditLog.entity] }
     val before = this[AuditLog.before]?.let(::parseRow)
     val after = this[AuditLog.after]?.let(::parseRow)
     val current = after ?: before.orEmpty()
     val label = when (entity) {
-        ActivityEntity.EXPENSE -> current.text("merchant")
+        // The merchant the entry recorded, or the one it was merged into; entries from before merchants were
+        // records (V15) carry the name itself.
+        ActivityEntity.EXPENSE -> current.text("merchant_id")?.let(Uuid::parse)
+            ?.let { merchants[it] ?: expenseMerchants[this[AuditLog.entityId]]?.let(merchants::get) }
+            ?: current.text("merchant")
         ActivityEntity.INCOME -> current.text("source")
         ActivityEntity.INVITE -> current.text("email")
         ActivityEntity.MEMBER -> names[this[AuditLog.entityId]]
         ActivityEntity.ASSET_CONTRIBUTION, ActivityEntity.ASSET_VALUATION, ActivityEntity.ASSET_FEE ->
             current.text("asset_id")?.let(holdings::get)
         ActivityEntity.HOUSEHOLD, ActivityEntity.ACCOUNT, ActivityEntity.CATEGORY, ActivityEntity.ASSET,
-        ActivityEntity.TRIP -> current.text("name")
+        ActivityEntity.TRIP, ActivityEntity.MERCHANT -> current.text("name")
     }
     val actor = this[AuditLog.actorUserId]
     return ActivityEntry(
@@ -156,7 +179,7 @@ private fun JsonElement.asText(): String? = when (this) {
 
 // jsonb keeps keys in its own order; this is the order a person reads a record in. Unlisted fields go last.
 private val FIELD_ORDER = listOf(
-    "name", "symbol", "date", "amount_minor", "quantity", "value_minor", "merchant", "source", "email", "role", "category_id", "parent_id", "kind",
+    "name", "symbol", "date", "amount_minor", "quantity", "value_minor", "merchant_id", "merchant", "source", "email", "role", "category_id", "default_category_id", "parent_id", "kind",
     "account_id", "paid_by_user_id", "recipient_user_id", "owner_user_id", "currency", "status", "archived",
     "sort_order", "notes", "expires_at", "accepted_at",
 )

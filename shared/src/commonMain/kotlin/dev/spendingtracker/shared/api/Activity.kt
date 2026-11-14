@@ -18,6 +18,7 @@ enum class ActivityEntity {
     @SerialName("asset_valuation") ASSET_VALUATION,
     @SerialName("asset_fee") ASSET_FEE,
     @SerialName("trip") TRIP,
+    @SerialName("merchant") MERCHANT,
 }
 
 @Serializable

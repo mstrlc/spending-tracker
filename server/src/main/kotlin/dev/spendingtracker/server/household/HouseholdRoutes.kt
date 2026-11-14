@@ -17,6 +17,7 @@ import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.expense.expenseRoutes
 import dev.spendingtracker.server.income.incomeRoutes
 import dev.spendingtracker.server.asset.assetRoutes
+import dev.spendingtracker.server.merchant.merchantRoutes
 import dev.spendingtracker.server.trip.tripRoutes
 import dev.spendingtracker.server.overview.overviewRoutes
 import dev.spendingtracker.shared.api.ApiError
@@ -224,6 +225,7 @@ fun Route.householdRoutes() = route("/households") {
         incomeRoutes()
         assetRoutes()
         tripRoutes()
+        merchantRoutes()
         activityRoutes()
         overviewRoutes()
     }

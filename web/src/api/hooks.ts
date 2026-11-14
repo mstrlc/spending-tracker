@@ -12,6 +12,7 @@ import type {
   HouseholdRole,
   IncomeInput,
   AssetInput,
+  MerchantInput,
   TripInput,
   ValuationInput,
 } from "./types";
@@ -31,6 +32,7 @@ export const keys = {
     from === undefined ? (["households", id, "income"] as const) : (["households", id, "income", from, to] as const),
   assets: (id: string) => ["households", id, "assets"] as const,
   trips: (id: string) => ["households", id, "trips"] as const,
+  merchants: (id: string) => ["households", id, "merchants"] as const,
   contributions: (id: string, assetId: string) => ["households", id, "assets", assetId, "contributions"] as const,
   valuations: (id: string, assetId: string) => ["households", id, "assets", assetId, "valuations"] as const,
   fees: (id: string, assetId: string) => ["households", id, "assets", assetId, "fees"] as const,
@@ -287,6 +289,64 @@ export function useDeleteTrip(householdId: string) {
   });
 }
 
+// ---- Merchants ----
+
+export function useMerchants(householdId: string) {
+  return useQuery({
+    queryKey: keys.merchants(householdId),
+    queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/merchants", { params: { path: { householdId } } })),
+  });
+}
+
+/** Merchant names show on expenses, the overview and the activity log, so a change refreshes the whole household. */
+function useInvalidateHousehold(householdId: string) {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: keys.household(householdId) });
+}
+
+export function useSaveMerchant(householdId: string) {
+  const invalidate = useInvalidateHousehold(householdId);
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: MerchantInput }) =>
+      id === undefined
+        ? unwrap(await api.POST("/api/households/{householdId}/merchants", { params: { path: { householdId } }, body: input }))
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/merchants/{merchantId}", {
+              params: { path: { householdId, merchantId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: invalidate,
+  });
+}
+
+export function useMergeMerchant(householdId: string) {
+  const invalidate = useInvalidateHousehold(householdId);
+  return useMutation({
+    mutationFn: async ({ id, version, intoId }: { id: string; version: number; intoId: string }) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/merchants/{merchantId}/merge", {
+          params: { path: { householdId, merchantId: id } },
+          body: { intoId, version },
+        }),
+      ),
+    onSettled: invalidate,
+  });
+}
+
+export function useDeleteMerchant(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/merchants/{merchantId}", {
+          params: { path: { householdId, merchantId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.merchants(householdId) }),
+  });
+}
+
 // ---- Categories ----
 
 export function useCategories(householdId: string) {
@@ -352,7 +412,11 @@ export function useSaveExpense(householdId: string) {
               body: input,
             }),
           ),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.expenses(householdId) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
+      // It may have added a merchant, and moves the totals of the others.
+      qc.invalidateQueries({ queryKey: keys.merchants(householdId) });
+    },
   });
 }
 

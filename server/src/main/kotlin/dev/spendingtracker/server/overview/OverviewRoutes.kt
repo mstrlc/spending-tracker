@@ -8,6 +8,7 @@ import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.db.AssetContributions
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
+import dev.spendingtracker.server.merchant.merchantNames
 import dev.spendingtracker.server.asset.Dated
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.Overview
@@ -55,6 +56,7 @@ fun Route.overviewRoutes() = route("/overview") {
         val windowStart = month.shift(-BASELINE_MONTHS - 1)
 
         val (flows, firstMonth) = dbQuery {
+            val merchants = merchantNames(householdId)
             val categories = Categories.selectAll().where { Categories.householdId eq householdId }.associateBy { it[Categories.id] }
             val spends = Expenses.selectAll()
                 .where { (Expenses.householdId eq householdId) and (Expenses.date.between(windowStart.firstDay, month.lastDay)) }
@@ -65,7 +67,7 @@ fun Route.overviewRoutes() = route("/overview") {
                     Spend(
                         date = row[Expenses.date],
                         amountMinor = row[Expenses.amountMinor],
-                        merchant = row[Expenses.merchant],
+                        merchant = row[Expenses.merchantId]?.let(merchants::get).orEmpty(),
                         topCategoryId = top?.get(Categories.id),
                         investment = top?.get(Categories.kind) == "investment",
                     )

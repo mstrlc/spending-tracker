@@ -4,7 +4,8 @@ import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
 
 /**
- * One expense in the household currency. [amountMinor] is negative for refunds;
+ * One expense in the household currency. [amountMinor] is negative for refunds; [merchant] is the name of the
+ * merchant [merchantId] ("" for none);
  * a null [paidByUserId] means a shared expense. Paid in another currency, [originalAmountMinor] and [originalCurrency]
  * say what it cost in that currency (both or neither).
  */
@@ -13,6 +14,7 @@ data class Expense(
     val id: String,
     val date: LocalDate,
     val amountMinor: Long,
+    val merchantId: String?,
     val merchant: String,
     val categoryId: String?,
     val accountId: String?,
@@ -24,7 +26,10 @@ data class Expense(
     val originalCurrency: String?,
 )
 
-/** Body for creating and updating an expense; [version] is required when updating. */
+/**
+ * Body for creating and updating an expense; [version] is required when updating. [merchant] is a name: the
+ * household's merchant of that name (ignoring case), or a new one filed under [categoryId] by default; blank for none.
+ */
 @Serializable
 data class ExpenseInput(
     val date: LocalDate,

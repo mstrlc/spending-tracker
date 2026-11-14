@@ -71,7 +71,7 @@ object Expenses : Table("expenses") {
     val householdId = uuid("household_id")
     val date = date("date")
     val amountMinor = long("amount_minor")
-    val merchant = text("merchant")
+    val merchantId = uuid("merchant_id").nullable()
     val categoryId = uuid("category_id").nullable()
     val accountId = uuid("account_id").nullable()
     val paidByUserId = uuid("paid_by_user_id").nullable()
@@ -81,6 +81,17 @@ object Expenses : Table("expenses") {
     val originalCurrency = text("original_currency").nullable()
     val externalRef = text("external_ref").nullable()
     val version = integer("version")
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Merchants : Table("merchants") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val name = text("name")
+    val defaultCategoryId = uuid("default_category_id").nullable()
+    val version = integer("version").default(1)
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
