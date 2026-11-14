@@ -17,6 +17,9 @@ const suggestion = (s: Partial<BankRowSuggestion>): BankRowSuggestion => ({
   ruleId: null,
   ruleName: null,
   skipReason: null,
+  incomeKind: "earning",
+  earnedMonth: null,
+  refundCandidates: [],
   ...s,
 });
 
@@ -73,6 +76,48 @@ describe("bank row drafts", () => {
     expect(draftIncome([pay], "u2")).toMatchObject({ amountMinor: 4_500_000, source: "Employer", recipientUserId: "u2" });
     expect(skipReason([row({ hint: "Old app: Revolut top-up" })])).toBe("Revolut top-up");
     expect(skipReason([row({ hint: "Money in" })])).toBe("");
+  });
+
+  it("makes money in a refund of the first expense the suggestion offers, at its merchant", () => {
+    const candidates = [
+      { id: "e2", date: "2026-09-01", amountMinor: 20_000, refundedMinor: 0, label: "Corner Bakery" },
+      { id: "e1", date: "2026-08-20", amountMinor: 15_000, refundedMinor: 0, label: "Corner Bakery" },
+    ];
+    const refund = row({
+      amountMinor: 10_000,
+      suggestion: suggestion({ amountMinor: -10_000, merchant: "Bakery 1234", refundCandidates: candidates }),
+    });
+    expect(draftExpense([refund])).toMatchObject({ amountMinor: -10_000, merchant: "Corner Bakery", refundOfId: "e2" });
+    // Money out has nothing to refund, whatever the suggestion says.
+    const spend = row({ amountMinor: -10_000, suggestion: suggestion({ amountMinor: 10_000, merchant: "Bakery", refundCandidates: candidates }) });
+    expect(draftExpense([spend])).toMatchObject({ amountMinor: 10_000, merchant: "Bakery", refundOfId: undefined });
+    // No candidate: a plain negative expense, as before.
+    const orphan = row({ amountMinor: 10_000, suggestion: suggestion({ amountMinor: -10_000, merchant: "Bakery" }) });
+    expect(draftExpense([orphan])).toMatchObject({ amountMinor: -10_000, merchant: "Bakery", refundOfId: undefined });
+  });
+
+  it("drafts a deduction from a deduction rule: a positive amount for money out, for the month the rule says", () => {
+    const advance = row({
+      amountMinor: -250_000,
+      suggestion: suggestion({
+        record: "income",
+        amountMinor: 250_000,
+        incomeSource: "ZPMV",
+        paidByUserId: "u1",
+        ruleId: "rule",
+        incomeKind: "deduction",
+        earnedMonth: "2026-08",
+      }),
+    });
+    expect(draftIncome([advance], "u2")).toMatchObject({
+      amountMinor: 250_000,
+      source: "ZPMV",
+      recipientUserId: "u1",
+      kind: "deduction",
+      earnedMonth: "2026-08",
+    });
+    // As an expense it would be money out of the account, not a refund.
+    expect(draftExpense([advance]).amountMinor).toBe(250_000);
   });
 
   it("lets a matching rule decide who receives income and why a row is skipped", () => {

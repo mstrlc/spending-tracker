@@ -7,23 +7,31 @@ import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.FxRates
 import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.db.Merchants
+import dev.spendingtracker.server.expense.loadRefundedMinor
+import dev.spendingtracker.server.income.dbValue
 import dev.spendingtracker.shared.api.BankRowSuggestion
 import dev.spendingtracker.shared.api.DuplicateCandidate
+import dev.spendingtracker.shared.api.IncomeKind
+import dev.spendingtracker.shared.api.RefundCandidate
 import dev.spendingtracker.shared.api.RuleOutcome
 import dev.spendingtracker.shared.api.SuggestedRecord
 import dev.spendingtracker.shared.api.TransferCandidate
 import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
+import kotlinx.datetime.yearMonth
 import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.jdbc.select
@@ -51,6 +59,10 @@ private const val TRANSFER_PERCENT = 2
 
 /** How far a hand-entered expense's date may be from the bank's (booking vs. purchase date). */
 private const val DUPLICATE_DAYS = 3
+
+/** How far back the expense a money-in row refunds may be, and how many candidates are offered. */
+private const val REFUND_DAYS = 120
+private const val REFUND_CANDIDATES = 5
 
 /** How far an income line's date may be; one dated the 1st (a month known, not the day) may be up to this far before. */
 private const val INCOME_DAYS = 5
@@ -110,6 +122,24 @@ fun suggestFor(
         .where { (Income.householdId eq householdId) and (Income.date greaterEq first) and (Income.date lessEq last) }
         .filter { it[Income.id] !in linkedIncome }
 
+    // Money in may refund an expense of the past REFUND_DAYS: positive expenses that aren't refunds themselves, and the
+    // ones some bank row with the same descriptor was made into.
+    val refundPool = if (rows.none { it[BankRows.amountMinor] > 0 }) emptyList() else {
+        Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id)
+            .select(Expenses.id, Expenses.date, Expenses.amountMinor, Expenses.merchantId, Merchants.name)
+            .where {
+                (Expenses.householdId eq householdId) and Expenses.refundOf.isNull() and (Expenses.amountMinor greater 0L) and
+                    (Expenses.date greaterEq dates.min().minus(DatePeriod(days = REFUND_DAYS))) and (Expenses.date lessEq dates.max())
+            }.toList()
+    }
+    val refunded = loadRefundedMinor(householdId, refundPool.map { it[Expenses.id] })
+    val expensesByKey = if (refundPool.isEmpty()) emptyMap() else {
+        BankRows.select(BankRows.merchantKey, BankRows.expenseId)
+            .where { (BankRows.householdId eq householdId) and BankRows.expenseId.isNotNull() }
+            .groupBy({ it[BankRows.merchantKey] }, { it[BankRows.expenseId]!! })
+            .mapValues { it.value.toSet() }
+    }
+
     return rows.associate { row ->
         val accountId = row[BankFeeds.accountId]
         val date = row[BankRows.date]
@@ -126,9 +156,10 @@ fun suggestFor(
         // A rule can say the row is the other kind than the guess: money in as an expense (a refund), or out as income.
         val expenseOrIncome = when (rule?.outcome) {
             RuleOutcome.EXPENSE -> SuggestedRecord.EXPENSE
-            RuleOutcome.INCOME -> SuggestedRecord.INCOME
+            RuleOutcome.INCOME, RuleOutcome.DEDUCTION -> SuggestedRecord.INCOME
             else -> if (native < 0 || refund) SuggestedRecord.EXPENSE else SuggestedRecord.INCOME
         }
+        val forDeduction = rule?.outcome == RuleOutcome.DEDUCTION
         val text = row[BankRows.text]
         val owner = owners[accountId]
 
@@ -145,9 +176,12 @@ fun suggestFor(
             }
             else -> incomeLines.filter { i ->
                 val gap = date.daysUntil(i[Income.date])
-                (i[Income.accountId] == null || i[Income.accountId] == accountId) &&
+                // A deduction is money out booked as a positive line; an earning is what came in.
+                val target = if (forDeduction) converted?.let { -it } else converted
+                (i[Income.kind] == IncomeKind.DEDUCTION.dbValue) == forDeduction &&
+                    (i[Income.accountId] == null || i[Income.accountId] == accountId) &&
                     (abs(gap) <= INCOME_DAYS || (i[Income.date].day == 1 && gap <= 0 && -gap <= INCOME_MONTH_DAYS)) &&
-                    converted != null && closeEnough(i[Income.amountMinor], converted, currency != householdCurrency)
+                    target != null && closeEnough(i[Income.amountMinor], target, currency != householdCurrency)
             }.sortedBy { abs(date.daysUntil(it[Income.date])) }.take(3).map { i ->
                 DuplicateCandidate(SuggestedRecord.INCOME, i[Income.id].toString(), i[Income.date], i[Income.amountMinor], i[Income.sourceName])
             }
@@ -187,19 +221,37 @@ fun suggestFor(
             ruleMerchant != null -> merchantsByName[ruleMerchant.lowercase()]?.get(Merchants.defaultCategoryId)
             else -> guessedCategory
         }
+        val refundCandidates = if (native <= 0 || converted == null || (rule != null && !forExpense)) emptyList() else {
+            val merchantId = merchantsByName[merchant.lowercase()]?.get(Merchants.id)
+            val sameKey = if (key.isEmpty()) emptySet() else expensesByKey[key].orEmpty()
+            val oldest = date.minus(DatePeriod(days = REFUND_DAYS))
+            refundPool.asSequence()
+                .filter { e ->
+                    e[Expenses.date] in oldest..date && e[Expenses.amountMinor] >= converted &&
+                        ((merchantId != null && e[Expenses.merchantId] == merchantId) || e[Expenses.id] in sameKey)
+                }
+                .sortedWith(compareByDescending<ResultRow> { it[Expenses.date] }.thenBy { it[Expenses.id].toString() })
+                .take(REFUND_CANDIDATES)
+                .map { e ->
+                    RefundCandidate(
+                        e[Expenses.id].toString(), e[Expenses.date], e[Expenses.amountMinor], refunded[e[Expenses.id]] ?: 0L,
+                        e.getOrNull(Merchants.name).orEmpty(),
+                    )
+                }.toList()
+        }
         row[BankRows.id] to BankRowSuggestion(
             record = when (rule?.outcome) {
                 RuleOutcome.TRANSFER -> SuggestedRecord.TRANSFER
-                RuleOutcome.EXPENSE, RuleOutcome.INCOME -> expenseOrIncome
+                RuleOutcome.EXPENSE, RuleOutcome.INCOME, RuleOutcome.DEDUCTION -> expenseOrIncome
                 else -> if (candidates.isNotEmpty() || ownAccount != null || isMovement) SuggestedRecord.TRANSFER else expenseOrIncome
             },
-            amountMinor = converted?.let { if (expenseOrIncome == SuggestedRecord.EXPENSE) -it else it },
+            amountMinor = converted?.let { if (expenseOrIncome == SuggestedRecord.EXPENSE || forDeduction) -it else it },
             originalAmountMinor = if (currency == householdCurrency) null else abs(native),
             originalCurrency = if (currency == householdCurrency) null else currency,
             merchant = merchant,
             categoryId = category?.toString(),
-            paidByUserId = (if (forExpense || forIncome) rule!!.personUserId ?: owner else if (past != null) past[Expenses.paidByUserId] else owner)?.toString(),
-            incomeSource = (if (forIncome) rule!!.incomeSource.ifBlank { null } else null)
+            paidByUserId = (if (forExpense || forIncome || forDeduction) rule!!.personUserId ?: owner else if (past != null) past[Expenses.paidByUserId] else owner)?.toString(),
+            incomeSource = (if (forIncome || forDeduction) rule!!.incomeSource.ifBlank { null } else null)
                 ?: pastSource?.get(Income.sourceName) ?: row[BankRows.counterpartyName].ifEmpty { text },
             duplicates = duplicates,
             transferCandidates = candidates,
@@ -208,6 +260,9 @@ fun suggestFor(
             ruleId = rule?.id?.toString(),
             ruleName = rule?.name,
             skipReason = rule?.takeIf { it.outcome == RuleOutcome.SKIP }?.skipReason,
+            incomeKind = if (forDeduction) IncomeKind.DEDUCTION else IncomeKind.EARNING,
+            earnedMonth = if (forDeduction) date.yearMonth.plus(rule!!.monthOffset, DateTimeUnit.MONTH).toString() else null,
+            refundCandidates = refundCandidates,
         )
     }
 }

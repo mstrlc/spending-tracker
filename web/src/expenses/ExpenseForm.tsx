@@ -1,9 +1,18 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Plus, X } from "lucide-react";
-import { useAccounts, useCategories, useDeleteExpense, useMembers, useMerchants, useSaveExpense, useTrips } from "../api/hooks";
+import {
+  useAccounts,
+  useCategories,
+  useDeleteExpense,
+  useMembers,
+  useMerchantExpenses,
+  useMerchants,
+  useSaveExpense,
+  useTrips,
+} from "../api/hooks";
 import type { BankRowRef, Expense } from "../api/types";
 import { categoryTree } from "../categories/tree";
-import { todayIso } from "../lib/dates";
+import { formatDay, todayIso } from "../lib/dates";
 import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
@@ -15,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 import { SplitEditor } from "../debts/SplitEditor";
 import { draftFrom, owesLine, sharesFrom } from "../debts/split";
+import { refundLines, refundOriginals } from "./refunds";
 
 const FIELDS = [
   "date",
@@ -29,6 +39,7 @@ const FIELDS = [
   "originalCurrency",
   "notes",
   "split",
+  "refundOfId",
 ];
 
 type LineDraft = {
@@ -41,14 +52,25 @@ type LineDraft = {
 export type ExpenseDraft = Partial<
   Pick<
     Expense,
-    "date" | "amountMinor" | "merchant" | "categoryId" | "accountId" | "paidByUserId" | "notes" | "originalAmountMinor" | "originalCurrency"
+    | "date"
+    | "amountMinor"
+    | "merchant"
+    | "categoryId"
+    | "accountId"
+    | "paidByUserId"
+    | "notes"
+    | "originalAmountMinor"
+    | "originalCurrency"
+    | "refundOfId"
   >
 >;
 
 /**
  * Adds expenses (staying open for the next one) or edits [expense]. Lives in a side sheet;
  * [onSaved] reports each saved row, [onDone] closes the sheet. With [bankRows], it adds the one expense those bank
- * rows become, starting from [draft], and closes once saved.
+ * rows become, starting from [draft], and closes once saved. A negative amount can be a refund of an earlier expense at
+ * the same merchant: picking it fills in its category (or lines) and whose; [onOpenExpense] jumps between a refund and
+ * its original.
  */
 export function ExpenseForm({
   expense,
@@ -56,6 +78,7 @@ export function ExpenseForm({
   bankRows,
   defaultDate,
   onSaved,
+  onOpenExpense,
   onDone,
 }: {
   expense?: Expense;
@@ -63,6 +86,7 @@ export function ExpenseForm({
   bankRows?: BankRowRef[];
   defaultDate?: string;
   onSaved?: (expense: Expense) => void;
+  onOpenExpense?: (expense: Expense) => void;
   onDone: () => void;
 }) {
   const start: ExpenseDraft = expense ?? draft ?? {};
@@ -112,6 +136,7 @@ export function ExpenseForm({
       ? toInputValue(start.originalAmountMinor, start.originalCurrency)
       : "",
   );
+  const [refundOfId, setRefundOfId] = useState(start.refundOfId ?? "");
   const [amountError, setAmountError] = useState<string | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
 
@@ -124,6 +149,52 @@ export function ExpenseForm({
   const totalMinor = parseMoney(amount, household.currency);
   const linesTotalMinor = lines.reduce((sum, l) => sum + (parseMoney(l.amount, household.currency) ?? 0), 0);
   const remainingMinor = totalMinor !== null ? totalMinor - linesTotalMinor : null;
+
+  // A refund's original is picked from the expenses at its merchant; the original itself lists its refunds there too.
+  const showRefund = (totalMinor ?? 0) < 0 || refundOfId !== "";
+  const hasRefunds = (expense?.refundedMinor ?? 0) > 0;
+  const atMerchant = useMerchantExpenses(household.id, showRefund || hasRefunds ? knownMerchant?.id : undefined).data ?? [];
+  const originals = refundOriginals(atMerchant.filter((e) => e.id !== expense?.id), refundOfId || null);
+  const original = atMerchant.find((e) => e.id === refundOfId);
+  const refunds = expense ? atMerchant.filter((e) => e.refundOfId === expense.id) : [];
+
+  /** Fills in what a refund takes from its original: category (or lines), whose, trip, and the account when none is set. */
+  function applyOriginal(o: Expense) {
+    setPaidByUserId(o.paidByUserId ?? "");
+    setOwnerPicked(true);
+    setTripId(o.tripId ?? "");
+    if (!accountId && o.accountId) setAccountId(o.accountId);
+    if (o.lines.length > 0) {
+      const refund = totalMinor !== null && totalMinor < 0 ? totalMinor : null;
+      const parts = refund !== null ? refundLines(o.lines, refund) : o.lines.map((l) => ({ categoryId: l.categoryId, amountMinor: 0, notes: "" }));
+      setHasLines(true);
+      setLines(
+        parts.map((l) => ({
+          categoryId: l.categoryId ?? "",
+          amount: refund !== null ? toInputValue(l.amountMinor, household.currency) : "",
+          notes: "",
+        })),
+      );
+    } else {
+      setHasLines(false);
+      setCategoryId(o.categoryId ?? "");
+    }
+  }
+
+  function pickOriginal(id: string) {
+    setRefundOfId(id);
+    const picked = atMerchant.find((e) => e.id === id);
+    if (picked) applyOriginal(picked);
+  }
+
+  // A bank row's refund arrives with its original chosen: fill in from it once it has loaded, once.
+  const applied = useRef(false);
+  useEffect(() => {
+    if (expense || applied.current || !draft?.refundOfId || !original) return;
+    applied.current = true;
+    applyOriginal(original);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [original]);
 
   function updateLine(index: number, patch: Partial<LineDraft>) {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
@@ -227,6 +298,7 @@ export function ExpenseForm({
           lines: hasLines
             ? parsedLines.map((l) => ({ categoryId: l.categoryId, amountMinor: l.amountMinor!, notes: l.notes }))
             : [],
+          refundOfId: refundOfId && amountMinor < 0 ? refundOfId : null,
           version: expense?.version,
           bankRows: expense ? [] : (bankRows ?? []),
         },
@@ -244,6 +316,7 @@ export function ExpenseForm({
           setOriginalAmount("");
           setMerchant("");
           setNotes("");
+          setRefundOfId("");
           setHasLines(false);
           setLines([
             { categoryId: "", amount: "", notes: "" },
@@ -315,6 +388,48 @@ export function ExpenseForm({
           ))}
         </datalist>
         {merchantHint && <p className="-mt-2 text-xs text-muted-foreground">{merchantHint}</p>}
+        {showRefund && (
+          <div className="flex flex-col gap-1.5">
+            <Field label="Refund of" name="refundOfId" error={save.error}>
+              <NativeSelect className="w-full" value={refundOfId} onChange={(e) => pickOriginal(e.target.value)}>
+                <NativeSelectOption value="">Not a refund of an expense</NativeSelectOption>
+                {refundOfId && !originals.some((e) => e.id === refundOfId) && (
+                  <NativeSelectOption value={refundOfId}>An earlier expense</NativeSelectOption>
+                )}
+                {originals.map((e) => (
+                  <NativeSelectOption key={e.id} value={e.id}>
+                    {e.merchant || "Expense"} · {formatDay(e.date)} · {formatMoney(e.amountMinor, household.currency)}
+                    {e.refundedMinor > 0 && ` (refunded ${formatMoney(e.refundedMinor, household.currency)})`}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            {!knownMerchant && <p className="text-xs text-muted-foreground">Pick the merchant first: the list holds its expenses.</p>}
+            {original && onOpenExpense && (
+              <Button type="button" variant="link" size="sm" className="h-auto self-start p-0" onClick={() => onOpenExpense(original)}>
+                Open the original
+              </Button>
+            )}
+          </div>
+        )}
+        {hasRefunds && expense && (
+          <div className="flex flex-col gap-1 rounded-md bg-muted px-3 py-2 text-sm">
+            <span>
+              Refunded <span className="amount">{formatMoney(expense.refundedMinor, household.currency)}</span> · net{" "}
+              <span className="amount">{formatMoney(expense.amountMinor - expense.refundedMinor, household.currency)}</span>
+            </span>
+            {refunds.map((r) => (
+              <span key={r.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                {formatDay(r.date)} · <span className="amount">{formatMoney(r.amountMinor, household.currency)}</span>
+                {onOpenExpense && (
+                  <Button type="button" variant="link" size="xs" className="h-auto p-0" onClick={() => onOpenExpense(r)}>
+                    Open
+                  </Button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
         {!hasLines && (
           <Field label="Category" name="categoryId" error={save.error}>
             <NativeSelect className="w-full" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>

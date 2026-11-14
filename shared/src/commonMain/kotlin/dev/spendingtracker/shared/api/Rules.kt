@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 enum class RuleOutcome {
     @SerialName("expense") EXPENSE,
     @SerialName("income") INCOME,
+    @SerialName("deduction") DEDUCTION,
     @SerialName("transfer") TRANSFER,
     @SerialName("skip") SKIP,
 }
@@ -28,7 +29,9 @@ enum class RuleDirection {
  *
  * Outcome [RuleOutcome.EXPENSE] fills in [merchant], [categoryId] and [personUserId] (whose it is; null follows the
  * row's account); [RuleOutcome.INCOME] [incomeSource] and [personUserId] (who receives it); [RuleOutcome.TRANSFER]
- * [otherAccountId]; [RuleOutcome.SKIP] [skipReason]. With [auto] the row is filed without asking, otherwise the rule
+ * [otherAccountId]; [RuleOutcome.DEDUCTION] [incomeSource] (who took it: ZPMV, OSSZ), [personUserId] (whose it is) and
+ * [monthOffset] (the deduction is for the row's month plus this many months, -1 by default: the previous month),
+ * and makes an income deduction of minus the row's amount; [RuleOutcome.SKIP] [skipReason]. With [auto] the row is filed without asking, otherwise the rule
  * only shapes the suggestion. [filedCount] is how many bank rows it has filed.
  */
 @Serializable
@@ -48,6 +51,7 @@ data class InboxRule(
     val incomeSource: String,
     val otherAccountId: String?,
     val skipReason: String,
+    val monthOffset: Int,
     val auto: Boolean,
     val priority: Int,
     val version: Int,
@@ -71,6 +75,7 @@ data class InboxRuleInput(
     val incomeSource: String = "",
     val otherAccountId: String? = null,
     val skipReason: String = "",
+    val monthOffset: Int = -1,
     val auto: Boolean = false,
     val priority: Int = 0,
     val version: Int? = null,

@@ -49,6 +49,8 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val MAX_PRIORITY = 1_000
+private const val MAX_MONTH_OFFSET = 12
+private const val DEFAULT_MONTH_OFFSET = -1
 
 /** Must be inside a HouseholdAccess scope. */
 fun Route.ruleRoutes() {
@@ -179,6 +181,7 @@ private data class ValidRule(
     val incomeSource: String,
     val otherAccountId: Uuid?,
     val skipReason: String,
+    val monthOffset: Int,
     val auto: Boolean,
     val priority: Int,
 )
@@ -199,6 +202,9 @@ private fun InboxRuleInput.validated(): ValidRule {
         throw badRequest("rule_needs_match", "Match on a counterparty IBAN, a merchant key or some text", "textContains")
     }
     if (priority !in -MAX_PRIORITY..MAX_PRIORITY) throw badRequest("invalid_priority", "Priority must be between -$MAX_PRIORITY and $MAX_PRIORITY", "priority")
+    if (outcome == RuleOutcome.DEDUCTION && monthOffset !in -MAX_MONTH_OFFSET..MAX_MONTH_OFFSET) {
+        throw badRequest("invalid_month_offset", "The month offset must be between -$MAX_MONTH_OFFSET and $MAX_MONTH_OFFSET", "monthOffset")
+    }
     val person = parseId(personUserId, "personUserId")
     return ValidRule(
         name = requiredText(name, "name", max = 100),
@@ -212,14 +218,15 @@ private fun InboxRuleInput.validated(): ValidRule {
         // What an outcome doesn't use is left empty, so a changed outcome doesn't keep stale settings.
         merchant = if (outcome == RuleOutcome.EXPENSE) optionalText(merchant, "merchant", max = 200) else "",
         categoryId = if (outcome == RuleOutcome.EXPENSE) parseId(categoryId, "categoryId") else null,
-        personUserId = if (outcome == RuleOutcome.EXPENSE || outcome == RuleOutcome.INCOME) person else null,
-        incomeSource = if (outcome == RuleOutcome.INCOME) optionalText(incomeSource, "incomeSource", max = 200) else "",
+        personUserId = if (outcome == RuleOutcome.EXPENSE || outcome == RuleOutcome.INCOME || outcome == RuleOutcome.DEDUCTION) person else null,
+        incomeSource = if (outcome == RuleOutcome.INCOME || outcome == RuleOutcome.DEDUCTION) optionalText(incomeSource, "incomeSource", max = 200) else "",
         otherAccountId = if (outcome == RuleOutcome.TRANSFER) {
             parseId(otherAccountId, "otherAccountId") ?: throw badRequest("required", "Say which account the other side is", "otherAccountId")
         } else {
             null
         },
         skipReason = if (outcome == RuleOutcome.SKIP) requiredText(skipReason, "skipReason", max = 200) else "",
+        monthOffset = if (outcome == RuleOutcome.DEDUCTION) monthOffset else DEFAULT_MONTH_OFFSET,
         auto = auto,
         priority = priority,
     )
@@ -258,6 +265,7 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[InboxRules.incomeSource] = input.incomeSource
     this[InboxRules.otherAccountId] = input.otherAccountId
     this[InboxRules.skipReason] = input.skipReason
+    this[InboxRules.monthOffset] = input.monthOffset
     this[InboxRules.auto] = input.auto
     this[InboxRules.priority] = input.priority
 }
@@ -290,6 +298,7 @@ private fun loadInboxRules(householdId: Uuid, id: Uuid? = null): List<InboxRule>
             incomeSource = rule.incomeSource,
             otherAccountId = rule.otherAccountId?.toString(),
             skipReason = rule.skipReason,
+            monthOffset = rule.monthOffset,
             auto = rule.auto,
             priority = rule.priority,
             version = rule.version,

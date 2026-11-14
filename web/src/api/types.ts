@@ -64,6 +64,7 @@ export type TransferCandidate = Schemas["TransferCandidate"];
 export type Transfer = Schemas["Transfer"];
 export type JointContribution = Schemas["JointContribution"];
 export type DuplicateCandidate = Schemas["DuplicateCandidate"];
+export type RefundCandidate = Schemas["RefundCandidate"];
 export type StatementResult = Schemas["StatementResult"];
 export type InboxRule = Schemas["InboxRule"];
 export type InboxRuleInput = Schemas["InboxRuleInput"];

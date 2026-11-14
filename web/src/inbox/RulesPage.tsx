@@ -22,7 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RuleForm } from "./RuleForm";
-import { ruleConditions } from "./ruleDrafts";
+import { monthLabel, ruleConditions } from "./ruleDrafts";
 
 /** What applying the rules did, in a sentence; "Nothing to file" when it did nothing. */
 export function describeApplied(r: ApplyRulesResult): string {
@@ -61,6 +61,8 @@ export function RulesPage() {
         return ["Expense", rule.merchant, categoryLabel(categories, rule.categoryId), memberName(rule.personUserId)].filter(Boolean).join(" · ");
       case "income":
         return ["Income", rule.incomeSource, memberName(rule.personUserId)].filter(Boolean).join(" · ");
+      case "deduction":
+        return ["Deduction", rule.incomeSource, memberName(rule.personUserId), monthLabel(rule.monthOffset)].filter(Boolean).join(" · ");
       case "transfer":
         return `Transfer with ${accountName(rule.otherAccountId) || "another account"}`;
       case "skip":

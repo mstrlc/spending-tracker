@@ -1248,6 +1248,13 @@ export interface components {
             debts: components["schemas"]["Debt"][];
             /** ArrayList<ExpenseLine> */
             lines: components["schemas"]["ExpenseLine"][];
+            /** String */
+            refundOfId: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            refundedMinor: number;
         };
         /** Share */
         Share: {
@@ -1344,6 +1351,8 @@ export interface components {
             createsDebt?: boolean;
             /** ArrayList<ExpenseLineInput> */
             lines?: components["schemas"]["ExpenseLineInput"][];
+            /** String */
+            refundOfId?: null | string;
             /** ArrayList<BankRowRef> */
             bankRows?: components["schemas"]["BankRowRef"][];
         };
@@ -2286,6 +2295,11 @@ export interface components {
             ruleName: null | string;
             /** String */
             skipReason: null | string;
+            incomeKind: components["schemas"]["IncomeKind"];
+            /** String */
+            earnedMonth: null | string;
+            /** ArrayList<RefundCandidate> */
+            refundCandidates: components["schemas"]["RefundCandidate"][];
         };
         /**
          * SuggestedRecord
@@ -2329,6 +2343,25 @@ export interface components {
             currency: string;
             /** String */
             text: string;
+        };
+        /** RefundCandidate */
+        RefundCandidate: {
+            /** String */
+            id: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            refundedMinor: number;
+            /** String */
+            label: string;
         };
         /** LinkBankRows */
         LinkBankRows: {
@@ -2454,6 +2487,11 @@ export interface components {
             otherAccountId: null | string;
             /** String */
             skipReason: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            monthOffset: number;
             /** Boolean */
             auto: boolean;
             /**
@@ -2481,7 +2519,7 @@ export interface components {
          * RuleOutcome
          * @enum {string}
          */
-        RuleOutcome: "expense" | "income" | "transfer" | "skip";
+        RuleOutcome: "expense" | "income" | "deduction" | "transfer" | "skip";
         /** InboxRuleInput */
         InboxRuleInput: {
             /** String */
@@ -2510,6 +2548,11 @@ export interface components {
             otherAccountId?: null | string;
             /** String */
             skipReason?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            monthOffset?: number;
             /** Boolean */
             auto?: boolean;
             /**

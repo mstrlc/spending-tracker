@@ -83,6 +83,8 @@ object Expenses : Table("expenses") {
     val originalCurrency = text("original_currency").nullable()
     val externalRef = text("external_ref").nullable()
     val createsDebt = bool("creates_debt").default(true)
+    /** V22: the expense this one refunds. */
+    val refundOf = uuid("refund_of").nullable()
     val version = integer("version")
     val createdBy = uuid("created_by").nullable()
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
@@ -382,6 +384,7 @@ object InboxRules : Table("inbox_rules") {
     val incomeSource = text("income_source")
     val otherAccountId = uuid("other_account_id").nullable()
     val skipReason = text("skip_reason")
+    val monthOffset = integer("month_offset").default(-1)
     val auto = bool("auto").default(false)
     val priority = integer("priority").default(0)
     val version = integer("version").default(1)

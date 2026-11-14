@@ -30,6 +30,8 @@ class RuleDef(
     val incomeSource: String,
     val otherAccountId: Uuid?,
     val skipReason: String,
+    /** For a deduction: the months from the row's month to the month it is for. */
+    val monthOffset: Int,
     val auto: Boolean,
     val priority: Int,
     val version: Int,
@@ -91,6 +93,7 @@ fun ResultRow.toRuleDef() = RuleDef(
     incomeSource = this[InboxRules.incomeSource],
     otherAccountId = this[InboxRules.otherAccountId],
     skipReason = this[InboxRules.skipReason],
+    monthOffset = this[InboxRules.monthOffset],
     auto = this[InboxRules.auto],
     priority = this[InboxRules.priority],
     version = this[InboxRules.version],

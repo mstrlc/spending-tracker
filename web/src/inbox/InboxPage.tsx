@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAccounts, useBankFeeds, useBankRows, useCategories, useDecideBankRows, useInboxRules, useMembers } from "../api/hooks";
 import type { BankRow, BankRowRef, DuplicateCandidate, TransferCandidate } from "../api/types";
-import { formatDay } from "../lib/dates";
+import { formatDay, formatMonth } from "../lib/dates";
 import { formatMoney } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm, usePrompt } from "../dialogs";
@@ -293,7 +293,9 @@ export function InboxPage() {
                               ? `Transfer ${row.amountMinor < 0 ? "to" : "from"} ${otherAccount}`
                               : isExpense
                                 ? s.merchant || "Expense"
-                                : s.incomeSource || "Income"}
+                                : s.incomeKind === "deduction"
+                                  ? `Deduction${s.incomeSource ? ` · ${s.incomeSource}` : ""}`
+                                  : s.incomeSource || "Income"}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {s.skipReason != null
@@ -304,7 +306,9 @@ export function InboxPage() {
                                 ? [categoryName(s.categoryId) ?? "Uncategorized", members.length > 1 && memberName(s.paidByUserId)]
                                     .filter(Boolean)
                                     .join(" · ")
-                                : "Income"}
+                                : s.incomeKind === "deduction" && s.earnedMonth
+                                  ? `Taken off ${formatMonth(s.earnedMonth)}`
+                                  : "Income"}
                         </div>
                         {s.ruleName && <div className="text-xs text-muted-foreground">Rule: {s.ruleName}</div>}
                       </>
@@ -368,6 +372,13 @@ export function InboxPage() {
                           </Button>
                         </div>
                       ))}
+                      {tab === "pending" && isExpense && !isTransfer && s?.refundCandidates[0] && (
+                        <div className="mt-1.5 text-xs text-muted-foreground">
+                          May refund {s.refundCandidates[0].label || "an expense"} · {formatDay(s.refundCandidates[0].date)} ·{" "}
+                          <span className="amount">{formatMoney(s.refundCandidates[0].amountMinor, household.currency)}</span>
+                          {s.refundCandidates.length > 1 && ` (${s.refundCandidates.length - 1} more to pick from)`}
+                        </div>
+                      )}
                       {s?.transferCandidates.map((c) => (
                         <div key={c.rowId} className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                           <span className="text-muted-foreground">
@@ -404,7 +415,17 @@ export function InboxPage() {
                             }
                             disabled={isTransfer && decide.isPending}
                           >
-                            {isSkip ? "Skip" : isTransfer ? "Transfer" : isExpense ? "Add expense" : "Add income"}
+                            {isSkip
+                              ? "Skip"
+                              : isTransfer
+                                ? "Transfer"
+                                : isExpense
+                                  ? s?.refundCandidates[0] && row.amountMinor > 0
+                                    ? "Add refund"
+                                    : "Add expense"
+                                  : s?.incomeKind === "deduction"
+                                    ? "Add deduction"
+                                    : "Add income"}
                           </Button>
                         )}
                         <RowMenu

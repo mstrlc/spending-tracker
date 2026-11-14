@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { Category, Expense, ExpenseLine } from "../api/types";
 import { expenseTotals, spendingByCategory } from "./ExpensesPage";
+import { refundLines, refundOriginals, spendingParts, spreadByWeight } from "./refunds";
 
 const category = (id: string, name: string, extra: Partial<Category> = {}) =>
   ({ id, name, parentId: null, kind: "spending", archived: false, ...extra }) as Category;
@@ -57,5 +58,58 @@ describe("spendingByCategory", () => {
     );
     expect(slices.map((s) => s.name)).toEqual(["C0", "C1", "C2", "C3", "C4", "Other"]);
     expect(slices[5].amountMinor).toBe(300 + 200 + 100);
+  });
+});
+
+describe("refunds", () => {
+  const categories = [category("food", "Groceries"), category("home", "Housing"), category("leisure", "Leisure")];
+  const partial = (e: Partial<Expense>) => e as Expense;
+  const original = (amountMinor: number, categoryId: string | null, refundedMinor: number, lines: ExpenseLine[] = []) =>
+    partial({ amountMinor, categoryId, lines, refundOfId: null, refundedMinor });
+  const refund = (amountMinor: number, categoryId: string | null) =>
+    partial({ amountMinor, categoryId, lines: [], refundOfId: "original", refundedMinor: 0 });
+
+  test("count against the original's category and leave the refund's own line out", () => {
+    // The refund (dated in another month, so not in this list at all) can't be double counted when it is.
+    const rows = [original(1000, "food", 400), refund(-400, "food"), original(500, "home", 0)];
+    expect(spendingByCategory(rows, categories)).toEqual([
+      { name: "Groceries", amountMinor: 600 },
+      { name: "Housing", amountMinor: 500 },
+    ]);
+    expect(expenseTotals(rows, categories)).toEqual({ spent: 1100, invested: 0 });
+    // Only the original is in this month's list: it is the one that carries the refund.
+    expect(spendingByCategory([original(1000, "food", 400)], categories)).toEqual([{ name: "Groceries", amountMinor: 600 }]);
+  });
+
+  test("spread a split original's refunds over its lines in proportion", () => {
+    const receipt = original(1000, null, 250, [line("home", 600), line("leisure", 400)]);
+    expect(spendingParts(receipt)).toEqual([
+      { categoryId: "home", amountMinor: 450 },
+      { categoryId: "leisure", amountMinor: 300 },
+    ]);
+    expect(spendingByCategory([receipt], categories)).toEqual([
+      { name: "Housing", amountMinor: 450 },
+      { name: "Leisure", amountMinor: 300 },
+    ]);
+  });
+
+  test("spread amounts add up exactly, like the server's", () => {
+    expect(spreadByWeight(100, [1, 1, 1])).toEqual([34, 33, 33]);
+    expect(spreadByWeight(-250, [600, 400])).toEqual([-150, -100]);
+    expect(spreadByWeight(1000, [1, 2])).toEqual([333, 667]);
+    expect(spreadByWeight(5, [])).toEqual([]);
+    expect(refundLines([line("home", 600), line("leisure", 400)], -250)).toEqual([
+      { categoryId: "home", amountMinor: -150, notes: "" },
+      { categoryId: "leisure", amountMinor: -100, notes: "" },
+    ]);
+  });
+
+  test("offer the newest positive expenses that aren't refunds, keeping the chosen one", () => {
+    const e = (id: string, date: string, amountMinor: number, refundOfId: string | null = null) =>
+      partial({ id, date, amountMinor, refundOfId });
+    const list = [e("a", "2026-08-01", 100), e("b", "2026-09-01", 200), e("c", "2026-09-05", -50, "b"), e("d", "2026-07-01", 300)];
+    expect(refundOriginals(list, null).map((x) => x.id)).toEqual(["b", "a", "d"]);
+    expect(refundOriginals(list, "d", 2).map((x) => x.id)).toEqual(["b", "a", "d"]);
+    expect(refundOriginals(list, null, 1).map((x) => x.id)).toEqual(["b"]);
   });
 });

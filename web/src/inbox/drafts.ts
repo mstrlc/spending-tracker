@@ -6,7 +6,9 @@ import type { IncomeDraft } from "../income/IncomeForm";
 function signedAmount(row: BankRow): number | null {
   const s = row.suggestion;
   if (!s || s.amountMinor == null) return null;
-  return s.record === "income" ? s.amountMinor : -s.amountMinor;
+  // A deduction's amount is positive for money out.
+  if (s.record === "income") return s.incomeKind === "deduction" ? -s.amountMinor : s.amountMinor;
+  return -s.amountMinor;
 }
 
 function sum(values: (number | null)[]): number | undefined {
@@ -18,17 +20,20 @@ const sameAccount = (rows: BankRow[]) => (rows.every((r) => r.accountId === rows
 
 /**
  * The expense [rows] become together: their amounts added up (money out positive), dated by the earliest, filled in
- * from the first row's suggestion. Rows in one foreign currency keep what they cost in it.
+ * from the first row's suggestion. Rows in one foreign currency keep what they cost in it. Money in becomes a refund,
+ * of the first expense the first row's suggestion offers (its merchant too, so the refund sits with its original).
  */
 export function draftExpense(rows: BankRow[]): ExpenseDraft {
   const total = sum(rows.map(signedAmount));
   const s = rows.find((r) => r.suggestion)?.suggestion;
   const currency = rows[0].currency;
   const foreign = s?.originalCurrency != null && rows.every((r) => r.currency === currency);
+  const original = total !== undefined && total > 0 ? s?.refundCandidates[0] : undefined;
   return {
     date: earliest(rows),
     amountMinor: total === undefined ? undefined : -total,
-    merchant: s?.merchant,
+    merchant: original?.label || s?.merchant,
+    refundOfId: original?.id,
     categoryId: s?.categoryId ?? undefined,
     accountId: sameAccount(rows),
     paidByUserId: s ? s.paidByUserId : undefined,
@@ -39,16 +44,21 @@ export function draftExpense(rows: BankRow[]): ExpenseDraft {
 
 /**
  * The income line [rows] become together: their amounts added up, from the first row's payer, for the account's owner
- * (or whoever a matching rule names).
+ * (or whoever a matching rule names). A deduction rule makes it a deduction (money out, a positive amount) for the
+ * month the rule says.
  */
 export function draftIncome(rows: BankRow[], accountOwner: string | null): IncomeDraft {
   const s = rows.find((r) => r.suggestion)?.suggestion;
+  const total = sum(rows.map(signedAmount));
+  const deduction = s?.incomeKind === "deduction";
   return {
     date: earliest(rows),
-    amountMinor: sum(rows.map(signedAmount)),
+    amountMinor: total === undefined ? undefined : deduction ? -total : total,
     source: s?.incomeSource,
     accountId: sameAccount(rows),
     recipientUserId: s?.ruleId ? s.paidByUserId : accountOwner,
+    kind: deduction ? "deduction" : undefined,
+    earnedMonth: deduction ? (s?.earnedMonth ?? undefined) : undefined,
   };
 }
 

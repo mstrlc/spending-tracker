@@ -67,6 +67,8 @@ const LABELS: Record<string, string> = {
   fromUserId: "Paid by",
   toUserId: "To",
   createsDebt: "Creates a debt",
+  refundOfId: "Refund of",
+  monthOffset: "For the month",
   expiresAt: "Expires",
   acceptedAt: "Accepted",
 };
@@ -123,6 +125,8 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
     case "merchantId":
       if (value === null) return "No merchant";
       return lookups.merchants.find((m) => m.id === value)?.name ?? "a merged or deleted merchant";
+    case "refundOfId":
+      return value === null ? "Nothing" : "an expense";
     case "tripId":
       if (value === null) return "No trip";
       return lookups.trips.find((t) => t.id === value)?.name ?? "a deleted trip";

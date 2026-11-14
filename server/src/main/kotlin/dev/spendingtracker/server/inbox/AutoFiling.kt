@@ -103,6 +103,7 @@ private class Engine(
                 }
                 RuleOutcome.EXPENSE -> expense(row, rule, suggestion)
                 RuleOutcome.INCOME -> income(row, rule, suggestion)
+                RuleOutcome.DEDUCTION -> income(row, rule, suggestion)
                 RuleOutcome.TRANSFER -> transfer(row, rule, suggestion)
             }
         } catch (e: ApiException) {
@@ -145,6 +146,7 @@ private class Engine(
         done(row)
     }
 
+    /** An income line, or for a deduction rule a deduction: the suggestion carries which, its amount and its month. */
     private fun income(row: ResultRow, rule: RuleDef, s: BankRowSuggestion) {
         val twin = s.duplicates.firstOrNull { it.record == SuggestedRecord.INCOME && Uuid.parse(it.id) !in linked }
         if (twin != null) {
@@ -164,6 +166,9 @@ private class Engine(
                 source = s.incomeSource,
                 accountId = row[BankFeeds.accountId].toString(),
                 recipientUserId = s.paidByUserId,
+                // A deduction rule's suggestion is minus the row's amount, earned in the month the rule says.
+                earnedMonth = s.earnedMonth,
+                kind = s.incomeKind,
             ),
         )
         fileBankRows(householdId, listOf(row.ref()), userId, incomeId = id, created = true, auto = true, ruleId = rule.id)

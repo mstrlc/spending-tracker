@@ -17,7 +17,7 @@ type Kind = Income["kind"];
 const FIELDS = ["kind", "date", "earnedMonth", "amountMinor", "source", "accountId", "recipientUserId", "notes"];
 
 /** What a new income line starts with, such as a bank row's suggestion. */
-export type IncomeDraft = Partial<Pick<Income, "date" | "amountMinor" | "source" | "accountId" | "recipientUserId" | "notes">>;
+export type IncomeDraft = Partial<Pick<Income, "date" | "amountMinor" | "source" | "accountId" | "recipientUserId" | "notes" | "kind" | "earnedMonth">>;
 
 /**
  * Adds income or a deduction (staying open for the next line) or edits [income]. Lives in a side sheet;
@@ -48,7 +48,7 @@ export function IncomeForm({
   const amountRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
 
-  const [kind, setKind] = useState<Kind>(income?.kind ?? "earning");
+  const [kind, setKind] = useState<Kind>(start.kind ?? "earning");
   const deduction = kind === "deduction";
   const [date, setDate] = useState(start.date ?? defaultDate ?? todayIso());
   const [amount, setAmount] = useState(start.amountMinor != null ? toInputValue(start.amountMinor, household.currency) : "");
@@ -58,7 +58,7 @@ export function IncomeForm({
   const [notes, setNotes] = useState(start.notes ?? "");
   // The month it was earned; null follows the date (most income is earned the month it arrives).
   const [earnedMonth, setEarnedMonth] = useState<string | null>(
-    income && income.earnedMonth !== income.date.slice(0, 7) ? income.earnedMonth : null,
+    start.earnedMonth && start.earnedMonth !== date.slice(0, 7) ? start.earnedMonth : null,
   );
   const [amountError, setAmountError] = useState<string | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);

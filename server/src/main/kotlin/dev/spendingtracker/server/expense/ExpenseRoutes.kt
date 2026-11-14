@@ -110,8 +110,10 @@ fun Route.expenseRoutes() = route("/expenses") {
                 .orderBy(Expenses.date to SortOrder.DESC, Expenses.id to SortOrder.ASC)
                 .limit(LIST_LIMIT)
                 .toList()
-            val lines = loadExpenseLines(householdId, rows.map { it[Expenses.id] })
-            rows.map { it.toExpense(book, lines[it[Expenses.id]].orEmpty()) }
+            val ids = rows.map { it[Expenses.id] }
+            val lines = loadExpenseLines(householdId, ids)
+            val refunded = loadRefundedMinor(householdId, ids)
+            rows.map { it.toExpense(book, lines[it[Expenses.id]].orEmpty(), refunded[it[Expenses.id]] ?: 0L) }
         }
         call.respond(expenses)
     }
@@ -153,7 +155,7 @@ fun Route.expenseRoutes() = route("/expenses") {
         val version = requireVersion(raw.version)
         val input = raw.validated()
         val expense = dbQuery {
-            input.checkReferences(householdId)
+            input.checkReferences(householdId, selfId = id)
             val merchantId = resolveMerchant(householdId, input.merchant, input.defaultCategoryId, call.userId)
             val affected = Expenses.update({ match(householdId, id) and (Expenses.version eq version) }) {
                 it.write(input, merchantId)
@@ -228,6 +230,7 @@ private data class ValidExpense(
     val split: Weights?,
     val createsDebt: Boolean,
     val lines: List<ValidLine>,
+    val refundOfId: Uuid?,
 ) {
     /** The category a new merchant takes as its default: the expense's, or its largest split line's. */
     val defaultCategoryId: Uuid? get() = categoryId ?: lines.maxByOrNull { abs(it.amountMinor) }?.categoryId
@@ -264,7 +267,11 @@ private fun ExpenseInput.validated(): ValidExpense {
         split = split?.validatedWeights("split"),
         createsDebt = createsDebt,
         lines = validLines,
+        refundOfId = parseId(refundOfId, "refundOfId"),
     ).also {
+        if (it.refundOfId != null && it.amountMinor > 0) {
+            throw badRequest("invalid_refund", "A refund must be a negative amount", "amountMinor")
+        }
         if ((it.originalAmountMinor == null) != (it.originalCurrency == null)) {
             val field = if (it.originalAmountMinor == null) "originalAmountMinor" else "originalCurrency"
             throw badRequest("original_incomplete", "Give both the original amount and its currency, or neither", field)
@@ -272,8 +279,25 @@ private fun ExpenseInput.validated(): ValidExpense {
     }
 }
 
-/** Field-level errors for references the composite foreign keys would otherwise reject opaquely. */
-private fun ValidExpense.checkReferences(householdId: Uuid) {
+/**
+ * Field-level errors for references the composite foreign keys would otherwise reject opaquely, and the rules of
+ * refunds: the original is another, positive expense of the household that isn't a refund itself, and an expense with
+ * refunds can't become negative or a refund ([selfId] is the expense being updated).
+ */
+private fun ValidExpense.checkReferences(householdId: Uuid, selfId: Uuid? = null) {
+    if (refundOfId != null) {
+        val original = Expenses.select(Expenses.amountMinor, Expenses.refundOf)
+            .where { (Expenses.householdId eq householdId) and (Expenses.id eq refundOfId) }
+            .singleOrNull() ?: throw badRequest("invalid_refund", "Unknown expense to refund", "refundOfId")
+        if (refundOfId == selfId || original[Expenses.amountMinor] <= 0 || original[Expenses.refundOf] != null) {
+            throw badRequest("invalid_refund", "A refund must refer to another expense that is positive and isn't a refund itself", "refundOfId")
+        }
+    }
+    if (selfId != null && (refundOfId != null || amountMinor < 0) &&
+        !Expenses.select(Expenses.id).where { (Expenses.householdId eq householdId) and (Expenses.refundOf eq selfId) }.empty()
+    ) {
+        throw badRequest("has_refunds", "An expense that has refunds can't become a refund or negative", "amountMinor")
+    }
     val categoryIds = (listOfNotNull(categoryId) + lines.mapNotNull { it.categoryId }).distinct()
     if (categoryIds.isNotEmpty()) {
         val found = Categories.select(Categories.id)
@@ -309,6 +333,7 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[Expenses.originalAmountMinor] = input.originalAmountMinor
     this[Expenses.originalCurrency] = input.originalCurrency
     this[Expenses.createsDebt] = input.createsDebt
+    this[Expenses.refundOf] = input.refundOfId
 }
 
 /** Lines of the household's expenses (or just [expenseIds]), in order. Call inside a transaction. */
@@ -348,7 +373,8 @@ private fun writeExpenseLines(householdId: Uuid, expenseId: Uuid, lines: List<Va
 /** One expense as the API returns it. Call inside a transaction. */
 fun loadExpense(householdId: Uuid, id: Uuid): Expense {
     val lines = loadExpenseLines(householdId, listOf(id))[id].orEmpty()
-    return withMerchant().where { Expenses.id eq id }.single().toExpense(loadSplitBook(householdId, listOf(id)), lines)
+    val refunded = loadRefundedMinor(householdId, listOf(id))[id] ?: 0L
+    return withMerchant().where { Expenses.id eq id }.single().toExpense(loadSplitBook(householdId, listOf(id)), lines, refunded)
 }
 
 private fun match(householdId: Uuid, id: Uuid) = (Expenses.id eq id) and (Expenses.householdId eq householdId)
@@ -358,8 +384,8 @@ private fun exists(householdId: Uuid, id: Uuid) = !Expenses.selectAll().where { 
 private fun withMerchant() =
     Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id).selectAll()
 
-/** A row of [withMerchant]; [book] holds its split, if it has its own. */
-private fun ResultRow.toExpense(book: SplitBook, lines: List<ExpenseLine>) = Expense(
+/** A row of [withMerchant]; [book] holds its split, if it has its own, [refundedMinor] what its refunds returned. */
+private fun ResultRow.toExpense(book: SplitBook, lines: List<ExpenseLine>, refundedMinor: Long) = Expense(
     id = this[Expenses.id].toString(),
     date = this[Expenses.date],
     amountMinor = this[Expenses.amountMinor],
@@ -377,4 +403,6 @@ private fun ResultRow.toExpense(book: SplitBook, lines: List<ExpenseLine>) = Exp
     createsDebt = this[Expenses.createsDebt],
     debts = book.debtsFor(toExpenseFacts(lines)),
     lines = lines,
+    refundOfId = this[Expenses.refundOf]?.toString(),
+    refundedMinor = refundedMinor,
 )

@@ -30,6 +30,11 @@ data class ExpenseLineInput(
  * [paidByUserId] is whose expense it is; the account says who paid. When they don't match, [debts] says who owes whom
  * because of it, unless [createsDebt] is off. [split] overrides the household's split rules for this expense.
  * When split across categories, [lines] holds the parts (adding up to [amountMinor]) and [categoryId] is null.
+ *
+ * A refund is a negative expense with [refundOfId], the positive expense it reverses (which is never a refund
+ * itself). Reports count a refund in its original's month and category; lists keep it on its own [date]. The original
+ * carries [refundedMinor], what its refunds returned so far as a positive amount (0 for none), so the net is
+ * [amountMinor] less [refundedMinor].
  */
 @Serializable
 data class Expense(
@@ -50,6 +55,8 @@ data class Expense(
     val createsDebt: Boolean,
     val debts: List<Debt>,
     val lines: List<ExpenseLine>,
+    val refundOfId: String?,
+    val refundedMinor: Long,
 )
 
 /**
@@ -74,6 +81,11 @@ data class ExpenseInput(
     val createsDebt: Boolean = true,
     /** Non-empty: splits the expense across these lines (at least two, summing to [amountMinor]), clearing [categoryId]. */
     val lines: List<ExpenseLineInput> = emptyList(),
+    /**
+     * Makes this a refund of that expense: [amountMinor] must be negative and the original positive, in the household
+     * and not a refund itself. An expense that has refunds can't become negative or a refund.
+     */
+    val refundOfId: String? = null,
     /** On create only: bank rows this expense is made from, filed under it in the same transaction. */
     val bankRows: List<BankRowRef> = emptyList(),
 )

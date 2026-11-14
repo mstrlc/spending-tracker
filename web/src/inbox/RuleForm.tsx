@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
-import type { RuleDraft } from "./ruleDrafts";
+import { monthLabel, type RuleDraft } from "./ruleDrafts";
 
 const FIELDS = [
   "name",
@@ -25,8 +25,12 @@ const FIELDS = [
   "incomeSource",
   "otherAccountId",
   "skipReason",
+  "monthOffset",
   "priority",
 ];
+
+/** The months a deduction may be for, from the row's month: the usual advance is paid the month after it's for. */
+const OFFSETS = [1, 0, -1, -2, -3];
 
 /**
  * Creates a rule, starting from [draft] (a bank row's decision, say), or edits [rule]. Lives in a side sheet;
@@ -55,6 +59,7 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
   const [incomeSource, setIncomeSource] = useState(start.incomeSource ?? "");
   const [otherAccountId, setOtherAccountId] = useState(start.otherAccountId ?? "");
   const [skipReason, setSkipReason] = useState(start.skipReason ?? "");
+  const [monthOffset, setMonthOffset] = useState(start.monthOffset ?? -1);
   const [auto, setAuto] = useState(start.auto ?? false);
   const [priority, setPriority] = useState(String(start.priority ?? 0));
 
@@ -88,6 +93,7 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
       incomeSource,
       otherAccountId: otherAccountId || null,
       skipReason,
+      monthOffset,
       auto,
       priority: Number.parseInt(priority, 10) || 0,
       version: rule?.version,
@@ -164,6 +170,7 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
             <NativeSelect className="w-full" value={outcome} onChange={(e) => setOutcome(e.target.value as RuleOutcome)}>
               <NativeSelectOption value="expense">An expense</NativeSelectOption>
               <NativeSelectOption value="income">An income line</NativeSelectOption>
+              <NativeSelectOption value="deduction">A deduction from income</NativeSelectOption>
               <NativeSelectOption value="transfer">A transfer to or from another account</NativeSelectOption>
               <NativeSelectOption value="skip">Skipped</NativeSelectOption>
             </NativeSelect>
@@ -201,6 +208,33 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
               <Field label="Received by" name="personUserId" error={save.error}>
                 {person}
               </Field>
+            </>
+          )}
+          {outcome === "deduction" && (
+            <>
+              <Field label="Paid to" name="incomeSource" error={save.error}>
+                <Input
+                  placeholder="e.g. ZPMV, OSSZ; empty uses the counterparty's name"
+                  value={incomeSource}
+                  onChange={(e) => setIncomeSource(e.target.value)}
+                />
+              </Field>
+              <Field label="Whose" name="personUserId" error={save.error}>
+                {person}
+              </Field>
+              <Field label="It is for" name="monthOffset" error={save.error}>
+                <NativeSelect className="w-full" value={String(monthOffset)} onChange={(e) => setMonthOffset(Number(e.target.value))}>
+                  {[...new Set([...OFFSETS, monthOffset])].map((o) => (
+                    <NativeSelectOption key={o} value={String(o)}>
+                      {monthLabel(o).replace(/^For /, "").replace(/^./, (c) => c.toUpperCase())}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <p className="-mt-2 text-xs text-muted-foreground">
+                Money out becomes a deduction of that amount, arrived on the row's date and counted in the month it is for,
+                measured from the row's month. The advance paid in November for October is the previous month.
+              </p>
             </>
           )}
           {outcome === "transfer" && (

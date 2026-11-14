@@ -13,15 +13,18 @@ import { Kbd } from "@/components/ui/kbd";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { ExpenseForm } from "./ExpenseForm";
+import { spendingParts } from "./refunds";
 
-/** Splits a month's total into spending and investing (investment categories are not consumption). */
+/**
+ * Splits a month's total into spending and investing (investment categories are not consumption). Refunds count
+ * against their original, not on their own date (see `spendingParts`).
+ */
 export function expenseTotals(expenses: Expense[], categories: Category[]) {
   const investment = new Set(categories.filter((c) => c.kind === "investment").map((c) => c.id));
   let spent = 0;
   let invested = 0;
   for (const e of expenses) {
-    const parts = e.lines && e.lines.length > 0 ? e.lines : [{ categoryId: e.categoryId, amountMinor: e.amountMinor }];
-    for (const p of parts) {
+    for (const p of spendingParts(e)) {
       if (p.categoryId && investment.has(p.categoryId)) invested += p.amountMinor;
       else spent += p.amountMinor;
     }
@@ -31,14 +34,13 @@ export function expenseTotals(expenses: Expense[], categories: Category[]) {
 
 /**
  * The month's spending by top-level category (subcategories roll up into their parent), largest first.
- * Investing is left out and refunds net against their category.
+ * Investing is left out and refunds net against their original's category, in the original's month.
  */
 export function spendingByCategory(expenses: Expense[], categories: Category[]): Slice[] {
   const byId = new Map(categories.map((c) => [c.id, c]));
   const sums = new Map<string, number>();
   for (const e of expenses) {
-    const parts = e.lines && e.lines.length > 0 ? e.lines : [{ categoryId: e.categoryId, amountMinor: e.amountMinor }];
-    for (const p of parts) {
+    for (const p of spendingParts(e)) {
       const category = p.categoryId ? byId.get(p.categoryId) : undefined;
       if (category?.kind === "investment") continue;
       const top = category?.parentId ? byId.get(category.parentId) : category;
@@ -147,6 +149,20 @@ export function ExpensesPage() {
                         {e.merchant || "Untitled expense"}
                       </button>
                       {e.notes && <div className="text-xs text-muted-foreground">{e.notes}</div>}
+                      {e.refundOfId && (
+                        <div className="text-xs text-muted-foreground">
+                          {(() => {
+                            const original = rows.find((r) => r.id === e.refundOfId);
+                            return original ? `Refund of ${formatDay(original.date)}` : "Refund of an earlier expense";
+                          })()}
+                        </div>
+                      )}
+                      {e.refundedMinor > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          Refunded <span className="amount">{formatAmount(e.refundedMinor, household.currency)}</span> · net{" "}
+                          <span className="amount">{formatAmount(e.amountMinor - e.refundedMinor, household.currency)}</span>
+                        </div>
+                      )}
                       <div className="text-xs text-muted-foreground md:hidden">
                         {formatDay(e.date)} · {splitNames ?? category?.name ?? "Uncategorized"}
                       </div>
@@ -193,6 +209,7 @@ export function ExpensesPage() {
           expense={editor.mode === "edit" ? editor.expense : undefined}
           defaultDate={defaultDate}
           onSaved={(saved) => setFlashId(saved.id)}
+          onOpenExpense={(e) => setEditor({ mode: "edit", expense: e })}
           onDone={() => setEditor({ mode: "closed" })}
         />
       </Sheet>

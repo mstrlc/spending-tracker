@@ -24,6 +24,8 @@ import dev.spendingtracker.shared.api.ImportBankRow
 import dev.spendingtracker.shared.api.InboxRule
 import dev.spendingtracker.shared.api.InboxRuleInput
 import dev.spendingtracker.shared.api.Income
+import dev.spendingtracker.shared.api.IncomeInput
+import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.Invite
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.RuleDirection
@@ -523,5 +525,153 @@ class RulesTest {
         val kiosk = client.allRows(base).first { it.text == "Kiosk" }
         assertEquals(BankRowOutcome.SKIPPED, kiosk.outcome)
         assertTrue(kiosk.decidedAuto)
+    }
+
+    @Test
+    fun moneyInOffersTheExpensesItMayRefund() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.account(base, "Revolut")
+        val feed = client.feed(base, account.id, "Revolut · CZK")
+        suspend fun typed(date: LocalDate, amount: Long, merchant: String) =
+            client.post("$base/expenses") { setBody(ExpenseInput(date, amount, merchant)) }.body<Expense>()
+        val tooOld = typed(LocalDate(2026, 5, 1), 400_00, "Corner Bakery")
+        val older = typed(LocalDate(2026, 8, 20), 150_00, "Corner Bakery")
+        val newer = typed(LocalDate(2026, 9, 1), 200_00, "corner bakery")
+        val tooSmall = typed(LocalDate(2026, 9, 2), 40_00, "Corner Bakery")
+        val elsewhere = typed(LocalDate(2026, 9, 1), 500_00, "Pizza Place")
+        val laterThanTheRow = typed(LocalDate(2026, 9, 20), 300_00, "Corner Bakery")
+        // A refund already made doesn't make an original a candidate again, but shows what it has been refunded.
+        client.post("$base/expenses") { setBody(ExpenseInput(LocalDate(2026, 9, 5), -50_00, "Corner Bakery", refundOfId = newer.id)) }
+
+        client.upload(base, feed.id, line("Card Refund", 10, "Corner Bakery", "100.00"), card(11, "Corner Bakery", "-100.00"))
+        val rows = client.pending(base)
+        val refund = rows.first { it.text == "Corner Bakery" && it.amountMinor > 0 }.suggestion!!
+        assertEquals(SuggestedRecord.EXPENSE, refund.record)
+        assertEquals(-100_00, refund.amountMinor)
+        // Newest first within 120 days before the row, at least as large as the refund, and not refunds themselves.
+        assertEquals(listOf(newer.id, older.id), refund.refundCandidates.map { it.id })
+        assertEquals(listOf(50_00L, 0L), refund.refundCandidates.map { it.refundedMinor })
+        assertEquals("Corner Bakery", refund.refundCandidates.first().label)
+        assertEquals(setOf(tooOld.id, tooSmall.id, elsewhere.id, laterThanTheRow.id).intersect(refund.refundCandidates.map { it.id }.toSet()), emptySet())
+        // Money out refunds nothing.
+        assertEquals(emptyList(), rows.first { it.amountMinor < 0 }.suggestion!!.refundCandidates)
+    }
+
+    @Test
+    fun aRowAtTheSameMerchantKeyAsAnEarlierRowOffersItsExpense() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.account(base, "Revolut")
+        val feed = client.feed(base, account.id, "Revolut · CZK")
+        // The purchase was made from a bank row under a merchant name that differs from the descriptor.
+        client.upload(base, feed.id, card(2, "Shoe Store Brno", "-900.00"))
+        val purchase = client.pending(base).single()
+        val made = client.post("$base/expenses") {
+            setBody(ExpenseInput(purchase.date, 900_00, "Boots", bankRows = listOf(purchase.ref())))
+        }.body<Expense>()
+        client.upload(base, feed.id, line("Card Refund", 9, "Shoe Store Brno", "300.00"))
+        val suggestion = client.pending(base).single().suggestion!!
+        assertEquals(listOf(made.id), suggestion.refundCandidates.map { it.id })
+    }
+
+    @Test
+    fun aDeductionRuleSuggestsAPrefilledDeduction() = apiTest {
+        val client = newClient()
+        val me = client.signup()
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.account(base, "Revolut", owner = me.id)
+        val feed = client.feed(base, account.id, "Revolut · CZK")
+        val rule = client.rule(
+            base,
+            InboxRuleInput(name = "Health insurance", textContains = "zpmv", outcome = RuleOutcome.DEDUCTION, incomeSource = "ZPMV", personUserId = me.id),
+        )
+        assertEquals(-1, rule.monthOffset)
+        assertEquals("ZPMV", rule.incomeSource)
+        client.rule(base, InboxRuleInput(name = "Social", textContains = "ossz", outcome = RuleOutcome.DEDUCTION, incomeSource = "OSSZ", monthOffset = 0))
+        client.post("$base/inbox-rules") {
+            setBody(InboxRuleInput(name = "x", textContains = "x", outcome = RuleOutcome.DEDUCTION, monthOffset = 13))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_month_offset")
+        // The offset only means something to a deduction.
+        assertEquals(-1, client.rule(base, InboxRuleInput(name = "Y", textContains = "y", outcome = RuleOutcome.EXPENSE, monthOffset = 5)).monthOffset)
+
+        client.upload(base, feed.id, line("Transfer", 12, "ZPMV advance", "-2500.00"), line("Transfer", 13, "OSSZ advance", "-3200.00"))
+        val rows = client.pending(base)
+        val zpmv = rows.first { it.text == "ZPMV advance" }.suggestion!!
+        assertEquals(rule.id, zpmv.ruleId)
+        assertEquals(SuggestedRecord.INCOME, zpmv.record)
+        assertEquals(IncomeKind.DEDUCTION, zpmv.incomeKind)
+        // Money out is a positive deduction, for the month before the row's.
+        assertEquals(250_000, zpmv.amountMinor)
+        assertEquals("2026-08", zpmv.earnedMonth)
+        assertEquals("ZPMV", zpmv.incomeSource)
+        assertEquals(me.id, zpmv.paidByUserId)
+        assertEquals("2026-09", rows.first { it.text == "OSSZ advance" }.suggestion!!.earnedMonth)
+
+        // Nothing is filed without auto; the form's save is an ordinary deduction made from the row.
+        assertEquals(emptyList(), client.get("$base/income").body<List<Income>>())
+        val row = rows.first { it.text == "ZPMV advance" }
+        client.post("$base/income") {
+            setBody(
+                IncomeInput(
+                    row.date, zpmv.amountMinor!!, zpmv.incomeSource, account.id, zpmv.paidByUserId,
+                    earnedMonth = zpmv.earnedMonth, kind = zpmv.incomeKind, bankRows = listOf(row.ref()),
+                ),
+            )
+        }
+        assertEquals(BankRowOutcome.INCOME, client.allRows(base).first { it.id == row.id }.outcome)
+    }
+
+    @Test
+    fun anAutoDeductionRuleFilesADeductionOrLinksTheOneEnteredByHand() = apiTest {
+        val client = newClient()
+        val me = client.signup()
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.account(base, "Revolut")
+        val feed = client.feed(base, account.id, "Revolut · CZK")
+        client.rule(
+            base,
+            InboxRuleInput(name = "Health insurance", textContains = "zpmv", outcome = RuleOutcome.DEDUCTION, incomeSource = "ZPMV", personUserId = me.id, auto = true),
+        )
+        client.rule(base, InboxRuleInput(name = "Social", textContains = "ossz", outcome = RuleOutcome.DEDUCTION, incomeSource = "OSSZ", monthOffset = 0, auto = true))
+        // An earning of the same amount around the same day is not the deduction's twin; a hand-entered deduction is.
+        client.post("$base/income") { setBody(IncomeInput(LocalDate(2026, 10, 13), 3_200_00, "Client", account.id)) }
+        val typed = client.post("$base/income") {
+            setBody(IncomeInput(LocalDate(2026, 9, 14), 2_500_00, "ZPMV", account.id, earnedMonth = "2026-08", kind = IncomeKind.DEDUCTION))
+        }.body<Income>()
+
+        client.upload(
+            base, feed.id,
+            line("Transfer", 12, "ZPMV advance", "-2500.00"),
+            line("Transfer", 1, "ZPMV advance", "-2500.00"),
+            line("Transfer", 13, "OSSZ advance", "-3200.00"),
+        )
+        assertEquals(emptyList(), client.pending(base))
+
+        val income = client.get("$base/income").body<List<Income>>()
+        val deductions = income.filter { it.kind == IncomeKind.DEDUCTION }
+        // Three rows: one linked to the typed deduction, two made.
+        assertEquals(3, deductions.size)
+        val rows = client.allRows(base)
+        assertEquals(typed.id, rows.first { it.date == LocalDate(2026, 9, 12) }.incomeId)
+        assertTrue(rows.all { it.decidedAuto && it.ruleId != null })
+
+        val september = deductions.first { it.id == rows.first { r -> r.date == LocalDate(2026, 9, 13) }.incomeId }
+        assertEquals("OSSZ", september.source)
+        assertEquals(3_200_00, september.amountMinor)
+        assertEquals(LocalDate(2026, 9, 13), september.date)
+        // Offset 0: the row's own month. The account is the feed's.
+        assertEquals("2026-09", september.earnedMonth)
+        assertEquals(account.id, september.accountId)
+
+        val early = deductions.first { it.id == rows.first { r -> r.date == LocalDate(2026, 9, 1) }.incomeId }
+        assertEquals("ZPMV", early.source)
+        assertEquals(me.id, early.recipientUserId)
+        assertEquals("2026-08", early.earnedMonth)
+        assertEquals(2_500_00, early.amountMinor)
+
+        // Undoing a row that made a deduction deletes it; the hand-entered one stays.
+        client.post("$base/bank-rows/undo") { setBody(UndoBankRows(rows.map { it.ref() })) }
+        assertEquals(listOf(IncomeKind.EARNING, IncomeKind.DEDUCTION), client.get("$base/income").body<List<Income>>().map { it.kind }.sorted())
     }
 }

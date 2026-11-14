@@ -9,7 +9,7 @@ import dev.spendingtracker.server.income.dbValue
 import dev.spendingtracker.server.income.netIncomeMinor
 import dev.spendingtracker.server.db.AssetContributions
 import dev.spendingtracker.server.db.dbQuery
-import dev.spendingtracker.server.expense.loadExpenseLines
+import dev.spendingtracker.server.expense.loadSpendingParts
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.merchant.merchantNames
 import dev.spendingtracker.server.asset.Dated
@@ -33,7 +33,6 @@ import org.jetbrains.exposed.v1.core.min
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import kotlin.time.Clock
-import kotlin.uuid.Uuid
 
 /** Must be inside a HouseholdAccess scope. */
 fun Route.overviewRoutes() = route("/overview") {
@@ -63,31 +62,17 @@ fun Route.overviewRoutes() = route("/overview") {
         val (flows, firstMonth) = dbQuery {
             val merchants = merchantNames(householdId)
             val categories = Categories.selectAll().where { Categories.householdId eq householdId }.associateBy { it[Categories.id] }
-            val expenseRows = Expenses.selectAll()
-                .where { (Expenses.householdId eq householdId) and (Expenses.date.between(windowStart.firstDay, month.lastDay)) }
-                .orderBy(Expenses.date to SortOrder.DESC)
-                .toList()
-            val lines = loadExpenseLines(householdId, expenseRows.map { it[Expenses.id] })
-            val spends = expenseRows.flatMap { row ->
-                val date = row[Expenses.date]
-                val merchant = row[Expenses.merchantId]?.let(merchants::get).orEmpty()
-                val expenseLines = lines[row[Expenses.id]].orEmpty()
-                val parts = if (expenseLines.isEmpty()) {
-                    listOf(row[Expenses.categoryId] to row[Expenses.amountMinor])
-                } else {
-                    expenseLines.map { it.categoryId?.let(Uuid::parse) to it.amountMinor }
-                }
-                parts.map { (catId, amount) ->
-                    val category = catId?.let(categories::get)
-                    val top = category?.get(Categories.parentId)?.let(categories::get) ?: category
-                    Spend(
-                        date = date,
-                        amountMinor = amount,
-                        merchant = merchant,
-                        topCategoryId = top?.get(Categories.id),
-                        investment = top?.get(Categories.kind) == "investment",
-                    )
-                }
+            // Refunds are counted in their original's month and category (see loadSpendingParts).
+            val spends = loadSpendingParts(householdId, windowStart.firstDay, month.lastDay).map { part ->
+                val category = part.categoryId?.let(categories::get)
+                val top = category?.get(Categories.parentId)?.let(categories::get) ?: category
+                Spend(
+                    date = part.date,
+                    amountMinor = part.amountMinor,
+                    merchant = part.merchantId?.let(merchants::get).orEmpty(),
+                    topCategoryId = top?.get(Categories.id),
+                    investment = top?.get(Categories.kind) == "investment",
+                )
             }
             val earnings = Income.selectAll()
                 .where { (Income.householdId eq householdId) and (Income.earnedMonth.between(windowStart.firstDay, month.lastDay)) }

@@ -142,6 +142,14 @@ enum class SuggestedRecord {
  * A rule that matches the row ([ruleId], [ruleName]) takes precedence over the guess from past decisions: its record,
  * merchant, category, whose, income source and other account replace the guesses, and [skipReason] is set when the
  * rule skips. For income, [paidByUserId] is who receives it.
+ *
+ * A [RuleOutcome.DEDUCTION][dev.spendingtracker.shared.api.RuleOutcome.DEDUCTION] rule makes the record income with
+ * [incomeKind] [IncomeKind.DEDUCTION]: [amountMinor] is minus the row's amount (money out is a positive deduction) and
+ * [earnedMonth] (YYYY-MM) the row's month shifted by the rule's offset. Otherwise [incomeKind] is
+ * [IncomeKind.EARNING] and [earnedMonth] null.
+ *
+ * For money in, [refundCandidates] are the recent expenses the row may refund (same merchant key or merchant, past 120
+ * days, at least as large as the row), newest first, at most 5; the first is what "Refund of" is prefilled with.
  */
 @Serializable
 data class BankRowSuggestion(
@@ -159,6 +167,19 @@ data class BankRowSuggestion(
     val ruleId: String?,
     val ruleName: String?,
     val skipReason: String?,
+    val incomeKind: IncomeKind,
+    val earnedMonth: String?,
+    val refundCandidates: List<RefundCandidate>,
+)
+
+/** A recent expense a money-in row may refund; [amountMinor] is the original's, [refundedMinor] what its refunds already returned. */
+@Serializable
+data class RefundCandidate(
+    val id: String,
+    val date: LocalDate,
+    val amountMinor: Long,
+    val refundedMinor: Long,
+    val label: String,
 )
 
 /** A pending row that looks like the other side of a transfer; [amountMinor] is in the row's own [currency], money out negative. */

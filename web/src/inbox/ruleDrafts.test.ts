@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BankRow } from "../api/types";
-import { draftRule, ruleConditions } from "./ruleDrafts";
+import { draftRule, monthLabel, monthOffsetOf, ruleConditions } from "./ruleDrafts";
 
 const row = (r: Partial<BankRow>): BankRow => ({
   id: "r",
@@ -73,5 +73,25 @@ describe("rule drafts", () => {
         { account: "Revolut" },
       ),
     ).toEqual(["Merchant KAUFLAND CZ", "Text contains KAUFLAND", "Account Revolut", "Money out"]);
+  });
+
+  it("makes a deduction rule from a deduction, keeping how far its month is from the row's", () => {
+    const draft = draftRule(row({ text: "ZPMV advance", merchantKey: "ZPMV ADVANCE", outcome: "income" }), {
+      outcome: "deduction",
+      source: "ZPMV",
+      recipientUserId: "u1",
+      monthOffset: -1,
+    });
+    expect(draft).toMatchObject({ name: "ZPMV", outcome: "deduction", incomeSource: "ZPMV", personUserId: "u1", monthOffset: -1, direction: "out" });
+  });
+
+  it("counts months between a row's date and the month a deduction is for", () => {
+    expect(monthOffsetOf("2026-09-12", "2026-08")).toBe(-1);
+    expect(monthOffsetOf("2026-09-12", "2026-09")).toBe(0);
+    expect(monthOffsetOf("2026-01-05", "2025-11")).toBe(-2);
+    expect(monthOffsetOf("2026-12-31", "2027-01")).toBe(1);
+    expect(monthLabel(-1)).toBe("For the previous month");
+    expect(monthLabel(0)).toBe("For the same month");
+    expect(monthLabel(-3)).toBe("For 3 months before");
   });
 });

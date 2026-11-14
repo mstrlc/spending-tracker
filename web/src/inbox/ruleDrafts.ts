@@ -4,6 +4,7 @@ import type { BankRow, InboxRule, InboxRuleInput, RuleOutcome } from "../api/typ
 export type RuleDecision =
   | { outcome: "expense"; merchant: string; categoryId: string | null; paidByUserId: string | null }
   | { outcome: "income"; source: string; recipientUserId: string | null }
+  | { outcome: "deduction"; source: string; recipientUserId: string | null; monthOffset: number }
   | { outcome: "transfer"; otherAccountId: string | null }
   | { outcome: "skip"; reason: string };
 
@@ -12,7 +13,8 @@ export type RuleDraft = Partial<InboxRuleInput>;
 
 /** A readable name for the rule: the merchant or source it files under, else what the row says. */
 function nameFor(row: BankRow, decision: RuleDecision | null): string {
-  const named = decision?.outcome === "expense" ? decision.merchant : decision?.outcome === "income" ? decision.source : "";
+  const named =
+    decision?.outcome === "expense" ? decision.merchant : decision?.outcome === "income" || decision?.outcome === "deduction" ? decision.source : "";
   return (named || row.text || row.counterpartyName || row.counterpartyAccount || "New rule").trim();
 }
 
@@ -40,11 +42,28 @@ export function draftRule(row: BankRow, decision: RuleDecision | null): RuleDraf
       return { ...draft, outcome, merchant: decision.merchant, categoryId: decision.categoryId, personUserId: decision.paidByUserId };
     case "income":
       return { ...draft, outcome, incomeSource: decision.source, personUserId: decision.recipientUserId };
+    case "deduction":
+      return { ...draft, outcome, incomeSource: decision.source, personUserId: decision.recipientUserId, monthOffset: decision.monthOffset };
     case "transfer":
       return { ...draft, outcome, otherAccountId: decision.otherAccountId };
     case "skip":
       return { ...draft, outcome, skipReason: decision.reason };
   }
+}
+
+/** How many months [earnedMonth] (YYYY-MM) is from the month of [date] (YYYY-MM-DD): -1 for the month before. */
+export function monthOffsetOf(date: string, earnedMonth: string): number {
+  const [y, m] = date.split("-").map(Number);
+  const [ey, em] = earnedMonth.split("-").map(Number);
+  return (ey - y) * 12 + (em - m);
+}
+
+/** What a deduction rule's month offset says, in a phrase: "For the previous month". */
+export function monthLabel(offset: number): string {
+  if (offset === 0) return "For the same month";
+  if (offset === -1) return "For the previous month";
+  if (offset === 1) return "For the next month";
+  return offset < 0 ? `For ${-offset} months before` : `For ${offset} months after`;
 }
 
 /** The conditions a rule sets, one short phrase each, for listing it. */

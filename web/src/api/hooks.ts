@@ -521,6 +521,20 @@ export function useExpenses(householdId: string, from: string, to: string) {
   });
 }
 
+/** The expenses at one merchant, newest first (what a refund picks its original from); idle without a merchant. */
+export function useMerchantExpenses(householdId: string, merchantId: string | undefined) {
+  return useQuery({
+    queryKey: [...keys.expenses(householdId), "merchant", merchantId] as const,
+    enabled: merchantId !== undefined,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/expenses", {
+          params: { path: { householdId }, query: { merchantId } },
+        }),
+      ),
+  });
+}
+
 export function useSaveExpense(householdId: string) {
   const qc = useQueryClient();
   return useMutation({
