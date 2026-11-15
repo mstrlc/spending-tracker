@@ -60,8 +60,8 @@ enum class ValueSource {
  * - Contributions: negative is money borrowed (the balance owed goes up), positive is a repayment of principal.
  *   Interest and fees use [Fee] (already in the balance the lender reports, like hand-valued assets).
  * - [gainMinor] is always `0` for a liability.
- * - Note: repayments from a bank account are transfers today; creating a contribution from a transfer is not yet
- *   wired up.
+ * - Transfers touching a liability's linked [accountId] automatically create and keep in sync a contribution
+ *   (positive for repayments into the liability's account, negative for borrowing out of it).
  */
 @Serializable
 data class Asset(
@@ -171,6 +171,8 @@ data class Contribution(
     val originalCurrency: String?,
     val quantity: Double?,
     val accountId: String?,
+    /** Set when this contribution was created from a transfer; edit or delete the transfer instead. */
+    val transferId: String?,
     val notes: String,
     val version: Int,
 )

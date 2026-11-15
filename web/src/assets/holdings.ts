@@ -26,6 +26,21 @@ export const isTrackableKind = (kind: AssetKind) => KINDS.find((k) => k.value ==
 
 export const kindLabel = (kind: AssetKind) => KINDS.find((k) => k.value === kind)?.label ?? kind;
 
+/** Describes the liability affected when a transfer moves money into or out of its linked account. */
+export function transferLiabilityLabel(
+  assets: Asset[],
+  fromAccountId?: string | null,
+  toAccountId?: string | null,
+): string | null {
+  if (!fromAccountId && !toAccountId) return null;
+  const liabilities = assets.filter((a) => isLiabilityKind(a.kind) && a.accountId);
+  const repaid = toAccountId ? liabilities.find((a) => a.accountId === toAccountId) : undefined;
+  if (repaid) return `Repays ${repaid.name}`;
+  const borrowed = fromAccountId ? liabilities.find((a) => a.accountId === fromAccountId) : undefined;
+  if (borrowed) return `Borrows from ${borrowed.name}`;
+  return null;
+}
+
 export type Totals = { contributedMinor: number; valueMinor: number; gainMinor: number; feesMinor: number };
 
 /** Owned holdings added up: what went in, what they're worth and the gain. */

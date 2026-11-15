@@ -26,6 +26,7 @@ function renderForm(
     "GET /api/auth/me": () => Response.json({ id: "u1", email: "a@example.com", displayName: "Alice" }),
     "GET /api/households": () => Response.json([{ id: "h1", name: "Home", currency: "CZK", role: "owner" }]),
     "GET /api/households/h1/accounts": () => Response.json(accounts),
+    "GET /api/households/h1/assets": () => Response.json([]),
     "GET /api/households/h1/bank-feeds": () => Response.json([]),
     ...extraRoutes,
   });
@@ -148,4 +149,44 @@ test("locks bank-row fields on a one-row transfer and allows editing the unread 
   expect((screen.getByLabelText("From") as HTMLSelectElement).disabled).toBe(true);
   expect((screen.getByLabelText("To") as HTMLSelectElement).disabled).toBe(false);
   expect((screen.getByLabelText("Notes") as HTMLInputElement).disabled).toBe(false);
+});
+
+test("shows Repays <liability> when transferring into a liability account", async () => {
+  renderForm(
+    {},
+    {
+      "GET /api/households/h1/assets": () =>
+        Response.json([
+          {
+            id: "l1",
+            name: "Car loan",
+            kind: "loan",
+            ownerUserId: null,
+            notes: "",
+            version: 1,
+            security: null,
+            shares: null,
+            marketValued: false,
+            accountId: "a2",
+            valueSource: "cost",
+            contributedMinor: 0,
+            repaidMinor: 0,
+            borrowedMinor: 0,
+            valueMinor: 0,
+            valuedOn: null,
+            gainMinor: 0,
+            annualReturn: null,
+            firstContributedOn: null,
+            feesMinor: 0,
+            bankAvailableOnly: false,
+          },
+        ]),
+    },
+  );
+
+  await screen.findAllByRole("option", { name: "Cash" });
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "a1" } });
+  fireEvent.change(screen.getByLabelText("To"), { target: { value: "a2" } });
+
+  expect(await screen.findByText("Repays Car loan")).toBeTruthy();
 });

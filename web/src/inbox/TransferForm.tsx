@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
-import { useAccounts, useDecideBankRows, useDeleteTransfer, useSaveTransfer } from "../api/hooks";
+import { useAccounts, useAssets, useDecideBankRows, useDeleteTransfer, useSaveTransfer } from "../api/hooks";
+import { transferLiabilityLabel } from "../assets/holdings";
 import type { Account, BankRow, Transfer } from "../api/types";
 import { useConfirm } from "../dialogs";
 import { formatDay, todayIso } from "../lib/dates";
@@ -55,12 +56,18 @@ function BankRowTransferForm({
 }) {
   const household = useHousehold();
   const accounts = useAccounts(household.id).data ?? [];
+  const assets = useAssets(household.id).data ?? [];
   const decide = useDecideBankRows(household.id);
   const options = accounts.filter((a) => a.status === "active" && a.id !== row.accountId);
   const [accountId, setAccountId] = useState(options.some((a) => a.id === otherAccountId) ? (otherAccountId ?? "") : "");
   const [notes, setNotes] = useState("");
   const outgoing = row.amountMinor < 0;
   const own = accounts.find((a) => a.id === row.accountId)?.name ?? "this account";
+  const liabilityLabel = transferLiabilityLabel(
+    assets,
+    outgoing ? row.accountId : accountId,
+    outgoing ? accountId : row.accountId,
+  );
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -108,6 +115,7 @@ function BankRowTransferForm({
         <Field label="Notes" name="notes" error={decide.error}>
           <Input value={notes} placeholder="e.g. Monthly savings" onChange={(e) => setNotes(e.target.value)} />
         </Field>
+        {liabilityLabel && <p className="text-xs font-medium text-foreground">{liabilityLabel}</p>}
         <p className="text-xs text-muted-foreground">
           Money between your own accounts isn't spending or income. If the other account has its own feed, pair the two
           rows instead.
@@ -131,6 +139,7 @@ function ManualTransferForm({
 }) {
   const household = useHousehold();
   const accounts = useAccounts(household.id).data ?? [];
+  const assets = useAssets(household.id).data ?? [];
   const save = useSaveTransfer(household.id);
   const remove = useDeleteTransfer(household.id);
   const confirm = useConfirm();
@@ -156,6 +165,7 @@ function ManualTransferForm({
   const fromBankRows = rowCount > 0;
   const fromLocked = rowCount >= 2 || (rowCount === 1 && transfer!.bankAccountIds.includes(transfer!.fromAccountId));
   const toLocked = rowCount >= 2 || (rowCount === 1 && transfer!.bankAccountIds.includes(transfer!.toAccountId));
+  const liabilityLabel = transferLiabilityLabel(assets, fromAccountId, toAccountId);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -278,6 +288,7 @@ function ManualTransferForm({
             onChange={(e) => setNotes(e.target.value)}
           />
         </Field>
+        {liabilityLabel && <p className="text-xs font-medium text-foreground">{liabilityLabel}</p>}
         <p className="text-xs text-muted-foreground">
           {rowCount >= 2
             ? "Date, amount and accounts come from the paired bank rows; only notes can change."

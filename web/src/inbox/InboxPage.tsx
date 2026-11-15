@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useAccounts, useBankConnections, useBankFeeds, useBankRows, useCategories, useDecideBankRows, useInboxRules, useMembers } from "../api/hooks";
+import { useAccounts, useAssets, useBankConnections, useBankFeeds, useBankRows, useCategories, useDecideBankRows, useInboxRules, useMembers } from "../api/hooks";
+import { transferLiabilityLabel } from "../assets/holdings";
 import type { BankRow, BankRowRef, DuplicateCandidate, TransferCandidate } from "../api/types";
 import { formatDay, formatMonth } from "../lib/dates";
 import { formatMoney } from "../lib/money";
@@ -48,6 +49,7 @@ export function InboxPage() {
   const connections = useBankConnections(household.id);
   const rows = useBankRows(household.id, tab);
   const accounts = useAccounts(household.id).data ?? [];
+  const assets = useAssets(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
   const categories = useCategories(household.id).data ?? [];
   const rules = useInboxRules(household.id).data ?? [];
@@ -317,8 +319,15 @@ export function InboxPage() {
                     : row.outcome === "expense" && row.amountMinor > 0
                       ? "refund"
                       : row.outcome;
-                const otherAccount =
-                  accountName(best?.accountId ?? s?.transferAccountId ?? "") || "another account";
+                const otherAccountId = best?.accountId ?? s?.transferAccountId ?? null;
+                const otherAccount = accountName(otherAccountId ?? "") || "another account";
+                const liabilityLabel = isTransfer
+                  ? transferLiabilityLabel(
+                      assets,
+                      row.amountMinor < 0 ? row.accountId : otherAccountId,
+                      row.amountMinor < 0 ? otherAccountId : row.accountId,
+                    )
+                  : null;
                 // What the row probably is (or became), in its own column on a wide table, under the row on a narrow one.
                 const became = (
                   <>
@@ -338,7 +347,7 @@ export function InboxPage() {
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                           {s.skipReason != null || isTransfer ? (
-                            "Not spending or income"
+                            liabilityLabel ?? "Not spending or income"
                           ) : isExpense ? (
                             <>
                               <CategoryLabel categories={categories} id={s.categoryId} short />
