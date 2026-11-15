@@ -674,4 +674,80 @@ class RulesTest {
         client.post("$base/bank-rows/undo") { setBody(UndoBankRows(rows.map { it.ref() })) }
         assertEquals(listOf(IncomeKind.EARNING, IncomeKind.DEDUCTION), client.get("$base/income").body<List<Income>>().map { it.kind }.sorted())
     }
+
+    @Test
+    fun aSettlementRuleSuggestsAndAutoFilesASettlement() = apiTest {
+        val client = newClient()
+        val alice = client.signup("alice@example.com", "Alice")
+        val base = "/api/households/${client.createHousehold().id}"
+        val bob = client.post("$base/members") { setBody(dev.spendingtracker.shared.api.MemberInput("Bob")) }.body<dev.spendingtracker.shared.api.Member>()
+        val account = client.account(base, "Alice")
+        val bobAccount = client.account(base, "Bob")
+        val feed = client.feed(base, account.id, "Alice · CZK")
+        val bobFeed = client.feed(base, bobAccount.id, "Bob · CZK")
+
+        // Validation: requires both members and different members.
+        client.post("$base/inbox-rules") {
+            setBody(InboxRuleInput(name = "Bad", textContains = "repay", outcome = RuleOutcome.SETTLEMENT))
+        }.assertError(HttpStatusCode.BadRequest, "required")
+        client.post("$base/inbox-rules") {
+            setBody(InboxRuleInput(name = "Same", textContains = "repay", outcome = RuleOutcome.SETTLEMENT, settleFromUserId = alice.id, settleToUserId = alice.id))
+        }.assertError(HttpStatusCode.BadRequest, "same_member")
+
+        // Non-auto rule shapes the suggestion.
+        val rule = client.rule(
+            base,
+            InboxRuleInput(
+                name = "Monthly repay",
+                textContains = "repay",
+                outcome = RuleOutcome.SETTLEMENT,
+                settleFromUserId = alice.id,
+                settleToUserId = bob.userId,
+            ),
+        )
+        assertEquals(alice.id, rule.settleFromUserId)
+        assertEquals(bob.userId, rule.settleToUserId)
+
+        client.upload(base, feed.id, line("Transfer", 10, "Repay Bob", "-1500.00"))
+        val pendingRow = client.pending(base).single()
+        val s = pendingRow.suggestion!!
+        assertEquals(rule.id, s.ruleId)
+        assertEquals(SuggestedRecord.SETTLEMENT, s.record)
+        assertEquals(alice.id, s.settleFromUserId)
+        assertEquals(bob.userId, s.settleToUserId)
+        assertEquals(150_000L, s.amountMinor)
+        assertEquals(emptyList(), client.get("$base/settlements").body<List<dev.spendingtracker.shared.api.Settlement>>())
+
+        // Turning auto on and applying rules pairs the matching row with the other side into one settlement.
+        client.put("$base/inbox-rules/${rule.id}") {
+            setBody(
+                InboxRuleInput(
+                    name = "Monthly repay",
+                    textContains = "repay",
+                    outcome = RuleOutcome.SETTLEMENT,
+                    settleFromUserId = alice.id,
+                    settleToUserId = bob.userId,
+                    auto = true,
+                    version = rule.version,
+                ),
+            )
+        }
+        client.upload(base, bobFeed.id, line("Transfer", 10, "From Alice", "1500.00"))
+        client.post("$base/bank-rows/apply-rules")
+        assertEquals(emptyList(), client.pending(base))
+        val settlements = client.get("$base/settlements").body<List<dev.spendingtracker.shared.api.Settlement>>()
+        assertEquals(1, settlements.size)
+        val settled = settlements.single()
+        assertEquals(alice.id, settled.fromUserId)
+        assertEquals(bob.userId, settled.toUserId)
+        assertEquals(150_000L, settled.amountMinor)
+
+        val rows = client.allRows(base)
+        assertEquals(2, rows.size)
+        assertTrue(rows.all { it.outcome == BankRowOutcome.SETTLEMENT && it.settlementId == settled.id && it.decidedAuto })
+
+        // Undoing both rows deletes the settlement.
+        client.post("$base/bank-rows/undo") { setBody(UndoBankRows(rows.map { it.ref() })) }
+        assertEquals(emptyList(), client.get("$base/settlements").body<List<dev.spendingtracker.shared.api.Settlement>>())
+    }
 }

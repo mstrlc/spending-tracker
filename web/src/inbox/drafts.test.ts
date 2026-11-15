@@ -14,6 +14,8 @@ const suggestion = (s: Partial<BankRowSuggestion>): BankRowSuggestion => ({
   duplicates: [],
   transferCandidates: [],
   transferAccountId: null,
+  settleFromUserId: null,
+  settleToUserId: null,
   ruleId: null,
   ruleName: null,
   skipReason: null,
@@ -171,5 +173,19 @@ describe("bank row drafts", () => {
       fromUserId: "u1",
       toUserId: null,
     });
+    // A single row with a settlement suggestion prefills both members even without counterparty text.
+    expect(
+      draftSettle(
+        [
+          row({
+            amountMinor: -20_000,
+            accountId: "jana",
+            suggestion: suggestion({ record: "settlement", amountMinor: 20_000, settleFromUserId: "u1", settleToUserId: "u2" }),
+          }),
+        ],
+        owner,
+        members,
+      ),
+    ).toEqual({ fromUserId: "u1", toUserId: "u2", amountMinor: 20_000 });
   });
 });

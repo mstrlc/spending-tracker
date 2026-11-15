@@ -446,6 +446,8 @@ object InboxRules : Table("inbox_rules") {
     val personUserId = uuid("person_user_id").nullable()
     val incomeSource = text("income_source")
     val otherAccountId = uuid("other_account_id").nullable()
+    val settleFromUserId = uuid("settle_from_user_id").nullable()
+    val settleToUserId = uuid("settle_to_user_id").nullable()
     val skipReason = text("skip_reason")
     val monthOffset = integer("month_offset").default(-1)
     val auto = bool("auto").default(false)

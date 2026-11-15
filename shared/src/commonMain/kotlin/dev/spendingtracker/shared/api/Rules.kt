@@ -10,6 +10,7 @@ enum class RuleOutcome {
     @SerialName("income") INCOME,
     @SerialName("deduction") DEDUCTION,
     @SerialName("transfer") TRANSFER,
+    @SerialName("settlement") SETTLEMENT,
     @SerialName("skip") SKIP,
 }
 
@@ -50,6 +51,8 @@ data class InboxRule(
     val personUserId: String?,
     val incomeSource: String,
     val otherAccountId: String?,
+    val settleFromUserId: String?,
+    val settleToUserId: String?,
     val skipReason: String,
     val monthOffset: Int,
     val auto: Boolean,
@@ -74,6 +77,8 @@ data class InboxRuleInput(
     val personUserId: String? = null,
     val incomeSource: String = "",
     val otherAccountId: String? = null,
+    val settleFromUserId: String? = null,
+    val settleToUserId: String? = null,
     val skipReason: String = "",
     val monthOffset: Int = -1,
     val auto: Boolean = false,

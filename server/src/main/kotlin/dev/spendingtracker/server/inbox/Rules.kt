@@ -29,6 +29,8 @@ class RuleDef(
     val personUserId: Uuid?,
     val incomeSource: String,
     val otherAccountId: Uuid?,
+    val settleFromUserId: Uuid?,
+    val settleToUserId: Uuid?,
     val skipReason: String,
     /** For a deduction: the months from the row's month to the month it is for. */
     val monthOffset: Int,
@@ -92,6 +94,8 @@ fun ResultRow.toRuleDef() = RuleDef(
     personUserId = this[InboxRules.personUserId],
     incomeSource = this[InboxRules.incomeSource],
     otherAccountId = this[InboxRules.otherAccountId],
+    settleFromUserId = this[InboxRules.settleFromUserId],
+    settleToUserId = this[InboxRules.settleToUserId],
     skipReason = this[InboxRules.skipReason],
     monthOffset = this[InboxRules.monthOffset],
     auto = this[InboxRules.auto],

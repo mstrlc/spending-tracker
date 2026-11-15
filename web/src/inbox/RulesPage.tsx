@@ -77,6 +77,8 @@ export function RulesPage() {
         return [rule.incomeSource, memberName(rule.personUserId), monthLabel(rule.monthOffset)].filter(Boolean).join(" · ");
       case "transfer":
         return `With ${accountName(rule.otherAccountId) || "another account"}`;
+      case "settlement":
+        return [memberName(rule.settleFromUserId), memberName(rule.settleToUserId)].filter(Boolean).join(" → ");
       case "skip":
         return rule.skipReason;
     }

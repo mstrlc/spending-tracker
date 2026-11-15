@@ -520,4 +520,185 @@ class InboxTest {
         client.post("$base/bank-rows/undo") { setBody(UndoBankRows(listOf(decided.ref()))) }
         assertEquals(emptyList(), client.get("$base/income").body<List<Income>>())
     }
+
+    @Test
+    fun suggestsSettlementsBetweenMembers() = apiTest {
+        val client = newClient()
+        val alice = client.signup("alice@example.com", "Alice")
+        val base = "/api/households/${client.createHousehold().id}"
+        val bob = client.post("$base/members") {
+            setBody(MemberInput("Bob", legalName = "Robert Novak"))
+        }.body<Member>()
+
+        val aliceIban = dev.spendingtracker.server.inbox.CzechAccount("19", "2000145399", "0800").iban
+        val alice2Iban = dev.spendingtracker.server.inbox.CzechAccount("", "1265098001", "5500").iban
+        val bobIban = dev.spendingtracker.server.inbox.CzechAccount("", "1234567890", "0800").iban
+        val jointIban = dev.spendingtracker.server.inbox.CzechAccount("", "9876543210", "0800").iban
+
+        val aliceAcc = client.post("$base/accounts") { setBody(AccountInput("Alice", kind = AccountKind.BANK, ownerUserId = alice.id, iban = aliceIban)) }.body<Account>()
+        val alice2Acc = client.post("$base/accounts") { setBody(AccountInput("Alice 2", kind = AccountKind.BANK, ownerUserId = alice.id, iban = alice2Iban)) }.body<Account>()
+        val bobAcc = client.post("$base/accounts") { setBody(AccountInput("Bob", kind = AccountKind.BANK, ownerUserId = bob.userId, iban = bobIban)) }.body<Account>()
+        val jointAcc = client.post("$base/accounts") { setBody(AccountInput("Joint", kind = AccountKind.BANK, ownerUserId = null, iban = jointIban)) }.body<Account>()
+
+        val aliceFeed = client.feed(base, BankFeedInput(aliceAcc.id, "Alice", BankInstitution.OTHER, currency = "CZK"))
+        val alice2Feed = client.feed(base, BankFeedInput(alice2Acc.id, "Alice 2", BankInstitution.OTHER, currency = "CZK"))
+        val bobFeed = client.feed(base, BankFeedInput(bobAcc.id, "Bob", BankInstitution.OTHER, currency = "CZK"))
+        val jointFeed = client.feed(base, BankFeedInput(jointAcc.id, "Joint", BankInstitution.OTHER, currency = "CZK"))
+
+        // Create a joint expense paid by Bob so Alice owes Bob (used to rank ties).
+        val food = client.post("$base/categories") { setBody(dev.spendingtracker.shared.api.CategoryInput("Food")) }.body<dev.spendingtracker.shared.api.Category>()
+        client.post("$base/expenses") {
+            setBody(ExpenseInput(LocalDate(2026, 9, 1), 100_000, "Groceries", food.id, bobAcc.id, paidByUserId = null))
+        }
+
+        // 1. Counterparty IBAN both ways (no paired row): Alice -> Bob, and Bob -> Alice.
+        // 2. Name hint via legalName ("NOVAK ROBERT"): Alice -> Bob.
+        // 3. Personal -> Joint IBAN: Transfer, not settlement.
+        // 4. Personal -> same person's IBAN: Transfer, not settlement.
+        val aliceGc = """
+            {
+              "transactions": {
+                "booked": [
+                  {
+                    "transactionId": "iban-out",
+                    "bookingDate": "2026-09-10",
+                    "transactionAmount": { "amount": "-200.00", "currency": "CZK" },
+                    "creditorAccount": { "iban": "$bobIban" },
+                    "remittanceInformationUnstructured": "To Bob IBAN"
+                  },
+                  {
+                    "transactionId": "iban-in",
+                    "bookingDate": "2026-09-10",
+                    "transactionAmount": { "amount": "150.00", "currency": "CZK" },
+                    "debtorAccount": { "iban": "$bobIban" },
+                    "remittanceInformationUnstructured": "From Bob IBAN"
+                  },
+                  {
+                    "transactionId": "hint-out",
+                    "bookingDate": "2026-09-10",
+                    "transactionAmount": { "amount": "-300.00", "currency": "CZK" },
+                    "creditorName": "NOVAK ROBERT",
+                    "remittanceInformationUnstructured": "Rent"
+                  },
+                  {
+                    "transactionId": "to-joint",
+                    "bookingDate": "2026-09-10",
+                    "transactionAmount": { "amount": "-400.00", "currency": "CZK" },
+                    "creditorAccount": { "iban": "$jointIban" },
+                    "remittanceInformationUnstructured": "Top-up joint"
+                  },
+                  {
+                    "transactionId": "to-self",
+                    "bookingDate": "2026-09-10",
+                    "transactionAmount": { "amount": "-500.00", "currency": "CZK" },
+                    "creditorAccount": { "iban": "$alice2Iban" },
+                    "remittanceInformationUnstructured": "Own transfer"
+                  },
+                  {
+                    "transactionId": "pair-out",
+                    "bookingDate": "2026-09-12",
+                    "transactionAmount": { "amount": "-777.00", "currency": "CZK" },
+                    "remittanceInformationUnstructured": "Pair out"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+        client.post("$base/bank-feeds/${aliceFeed.id}/statements") { setBody(StatementUpload(aliceGc, "alice.json")) }
+
+        // Paired rows on Bob's feed and Alice's second feed for 777.00 on 2026-09-12:
+        // Bob's row should rank ahead of Alice 2's row because Alice owes Bob.
+        val bobGc = """
+            {
+              "transactions": {
+                "booked": [
+                  {
+                    "transactionId": "bob-pair-in",
+                    "bookingDate": "2026-09-12",
+                    "transactionAmount": { "amount": "777.00", "currency": "CZK" },
+                    "remittanceInformationUnstructured": "Pair in Bob"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+        val alice2Gc = """
+            {
+              "transactions": {
+                "booked": [
+                  {
+                    "transactionId": "alice2-pair-in",
+                    "bookingDate": "2026-09-12",
+                    "transactionAmount": { "amount": "777.00", "currency": "CZK" },
+                    "remittanceInformationUnstructured": "Pair in Alice 2"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+        val jointGc = """
+            {
+              "transactions": {
+                "booked": [
+                  {
+                    "transactionId": "joint-from-alice",
+                    "bookingDate": "2026-09-11",
+                    "transactionAmount": { "amount": "600.00", "currency": "CZK" },
+                    "debtorAccount": { "iban": "$aliceIban" },
+                    "remittanceInformationUnstructured": "Joint in"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+        client.post("$base/bank-feeds/${bobFeed.id}/statements") { setBody(StatementUpload(bobGc, "bob.json")) }
+        client.post("$base/bank-feeds/${alice2Feed.id}/statements") { setBody(StatementUpload(alice2Gc, "alice2.json")) }
+        client.post("$base/bank-feeds/${jointFeed.id}/statements") { setBody(StatementUpload(jointGc, "joint.json")) }
+
+        val pending = client.pending(base)
+        fun byText(t: String) = pending.first { it.text == t || it.message == t }
+
+        val ibanOut = byText("To Bob IBAN").suggestion!!
+        assertEquals(SuggestedRecord.SETTLEMENT, ibanOut.record)
+        assertEquals(alice.id, ibanOut.settleFromUserId)
+        assertEquals(bob.userId, ibanOut.settleToUserId)
+        assertEquals(200_00L, ibanOut.amountMinor)
+
+        val ibanIn = byText("From Bob IBAN").suggestion!!
+        assertEquals(SuggestedRecord.SETTLEMENT, ibanIn.record)
+        assertEquals(bob.userId, ibanIn.settleFromUserId)
+        assertEquals(alice.id, ibanIn.settleToUserId)
+        assertEquals(150_00L, ibanIn.amountMinor)
+
+        val hintOut = byText("Rent").suggestion!!
+        assertEquals(SuggestedRecord.SETTLEMENT, hintOut.record)
+        assertEquals(alice.id, hintOut.settleFromUserId)
+        assertEquals(bob.userId, hintOut.settleToUserId)
+
+        val toJoint = byText("Top-up joint").suggestion!!
+        assertEquals(SuggestedRecord.TRANSFER, toJoint.record)
+        assertNull(toJoint.settleFromUserId)
+        assertNull(toJoint.settleToUserId)
+
+        val toSelf = byText("Own transfer").suggestion!!
+        assertEquals(SuggestedRecord.TRANSFER, toSelf.record)
+        assertNull(toSelf.settleFromUserId)
+        assertNull(toSelf.settleToUserId)
+
+        val jointIn = byText("Joint in").suggestion!!
+        assertEquals(SuggestedRecord.TRANSFER, jointIn.record)
+        assertNull(jointIn.settleFromUserId)
+
+        val pairOut = byText("Pair out").suggestion!!
+        assertEquals(SuggestedRecord.SETTLEMENT, pairOut.record)
+        assertEquals(alice.id, pairOut.settleFromUserId)
+        assertEquals(bob.userId, pairOut.settleToUserId)
+        assertEquals(bobAcc.id, pairOut.transferCandidates.first().accountId)
+
+        val bobPairIn = byText("Pair in Bob").suggestion!!
+        assertEquals(SuggestedRecord.SETTLEMENT, bobPairIn.record)
+        assertEquals(alice.id, bobPairIn.settleFromUserId)
+        assertEquals(bob.userId, bobPairIn.settleToUserId)
+        assertEquals(aliceAcc.id, bobPairIn.transferCandidates.first().accountId)
+    }
 }

@@ -5,12 +5,20 @@ import dev.spendingtracker.server.db.BankFeeds
 import dev.spendingtracker.server.db.BankRows
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.FxRates
+import dev.spendingtracker.server.db.HouseholdMembers
 import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.db.Merchants
+import dev.spendingtracker.server.db.Settlements
+import dev.spendingtracker.server.db.Users
+import dev.spendingtracker.server.debt.loadSplitBook
+import dev.spendingtracker.server.debt.netBalances
+import dev.spendingtracker.server.debt.toExpenseFacts
+import dev.spendingtracker.server.expense.loadExpenseLines
 import dev.spendingtracker.server.expense.loadRefundedMinor
 import dev.spendingtracker.server.income.dbValue
 import dev.spendingtracker.server.income.loadDeductedMinor
 import dev.spendingtracker.shared.api.BankRowSuggestion
+import dev.spendingtracker.shared.api.Debt
 import dev.spendingtracker.shared.api.DuplicateCandidate
 import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.RefundCandidate
@@ -91,6 +99,16 @@ fun suggestFor(
     val merchants = Merchants.selectAll().where { Merchants.householdId eq householdId }.toList()
     val merchantsByName = merchants.associateBy { it[Merchants.name].lowercase() }
     val merchantNames = merchants.associate { it[Merchants.id] to it[Merchants.name] }
+    val memberNames = HouseholdMembers.join(Users, JoinType.INNER, HouseholdMembers.userId, Users.id)
+        .select(HouseholdMembers.userId, Users.displayName, HouseholdMembers.legalName)
+        .where { HouseholdMembers.householdId eq householdId }
+        .map { r ->
+            r[HouseholdMembers.userId] to listOfNotNull(
+                r[Users.displayName],
+                r[HouseholdMembers.legalName].takeIf { it.isNotBlank() },
+            )
+        }
+    val owes = if (memberNames.size > 1) loadCurrentBalances(householdId) else emptyMap()
 
     // The latest decision per descriptor: what its expense or income line said.
     val pastExpenses = BankRows.join(Expenses, JoinType.INNER, BankRows.expenseId, Expenses.id)
@@ -209,7 +227,13 @@ fun suggestFor(
                     abs(date.daysUntil(other[BankRows.date])) <= TRANSFER_DAYS &&
                     sameMoney(row, other, householdCurrency, fx)
             }
-            .sortedWith(compareBy({ abs(date.daysUntil(it[BankRows.date])) }, { it[BankRows.id].toString() }))
+            .sortedWith(
+                compareBy<ResultRow>(
+                    { abs(date.daysUntil(it[BankRows.date])) },
+                    { !candidateBalanceMatches(row, it, owners, owes) },
+                    { it[BankRows.id].toString() },
+                ),
+            )
             .take(3)
             .map { other ->
                 TransferCandidate(
@@ -217,8 +241,26 @@ fun suggestFor(
                     other[BankRows.date], other[BankRows.amountMinor], other[BankRows.currency], other[BankRows.text],
                 )
             }.toList()
-        val ownAccount = row[BankRows.counterpartyIban]?.let(accountByIban::get)?.takeIf { it != accountId && candidates.isEmpty() }
+        val counterpartyAccountId = row[BankRows.counterpartyIban]?.let(accountByIban::get)?.takeIf { it != accountId }
+        val ownAccount = counterpartyAccountId?.takeIf { candidates.isEmpty() }
         val isMovement = row[BankRows.hint].removePrefix("Old app: ") in MOVEMENT_HINTS
+        val isMemberHint = row[BankRows.hint].removePrefix("Old app: ") == "To or from someone in the household" &&
+            row[BankRows.code] != "CARD_PAYMENT"
+        val settlementOther = if (owner == null || native == 0L) null else {
+            if (candidates.isNotEmpty()) {
+                owners[Uuid.parse(candidates.first().accountId)]?.takeIf { it != owner }
+            } else {
+                val byIban = counterpartyAccountId?.let { owners[it] }?.takeIf { it != owner }
+                val byHint = if (byIban == null && isMemberHint) {
+                    val textToCheck = row[BankRows.counterpartyName].ifBlank { text }
+                    memberNames.filter { (uid, names) -> uid != owner && isHouseholdName(textToCheck, names) }
+                        .singleOrNull()?.first
+                } else {
+                    null
+                }
+                byIban ?: byHint
+            }
+        }
         val guessedMerchant = past?.get(Expenses.merchantId)?.let(merchantNames::get) ?: known?.get(Merchants.name) ?: guessName
         val guessedCategory = (past?.get(Expenses.categoryId) ?: known?.get(Merchants.defaultCategoryId))
         // What a rule fills in: its merchant and category (else that merchant's default), and whose from the account unless it names a person.
@@ -250,13 +292,33 @@ fun suggestFor(
                     )
                 }.toList()
         }
+        val record = when (rule?.outcome) {
+            RuleOutcome.TRANSFER -> SuggestedRecord.TRANSFER
+            RuleOutcome.SETTLEMENT -> SuggestedRecord.SETTLEMENT
+            RuleOutcome.EXPENSE, RuleOutcome.INCOME, RuleOutcome.DEDUCTION, RuleOutcome.SKIP -> expenseOrIncome
+            else -> when {
+                owner != null && settlementOther != null -> SuggestedRecord.SETTLEMENT
+                candidates.isNotEmpty() || ownAccount != null || isMovement -> SuggestedRecord.TRANSFER
+                else -> expenseOrIncome
+            }
+        }
+        val (settleFrom, settleTo) = when {
+            rule?.outcome == RuleOutcome.SETTLEMENT ->
+                rule.settleFromUserId?.toString() to rule.settleToUserId?.toString()
+            record == SuggestedRecord.SETTLEMENT && owner != null && settlementOther != null ->
+                if (native < 0) owner.toString() to settlementOther.toString()
+                else settlementOther.toString() to owner.toString()
+            else -> null to null
+        }
         row[BankRows.id] to BankRowSuggestion(
-            record = when (rule?.outcome) {
-                RuleOutcome.TRANSFER -> SuggestedRecord.TRANSFER
-                RuleOutcome.EXPENSE, RuleOutcome.INCOME, RuleOutcome.DEDUCTION -> expenseOrIncome
-                else -> if (candidates.isNotEmpty() || ownAccount != null || isMovement) SuggestedRecord.TRANSFER else expenseOrIncome
+            record = record,
+            amountMinor = converted?.let {
+                when {
+                    record == SuggestedRecord.SETTLEMENT -> abs(it)
+                    expenseOrIncome == SuggestedRecord.EXPENSE || forDeduction -> -it
+                    else -> it
+                }
             },
-            amountMinor = converted?.let { if (expenseOrIncome == SuggestedRecord.EXPENSE || forDeduction) -it else it },
             originalAmountMinor = if (currency == householdCurrency) null else abs(native),
             originalCurrency = if (currency == householdCurrency) null else currency,
             merchant = merchant,
@@ -268,6 +330,8 @@ fun suggestFor(
             transferCandidates = candidates,
             transferAccountId = (if (rule?.outcome == RuleOutcome.TRANSFER) rule.otherAccountId?.takeIf { it != accountId } else null)?.toString()
                 ?: ownAccount?.toString(),
+            settleFromUserId = settleFrom,
+            settleToUserId = settleTo,
             ruleId = rule?.id?.toString(),
             ruleName = rule?.name,
             skipReason = rule?.takeIf { it.outcome == RuleOutcome.SKIP }?.skipReason,
@@ -276,6 +340,39 @@ fun suggestFor(
             refundCandidates = refundCandidates,
         )
     }
+}
+
+/** Current net debts between members: `(fromUserId, toUserId)` -> positive amount owed. */
+private fun loadCurrentBalances(householdId: Uuid): Map<Pair<String, String>, Long> {
+    val book = loadSplitBook(householdId)
+    val expenseRows = Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id)
+        .selectAll()
+        .where { (Expenses.householdId eq householdId) and Expenses.accountId.isNotNull() and (Expenses.createsDebt eq true) }
+        .toList()
+    val lines = loadExpenseLines(householdId, expenseRows.map { it[Expenses.id] })
+    val expenseDebts = expenseRows.asSequence().flatMap { row ->
+        book.debtsFor(row.toExpenseFacts(lines[row[Expenses.id]].orEmpty())).asSequence()
+    }
+    val settlementDebts = Settlements.selectAll().where { Settlements.householdId eq householdId }.asSequence().map { row ->
+        Debt(row[Settlements.toUserId].toString(), row[Settlements.fromUserId].toString(), row[Settlements.amountMinor])
+    }
+    return netBalances(expenseDebts + settlementDebts).associate { (it.fromUserId to it.toUserId) to it.amountMinor }
+}
+
+/** True when [other] is on another member's personal account and the current balance points the same way as this movement. */
+private fun candidateBalanceMatches(
+    row: ResultRow,
+    other: ResultRow,
+    owners: Map<Uuid, Uuid?>,
+    owes: Map<Pair<String, String>, Long>,
+): Boolean {
+    val owner = owners[row[BankFeeds.accountId]] ?: return false
+    val otherOwner = owners[other[BankFeeds.accountId]] ?: return false
+    if (owner == otherOwner) return false
+    val native = row[BankRows.amountMinor]
+    val from = if (native < 0) owner else otherOwner
+    val to = if (native < 0) otherOwner else owner
+    return (owes[from.toString() to to.toString()] ?: 0L) > 0L
 }
 
 /** The same amount, one way out and the other in: exact in one currency, else both in the household currency within [TRANSFER_PERCENT]. */

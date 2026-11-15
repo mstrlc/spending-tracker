@@ -24,6 +24,8 @@ const FIELDS = [
   "personUserId",
   "incomeSource",
   "otherAccountId",
+  "settleFromUserId",
+  "settleToUserId",
   "skipReason",
   "monthOffset",
   "priority",
@@ -58,6 +60,8 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
   const [personUserId, setPersonUserId] = useState(start.personUserId ?? "");
   const [incomeSource, setIncomeSource] = useState(start.incomeSource ?? "");
   const [otherAccountId, setOtherAccountId] = useState(start.otherAccountId ?? "");
+  const [settleFromUserId, setSettleFromUserId] = useState(start.settleFromUserId ?? "");
+  const [settleToUserId, setSettleToUserId] = useState(start.settleToUserId ?? "");
   const [skipReason, setSkipReason] = useState(start.skipReason ?? "");
   const [monthOffset, setMonthOffset] = useState(start.monthOffset ?? -1);
   const [auto, setAuto] = useState(start.auto ?? false);
@@ -92,6 +96,8 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
       personUserId: personUserId || null,
       incomeSource,
       otherAccountId: otherAccountId || null,
+      settleFromUserId: settleFromUserId || null,
+      settleToUserId: settleToUserId || null,
       skipReason,
       monthOffset,
       auto,
@@ -172,6 +178,7 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
               <NativeSelectOption value="income">An income line</NativeSelectOption>
               <NativeSelectOption value="deduction">A deduction from income</NativeSelectOption>
               <NativeSelectOption value="transfer">A transfer to or from another account</NativeSelectOption>
+              <NativeSelectOption value="settlement">A settlement between members</NativeSelectOption>
               <NativeSelectOption value="skip">Skipped</NativeSelectOption>
             </NativeSelect>
           </Field>
@@ -248,6 +255,30 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
                 ))}
               </NativeSelect>
             </Field>
+          )}
+          {outcome === "settlement" && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Paid by" name="settleFromUserId" error={save.error}>
+                <NativeSelect required className="w-full" value={settleFromUserId} onChange={(e) => setSettleFromUserId(e.target.value)}>
+                  <NativeSelectOption value="">Choose a member</NativeSelectOption>
+                  {members.map((m) => (
+                    <NativeSelectOption key={m.userId} value={m.userId}>
+                      {m.displayName}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field label="To" name="settleToUserId" error={save.error}>
+                <NativeSelect required className="w-full" value={settleToUserId} onChange={(e) => setSettleToUserId(e.target.value)}>
+                  <NativeSelectOption value="">Choose a member</NativeSelectOption>
+                  {members.map((m) => (
+                    <NativeSelectOption key={m.userId} value={m.userId}>
+                      {m.displayName}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+            </div>
           )}
           {outcome === "skip" && (
             <Field label="Why" name="skipReason" error={save.error}>
