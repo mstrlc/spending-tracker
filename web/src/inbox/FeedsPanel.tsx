@@ -1,10 +1,12 @@
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { ConnectionStatus } from "../chips";
+import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { RefreshCwIcon, UploadIcon } from "lucide-react";
+import { AccountIcon, Chip, ConnectionStatus, PersonLabel } from "../chips";
 import {
   useAccounts,
   useBankConnections,
   useBankFeeds,
   useBankInstitutions,
+  useMembers,
   useDeleteBankConnection,
   useDeleteBankFeed,
   useFinishBankConnection,
@@ -14,7 +16,7 @@ import {
   useSyncBankFeed,
   useUploadStatement,
 } from "../api/hooks";
-import type { BankConnection, BankFeed, BankInstitution, FeedSyncResult, StatementResult } from "../api/types";
+import type { Account, BankConnection, BankFeed, BankInstitution, FeedSyncResult, StatementResult } from "../api/types";
 import { formatDate } from "../lib/dates";
 import { formatMoney } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
@@ -25,6 +27,8 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ConnectionFeedsForm } from "./ConnectionFeedsForm";
 import { connectionWarning } from "./connections";
+import { groupFeeds, type AccountFeeds } from "./feedGroups";
+import { cn } from "@/lib/utils";
 
 export const INSTITUTIONS: { value: BankInstitution; label: string }[] = [
   { value: "revolut", label: "Revolut" },
@@ -33,6 +37,8 @@ export const INSTITUTIONS: { value: BankInstitution; label: string }[] = [
   { value: "raiffeisen", label: "Raiffeisenbank" },
   { value: "other", label: "Other" },
 ];
+
+const institutionLabel = (institution: BankInstitution) => INSTITUTIONS.find((i) => i.value === institution)?.label ?? "Other";
 
 /**
  * A statement file as text. Most banks export UTF-8; KB exports Windows-1250, which isn't valid UTF-8, so a file
@@ -82,6 +88,8 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
   const feeds = useBankFeeds(household.id);
   const connections = useBankConnections(household.id);
   const accounts = useAccounts(household.id).data ?? [];
+  const members = useMembers(household.id).data ?? [];
+  const personName = (userId: string | null) => members.find((m) => m.userId === userId)?.displayName ?? "Joint";
   const upload = useUploadStatement(household.id);
   const remove = useDeleteBankFeed(household.id);
   const startConn = useStartBankConnection(household.id);
@@ -182,6 +190,106 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
 
   const configured = connections.data?.configured ?? false;
   const connList = connections.data?.connections ?? [];
+  const { people, unlinked } = groupFeeds(feeds.data ?? [], accounts, members, connList, household.currency, institutionLabel);
+
+  const bankControls = (conn: BankConnection) => {
+    const unlinkedCount = conn.accounts.filter((a) => !a.feedId).length;
+    return (
+      <>
+        {conn.status === "pending" && isOwner && (
+          <Button type="button" variant="outline" size="sm" onClick={() => finishConn.mutate(conn.id)} disabled={finishConn.isPending}>
+            Check status
+          </Button>
+        )}
+        {conn.status === "active" && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => runConnectionSync(conn)} disabled={syncConn.isPending}>
+            <RefreshCwIcon className={cn(syncConn.isPending && syncingConnId === conn.id && "animate-spin")} />
+            {syncConn.isPending && syncingConnId === conn.id ? "Syncing…" : "Sync"}
+          </Button>
+        )}
+        {conn.status !== "active" && conn.status !== "pending" && isOwner && (
+          <Button type="button" variant="outline" size="sm" onClick={() => reconnect(conn.institutionId)} disabled={startConn.isPending}>
+            Reconnect
+          </Button>
+        )}
+        {isOwner && (
+          <RowMenu
+            label={conn.institutionName}
+            actions={[
+              ...(conn.status === "active" && unlinkedCount > 0
+                ? [{ label: `Add feeds (${unlinkedCount})`, onSelect: () => setView({ mode: "mapAccounts", connection: conn }) }]
+                : []),
+              { label: "Disconnect", destructive: true, onSelect: () => confirmDisconnect(conn) },
+            ]}
+          />
+        )}
+      </>
+    );
+  };
+
+  const connectionNotes = (conn: BankConnection) => {
+    const warning = connectionWarning(conn);
+    return (
+      <>
+        {warning && <p className="px-3 pb-2 text-xs font-medium text-amber-700 dark:text-amber-400">{warning}</p>}
+        {syncingConnId === conn.id && <ErrorText error={syncConn.error} className="px-3 pb-2" />}
+        {connResult?.connId === conn.id && (
+          <p className="mx-3 mb-2 rounded-md bg-muted px-3 py-2 text-xs" role="status">
+            {connResult.text}
+          </p>
+        )}
+      </>
+    );
+  };
+
+  const feedLine = (feed: BankFeed, label: ReactNode) => (
+    <div key={feed.id} className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            {label}
+            {feed.pendingCount > 0 && <Chip tone="warning">{feed.pendingCount} to decide</Chip>}
+            {feed.rowCount === 0 && <span className="text-xs text-muted-foreground">{feedDetail(feed)}</span>}
+          </div>
+          {feed.rowCount > 0 && <div className="text-xs text-muted-foreground">{feedDetail(feed)}</div>}
+        </div>
+        {feed.balance && (
+          <span className="amount shrink-0 text-sm" title={feed.balance.balanceDate ? `Balance on ${formatDate(feed.balance.balanceDate)}` : "Balance"}>
+            {formatMoney(feed.balance.amountMinor, feed.balance.currency ?? household.currency)}
+          </span>
+        )}
+        {!feed.connectionId && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => pickFile(feed)} disabled={upload.isPending}>
+            <UploadIcon />
+            {upload.isPending && uploadingTo?.id === feed.id ? "Reading…" : "Upload"}
+          </Button>
+        )}
+        <RowMenu
+          label={feed.name}
+          actions={[
+            ...(feed.connectionId
+              ? [
+                  ...(feed.syncsToday < 4 && !syncFeed.isPending
+                    ? [{ label: `Sync this feed (${4 - feed.syncsToday} of 4 left today)`, onSelect: () => runFeedSync(feed) }]
+                    : []),
+                  { label: "Upload statement", onSelect: () => pickFile(feed) },
+                ]
+              : []),
+            { label: "Edit", onSelect: () => setView({ mode: "editFeed", feed }) },
+            { label: "Delete", destructive: true, onSelect: () => confirmDelete(feed) },
+          ]}
+        />
+      </div>
+      {uploadingTo?.id === feed.id && <ErrorText error={upload.error} />}
+      {syncingFeedId === feed.id && <ErrorText error={syncFeed.error} />}
+      {syncingFeedId === feed.id && syncFeed.isPending && <p className="text-xs text-muted-foreground">Syncing…</p>}
+      {result?.feedId === feed.id && (
+        <p className="rounded-md bg-muted px-3 py-2 text-xs" role="status">
+          {result.text}
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <SheetBody
@@ -213,156 +321,167 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
         </p>
       )}
 
-      {configured && connList.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Connected banks</div>
-          <ErrorText error={startConn.error} />
-          <ErrorText error={finishConn.error} />
-          <ErrorText error={deleteConn.error} />
-          <ul className="flex flex-col divide-y rounded-md border">
-            {connList.map((conn) => {
-              const warning = connectionWarning(conn);
-              const unlinkedCount = conn.accounts.filter((a) => !a.feedId).length;
-              return (
-                <li key={conn.id} className="flex flex-col gap-2 p-3">
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 font-medium">
-                        {conn.institutionName}
-                        <ConnectionStatus status={conn.status} />
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {conn.accounts.length} {conn.accounts.length === 1 ? "account" : "accounts"}
-                        {conn.consentExpiresAt ? ` · expires ${formatDate(conn.consentExpiresAt.slice(0, 10))}` : ""}
-                      </div>
-                      {warning && <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{warning}</div>}
-                    </div>
-                    {conn.status === "pending" && isOwner && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => finishConn.mutate(conn.id)}
-                        disabled={finishConn.isPending}
-                      >
-                        Check status
-                      </Button>
-                    )}
-                    {conn.status === "active" && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => runConnectionSync(conn)}
-                        disabled={syncConn.isPending}
-                      >
-                        {syncConn.isPending && syncingConnId === conn.id ? "Syncing…" : "Sync now"}
-                      </Button>
-                    )}
-                    {conn.status !== "active" && conn.status !== "pending" && isOwner && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => reconnect(conn.institutionId)}
-                        disabled={startConn.isPending}
-                      >
-                        Reconnect
-                      </Button>
-                    )}
-                    {isOwner && (
-                      <RowMenu
-                        label={conn.institutionName}
-                        actions={[
-                          ...(conn.status === "active" && unlinkedCount > 0
-                            ? [{ label: `Add feeds (${unlinkedCount})`, onSelect: () => setView({ mode: "mapAccounts", connection: conn }) }]
-                            : []),
-                          { label: "Disconnect", destructive: true, onSelect: () => confirmDisconnect(conn) },
-                        ]}
-                      />
-                    )}
-                  </div>
-                  {syncingConnId === conn.id && <ErrorText error={syncConn.error} />}
-                  {connResult?.connId === conn.id && (
-                    <p className="rounded-md bg-muted px-3 py-2 text-xs" role="status">
-                      {connResult.text}
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-
+      <ErrorText error={startConn.error} />
+      <ErrorText error={finishConn.error} />
+      <ErrorText error={deleteConn.error} />
       <input ref={fileRef} type="file" accept=".csv,.json,text/csv,application/json" className="hidden" onChange={sendFile} />
       <ErrorText error={feeds.error} />
       <ErrorText error={remove.error} />
-      {feeds.data?.length === 0 && <p className="text-sm">No feeds yet. Add one for each account and currency you have statements for.</p>}
-      <ul className="flex flex-col divide-y rounded-md border">
-        {feeds.data?.map((feed) => (
-          <li key={feed.id} className="flex flex-col gap-2 p-3">
-            <div className="flex items-start gap-2">
-              <div className="flex-1">
-                <div className="font-medium">{feed.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {accountName(feed.accountId)} · {INSTITUTIONS.find((i) => i.value === feed.institution)?.label} · {feed.currency}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {feed.rowCount === 0
-                    ? "No rows yet"
-                    : `${feed.rowCount} rows, ${feed.pendingCount} to decide${feed.lastDate ? `, up to ${formatDate(feed.lastDate)}` : ""}`}
-                  {feed.importFrom && ` · from ${formatDate(feed.importFrom)}`}
-                </div>
-                {feed.balance && (
-                  <div className="text-xs text-muted-foreground">
-                    Balance: {formatMoney(feed.balance.amountMinor, feed.balance.currency)}
-                    {feed.balance.balanceDate ? ` (${formatDate(feed.balance.balanceDate)})` : ""}
+
+      {configured && unlinked.length > 0 && (
+        <section className="flex flex-col gap-2" aria-label="Banks without feeds">
+          <h3 className="text-sm font-medium">Not set up yet</h3>
+          {unlinked.map((conn) => (
+            <div key={conn.id} className="rounded-md border">
+              <div className="flex items-center gap-2 p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    {conn.institutionName}
+                    <ConnectionStatus status={conn.status} />
                   </div>
-                )}
-                {feed.connectionId && (
                   <div className="text-xs text-muted-foreground">
-                    Live sync · {feed.syncsToday}/4 today
-                    {feed.lastSyncedAt ? ` · last ${formatDate(feed.lastSyncedAt.slice(0, 10))}` : ""}
+                    {conn.accounts.length === 0 ? "No accounts shared yet" : `${conn.accounts.length} ${conn.accounts.length === 1 ? "account" : "accounts"}: pick which to read`}
                   </div>
+                </div>
+                {conn.status === "active" && isOwner && conn.accounts.length > 0 && (
+                  <Button type="button" size="sm" onClick={() => setView({ mode: "mapAccounts", connection: conn })}>
+                    Add feeds
+                  </Button>
                 )}
+                {bankControls(conn)}
               </div>
-              {feed.connectionId ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => runFeedSync(feed)}
-                  disabled={syncFeed.isPending || feed.syncsToday >= 4}
-                >
-                  {syncFeed.isPending && syncingFeedId === feed.id ? "Syncing…" : "Sync now"}
-                </Button>
-              ) : (
-                <Button type="button" variant="outline" size="sm" onClick={() => pickFile(feed)} disabled={upload.isPending}>
-                  {upload.isPending && uploadingTo?.id === feed.id ? "Reading…" : "Upload statement"}
-                </Button>
-              )}
-              <RowMenu
-                label={feed.name}
-                actions={[
-                  ...(feed.connectionId ? [{ label: "Upload statement", onSelect: () => pickFile(feed) }] : []),
-                  { label: "Edit", onSelect: () => setView({ mode: "editFeed", feed }) },
-                  { label: "Delete", destructive: true, onSelect: () => confirmDelete(feed) },
-                ]}
-              />
+              {connectionNotes(conn)}
             </div>
-            {uploadingTo?.id === feed.id && <ErrorText error={upload.error} />}
-            {syncingFeedId === feed.id && <ErrorText error={syncFeed.error} />}
-            {result?.feedId === feed.id && (
-              <p className="rounded-md bg-muted px-3 py-2 text-sm" role="status">
-                {result.text}
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
+          ))}
+        </section>
+      )}
+
+      {feeds.data?.length === 0 && <p className="text-sm">No feeds yet. Add one for each account and currency you have statements for.</p>}
+
+      {people.map((person) => {
+        const pending = person.banks.flatMap((b) => b.accounts.flatMap((a) => a.feeds)).reduce((sum, f) => sum + f.pendingCount, 0);
+        return (
+          <section key={person.userId ?? "joint"} className="flex flex-col gap-2" aria-label={`${personName(person.userId)}'s feeds`}>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium">
+                <PersonLabel members={members} userId={person.userId} />
+              </h3>
+              {pending > 0 && <span className="text-xs text-muted-foreground">{pending} to decide</span>}
+            </div>
+            {person.banks.map((bank) => (
+              <div key={bank.key} className="rounded-md border">
+                <div className="flex items-center gap-2 border-b bg-muted/40 py-1.5 pr-1.5 pl-3">
+                  <div className="min-w-0 flex-1 truncate text-sm" title={bankTitle(bank.connection)}>
+                    <span className="font-medium">
+                      {bank.institution === "other" && bank.connection ? bank.connection.institutionName : institutionLabel(bank.institution)}
+                    </span>
+                    <span className="ml-2 text-xs text-muted-foreground">{bank.connection ? "Live" : "Statements"}</span>
+                    {bank.connection && bank.connection.status !== "active" && (
+                      <span className="ml-2 inline-flex align-middle">
+                        <ConnectionStatus status={bank.connection.status} />
+                      </span>
+                    )}
+                  </div>
+                  {bank.connection && bankControls(bank.connection)}
+                </div>
+                {bank.connection && connectionNotes(bank.connection)}
+                <ul className="flex flex-col divide-y">
+                  {bank.accounts.map(({ account, accountId, feeds: accountFeeds }) => (
+                    <li key={accountId} className="flex flex-col gap-2 py-2.5 pr-1.5 pl-3">
+                      {accountFeeds.length === 1 ? (
+                        feedLine(
+                          accountFeeds[0],
+                          <AccountTitle
+                            account={account}
+                            name={shortAccountName(account?.name ?? accountFeeds[0].name, bank.accounts)}
+                            currency={currencyTag(accountFeeds[0], household.currency)}
+                          />,
+                        )
+                      ) : (
+                        <>
+                          <AccountTitle account={account} name={shortAccountName(account?.name ?? accountName(accountId), bank.accounts)} />
+                          <div className="ml-5 flex flex-col gap-2 border-l pl-3">
+                            {accountFeeds.map((feed) =>
+                              feedLine(feed, <span className="amount text-sm">{feed.currency}</span>),
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </section>
+        );
+      })}
     </SheetBody>
   );
+}
+
+/** An account's icon and [name] (its full name on hover), muted when it's closed, with an optional currency after it. */
+function AccountTitle({
+  account,
+  name,
+  currency,
+}: {
+  account: Account | undefined;
+  name: string;
+  currency?: string | null;
+}) {
+  return (
+    <span
+      className={cn("flex min-w-0 items-center gap-1.5 text-sm font-medium", account?.status === "closed" && "text-muted-foreground")}
+      title={account && account.name !== name ? account.name : undefined}
+    >
+      <AccountIcon kind={account?.kind} />
+      <span className="truncate">{name}</span>
+      {currency && <span className="amount text-xs font-normal text-muted-foreground">{currency}</span>}
+      {account?.status === "closed" && <Chip>Closed</Chip>}
+    </span>
+  );
+}
+
+/**
+ * Within one bank, "ČSOB Sam · Spoření s bonusem …1679" reads as "Spoření s bonusem …1679" when "ČSOB Sam" is
+ * listed beside it.
+ */
+function shortAccountName(name: string, siblings: AccountFeeds[]): string {
+  const cut = name.indexOf(" · ");
+  if (cut < 0) return name;
+  const prefix = name.slice(0, cut);
+  return siblings.some((s) => s.account?.name === prefix) ? name.slice(cut + 3) : name;
+}
+
+/** The currency, shown only when it isn't the household's. */
+const currencyTag = (feed: BankFeed, householdCurrency: string) => (feed.currency === householdCurrency ? null : feed.currency);
+
+/** The bank's full name and how long the app may read it, on hover. */
+function bankTitle(conn: BankConnection | undefined): string | undefined {
+  if (!conn) return undefined;
+  return conn.consentExpiresAt ? `${conn.institutionName} · access until ${shortDate(conn.consentExpiresAt)}` : conn.institutionName;
+}
+
+/** "16 Nov" this year, "16 Nov 2025" otherwise. */
+function shortDate(iso: string): string {
+  const date = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
+}
+
+/** "Rows up to 16 Nov · 120 rows · synced 17 Nov (1 of 4 today)", or "No rows yet" for an empty one. */
+function feedDetail(feed: BankFeed): string {
+  if (feed.rowCount === 0) return "No rows yet";
+  const parts = [
+    feed.lastDate ? `Up to ${shortDate(feed.lastDate)}` : null,
+    `${feed.rowCount} ${feed.rowCount === 1 ? "row" : "rows"}`,
+    feed.connectionId
+      ? `synced ${feed.lastSyncedAt ? shortDate(feed.lastSyncedAt) : "never"}${feed.syncsToday > 0 ? ` (${feed.syncsToday} of 4 today)` : ""}`
+      : feed.importFrom
+        ? `from ${shortDate(feed.importFrom)}`
+        : null,
+  ];
+  return parts.filter(Boolean).join(" · ");
 }
 
 function ConnectBankView({ onDone }: { onDone: () => void }) {
