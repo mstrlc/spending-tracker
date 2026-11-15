@@ -214,7 +214,7 @@ fun createExpense(householdId: Uuid, userId: Uuid, raw: ExpenseInput, importId: 
     return id
 }
 
-private data class ValidLine(val categoryId: Uuid?, val amountMinor: Long, val notes: String)
+private data class ValidLine(val categoryId: Uuid?, val amountMinor: Long, val notes: String, val paidByUserId: Uuid?)
 
 private data class ValidExpense(
     val date: LocalDate,
@@ -243,7 +243,12 @@ private fun ExpenseInput.validated(): ValidExpense {
         if ((lineAmount > 0) != (total > 0)) {
             throw badRequest("invalid_line_amount", "Every line must have the same sign as the expense", "lines")
         }
-        ValidLine(parseId(line.categoryId, "lines"), lineAmount, optionalText(line.notes, "lines", max = 500))
+        ValidLine(
+            parseId(line.categoryId, "lines"),
+            lineAmount,
+            optionalText(line.notes, "lines", max = 500),
+            parseId(line.paidByUserId, "lines"),
+        )
     }
     if (validLines.size == 1) {
         throw badRequest("too_few_lines", "Split an expense into at least two lines, or give it one category", "lines")
@@ -257,7 +262,9 @@ private fun ExpenseInput.validated(): ValidExpense {
         merchant = optionalText(merchant, "merchant", max = 200),
         categoryId = if (validLines.isEmpty()) parseId(categoryId, "categoryId") else null,
         accountId = parseId(accountId, "accountId"),
-        paidByUserId = parseId(paidByUserId, "paidByUserId"),
+        // With lines, whose is each line's; the expense keeps the one they share, or none when they differ.
+        paidByUserId = if (validLines.isEmpty()) parseId(paidByUserId, "paidByUserId")
+            else validLines.map { it.paidByUserId }.distinct().singleOrNull(),
         notes = optionalText(notes, "notes", max = 2000),
         tripId = parseId(tripId, "tripId"),
         originalAmountMinor = originalAmountMinor?.let { nonZeroAmount(it, "originalAmountMinor") },
@@ -318,6 +325,9 @@ private fun ValidExpense.checkReferences(householdId: Uuid, selfId: Uuid? = null
     if (paidByUserId != null && !isMember(householdId, paidByUserId)) {
         throw badRequest("invalid_member", "Paid by must be a member of the household", "paidByUserId")
     }
+    if (lines.mapNotNull { it.paidByUserId }.distinct().any { !isMember(householdId, it) }) {
+        throw badRequest("invalid_member", "Whose must be a member of the household", "lines")
+    }
     split?.checkMembers(householdId, "split")
 }
 
@@ -345,7 +355,14 @@ fun loadExpenseLines(householdId: Uuid, expenseIds: Collection<Uuid>? = null): M
         .orderBy(ExpenseLines.sortOrder to SortOrder.ASC)
         .groupBy(
             { it[ExpenseLines.expenseId] },
-            { ExpenseLine(it[ExpenseLines.categoryId]?.toString(), it[ExpenseLines.amountMinor], it[ExpenseLines.notes]) },
+            {
+                ExpenseLine(
+                    it[ExpenseLines.categoryId]?.toString(),
+                    it[ExpenseLines.amountMinor],
+                    it[ExpenseLines.notes],
+                    it[ExpenseLines.paidByUserId]?.toString(),
+                )
+            },
         )
 }
 
@@ -353,7 +370,7 @@ private fun writeExpenseLines(householdId: Uuid, expenseId: Uuid, lines: List<Va
     val current = ExpenseLines.selectAll()
         .where { (ExpenseLines.householdId eq householdId) and (ExpenseLines.expenseId eq expenseId) }
         .orderBy(ExpenseLines.sortOrder to SortOrder.ASC)
-        .map { ValidLine(it[ExpenseLines.categoryId], it[ExpenseLines.amountMinor], it[ExpenseLines.notes]) }
+        .map { ValidLine(it[ExpenseLines.categoryId], it[ExpenseLines.amountMinor], it[ExpenseLines.notes], it[ExpenseLines.paidByUserId]) }
     if (current == lines) return
     if (current.isNotEmpty()) {
         ExpenseLines.deleteWhere { (ExpenseLines.householdId eq householdId) and (ExpenseLines.expenseId eq expenseId) }
@@ -366,6 +383,7 @@ private fun writeExpenseLines(householdId: Uuid, expenseId: Uuid, lines: List<Va
             it[categoryId] = line.categoryId
             it[amountMinor] = line.amountMinor
             it[notes] = line.notes
+            it[paidByUserId] = line.paidByUserId
         }
     }
 }

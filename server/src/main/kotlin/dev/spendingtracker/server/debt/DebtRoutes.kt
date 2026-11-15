@@ -193,13 +193,14 @@ private fun computeTopUpEntries(
         // Only members who put in more than their share of joint-account spending have unspent money left in joint accounts.
         val charges = HashMap<Uuid, Long>()
         for (row in jointExpenses) {
-            val facts = row.toExpenseFacts(lines[row[Expenses.id]].orEmpty())
-            val owner = facts.ownerUserId
-            if (owner != null) {
-                charges.merge(owner, facts.amountMinor, Long::plus)
-            } else {
-                for ((member, part) in book.allocateJointShare(facts)) {
-                    charges.merge(member, part, Long::plus)
+            for (facts in book.parts(row.toExpenseFacts(lines[row[Expenses.id]].orEmpty()))) {
+                val owner = facts.ownerUserId
+                if (owner != null) {
+                    charges.merge(owner, facts.amountMinor, Long::plus)
+                } else {
+                    for ((member, part) in book.allocateJointShare(facts)) {
+                        charges.merge(member, part, Long::plus)
+                    }
                 }
             }
         }
@@ -290,7 +291,7 @@ fun ResultRow.toExpenseFacts(lines: List<ExpenseLine> = emptyList()) = ExpenseFa
     accountId = this[Expenses.accountId],
     ownerUserId = this[Expenses.paidByUserId],
     createsDebt = this[Expenses.createsDebt],
-    lines = lines.map { ExpenseLineFacts(it.categoryId?.let(Uuid::parse), it.amountMinor) },
+    lines = lines.map { ExpenseLineFacts(it.categoryId?.let(Uuid::parse), it.amountMinor, it.paidByUserId?.let(Uuid::parse)) },
 )
 
 // ---- Split rules ----

@@ -11,6 +11,7 @@ const line = (categoryId: string | null, amountMinor: number): ExpenseLine => ({
   categoryId,
   amountMinor,
   notes: "",
+  paidByUserId: null,
 });
 
 describe("spendingByCategory", () => {
@@ -98,9 +99,9 @@ describe("refunds", () => {
     expect(spreadByWeight(-250, [600, 400])).toEqual([-150, -100]);
     expect(spreadByWeight(1000, [1, 2])).toEqual([333, 667]);
     expect(spreadByWeight(5, [])).toEqual([]);
-    expect(refundLines([line("home", 600), line("leisure", 400)], -250)).toEqual([
-      { categoryId: "home", amountMinor: -150, notes: "" },
-      { categoryId: "leisure", amountMinor: -100, notes: "" },
+    expect(refundLines([line("home", 600), { ...line("leisure", 400), paidByUserId: "u2" }], -250)).toEqual([
+      { categoryId: "home", amountMinor: -150, notes: "", paidByUserId: null },
+      { categoryId: "leisure", amountMinor: -100, notes: "", paidByUserId: "u2" },
     ]);
   });
 

@@ -254,6 +254,35 @@ export function PersonLabel({
   );
 }
 
+/**
+ * Whose an expense is: one person (or joint), or, when its split lines belong to different people, every whose on
+ * it as overlapping avatars labelled "Mixed".
+ */
+export function ExpenseWhose({
+  members,
+  expense,
+  className,
+}: {
+  members: Pick<Member, "userId" | "displayName">[];
+  expense: { paidByUserId: string | null; lines: { paidByUserId: string | null }[] };
+  className?: string;
+}) {
+  const owners = [...new Set(expense.lines.map((l) => l.paidByUserId))];
+  if (owners.length < 2) return <PersonLabel members={members} userId={owners[0] ?? expense.paidByUserId} className={className} />;
+  const names = owners.map((o) => members.find((m) => m.userId === o)?.displayName ?? "Joint").join(", ");
+  return (
+    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)} title={names}>
+      <span className="flex -space-x-1.5">
+        {owners.map((o) => (
+          <Avatar key={o ?? "joint"} members={members} userId={o} className="ring-2 ring-background" />
+        ))}
+      </span>
+      <span className="truncate">Mixed</span>
+      <span className="sr-only">: {names}</span>
+    </span>
+  );
+}
+
 // ---- Accounts and assets ------------------------------------------------------------------------------------------
 
 const ACCOUNT_ICONS: Record<AccountKind, LucideIcon> = {

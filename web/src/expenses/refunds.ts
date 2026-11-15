@@ -43,10 +43,13 @@ export function spendingParts(expense: Pick<Expense, "amountMinor" | "categoryId
   return parts.map((p, i) => ({ ...p, amountMinor: p.amountMinor + back[i] }));
 }
 
-/** [lines] of an original refunded by [refundMinor] (negative): the same categories, the refund spread in proportion. */
-export function refundLines(lines: ExpenseLine[], refundMinor: number): { categoryId: string | null; amountMinor: number; notes: string }[] {
+/** [lines] of an original refunded by [refundMinor] (negative): the same categories and whose, the refund spread in proportion. */
+export function refundLines(
+  lines: ExpenseLine[],
+  refundMinor: number,
+): { categoryId: string | null; amountMinor: number; notes: string; paidByUserId: string | null }[] {
   const amounts = spreadByWeight(refundMinor, lines.map((l) => l.amountMinor));
-  return lines.map((l, i) => ({ categoryId: l.categoryId, amountMinor: amounts[i], notes: "" }));
+  return lines.map((l, i) => ({ categoryId: l.categoryId, amountMinor: amounts[i], notes: "", paidByUserId: l.paidByUserId }));
 }
 
 /**

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAccounts, useCategories, useExpenses, useMembers } from "../api/hooks";
 import type { Category, Expense } from "../api/types";
 import { PlusIcon } from "lucide-react";
-import { AccountLabel, CategoryLabel, Dot, KindChip, PersonLabel, categoryTone, signedAmountClass } from "../chips";
+import { AccountLabel, CategoryLabel, Dot, KindChip, ExpenseWhose, categoryTone, signedAmountClass } from "../chips";
 import { currentMonth, formatDay, formatMonth, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
@@ -190,7 +190,7 @@ export function ExpensesPage() {
                     </TableCell>
                     {showPaidBy && (
                       <TableCell className="text-muted-foreground max-md:hidden">
-                        <PersonLabel members={members} userId={e.paidByUserId} />
+                        <ExpenseWhose members={members} expense={e} />
                       </TableCell>
                     )}
                     <TableCell className={cn("amount text-right", signedAmountClass(-e.amountMinor))}>

@@ -19,10 +19,13 @@ import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import kotlin.uuid.Uuid
 
-/** One line of a split expense, for working out category-dependent debts. */
-data class ExpenseLineFacts(val categoryId: Uuid?, val amountMinor: Long)
+/** One line of a split expense, for working out category-dependent debts; a null [ownerUserId] is a joint line. */
+data class ExpenseLineFacts(val categoryId: Uuid?, val amountMinor: Long, val ownerUserId: Uuid? = null)
 
-/** What deciding an expense's debts needs to know about it. A null [ownerUserId] is a joint expense. */
+/**
+ * What deciding an expense's debts needs to know about it. A null [ownerUserId] is a joint expense. With [lines],
+ * each line's owner counts instead (see [parts]).
+ */
 data class ExpenseFacts(
     val id: Uuid,
     val date: LocalDate,
@@ -53,6 +56,9 @@ internal data class DatedRule(val validFrom: LocalDate, val weights: Weights)
  *   adjust for any difference between the expense's split (category or own) and the household default split, so
  *   both members topping up by the household split and spending it all produces zero debt.
  * Without an account nobody is known to have paid, so there's no debt; nor when the expense switches it off.
+ *
+ * Split lines that belong to different people (or some to nobody, joint) are worked out as separate expenses, one
+ * per whose, paid from the same account; see [parts].
  */
 class SplitBook internal constructor(
     private val members: List<Uuid>,
@@ -70,10 +76,33 @@ class SplitBook internal constructor(
     fun isJointAccount(accountId: Uuid?): Boolean =
         accountId != null && accountId in accountOwners && accountOwners[accountId] == null
 
+    /**
+     * The expense as one part per whose: itself when it has no lines or all its lines share one whose, else one part
+     * per whose holding that whose's lines (in order of first appearance) and their total.
+     */
+    fun parts(expense: ExpenseFacts): List<ExpenseFacts> {
+        if (expense.lines.isEmpty()) return listOf(expense)
+        val byOwner = expense.lines.groupBy { it.ownerUserId }
+        if (byOwner.size == 1) return listOf(expense.copy(ownerUserId = byOwner.keys.single()))
+        return byOwner.map { (owner, lines) ->
+            expense.copy(amountMinor = lines.sumOf { it.amountMinor }, categoryId = null, ownerUserId = owner, lines = lines)
+        }
+    }
+
     fun debtsFor(expense: ExpenseFacts): List<Debt> {
         if (debtsFrom != null && expense.date < debtsFrom) return emptyList()
         val accountId = expense.accountId ?: return emptyList()
         if (!expense.createsDebt || accountId !in accountOwners) return emptyList()
+        val parts = parts(expense)
+        if (parts.size == 1) return debtsForPart(parts.single(), accountId)
+        // One line per pair and direction, so the expense reads as a whole.
+        return parts.flatMap { debtsForPart(it, accountId) }
+            .groupBy { it.fromUserId to it.toUserId }
+            .map { (pair, debts) -> Debt(pair.first, pair.second, debts.sumOf { it.amountMinor }) }
+            .filter { it.amountMinor != 0L }
+    }
+
+    private fun debtsForPart(expense: ExpenseFacts, accountId: Uuid): List<Debt> {
         val payer = accountOwners[accountId]
         val owner = expense.ownerUserId
         return when {

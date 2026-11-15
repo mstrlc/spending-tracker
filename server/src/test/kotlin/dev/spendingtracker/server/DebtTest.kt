@@ -152,6 +152,60 @@ class DebtTest {
             ),
         )
         assertEquals(owes(bob, alice, 440), splitReceipt.debts)
+
+        // Lines of different people on Alice's card: half the joint groceries (200) plus all of Bob's line (300), in
+        // one debt; Alice's own line makes none. The expense has no single whose.
+        val mixed = expense(
+            ExpenseInput(
+                date = LocalDate(2026, 8, 11),
+                amountMinor = 1000,
+                accountId = aliceCard,
+                paidByUserId = alice,
+                lines = listOf(
+                    ExpenseLineInput(groceries, 400),
+                    ExpenseLineInput(null, 300, paidByUserId = bob),
+                    ExpenseLineInput(null, 300, paidByUserId = alice),
+                ),
+            ),
+        )
+        assertEquals(owes(bob, alice, 500), mixed.debts)
+        assertEquals(null, mixed.paidByUserId)
+        assertEquals(listOf(null, bob, alice), mixed.lines.map { it.paidByUserId })
+
+        // From the joint account each person's line costs them the other's share of the pot (60/40); the joint line nothing.
+        val fromPot = expense(
+            ExpenseInput(
+                date = LocalDate(2026, 8, 12),
+                amountMinor = 1000,
+                accountId = joint,
+                lines = listOf(
+                    ExpenseLineInput(groceries, 500),
+                    ExpenseLineInput(null, 300, paidByUserId = bob),
+                    ExpenseLineInput(null, 200, paidByUserId = alice),
+                ),
+            ),
+        )
+        assertEquals(setOf(Debt(bob, alice, 180), Debt(alice, bob, 80)), fromPot.debts.toSet())
+
+        // Lines that all belong to Bob make it Bob's expense, as if it had no lines.
+        val allBob = expense(
+            ExpenseInput(
+                date = LocalDate(2026, 8, 13),
+                amountMinor = 500,
+                accountId = aliceCard,
+                lines = listOf(ExpenseLineInput(groceries, 200, paidByUserId = bob), ExpenseLineInput(null, 300, paidByUserId = bob)),
+            ),
+        )
+        assertEquals(bob to owes(bob, alice, 500), allBob.paidByUserId to allBob.debts)
+
+        client.post("$base/expenses") {
+            setBody(
+                ExpenseInput(
+                    LocalDate(2026, 8, 14), 500, accountId = aliceCard,
+                    lines = listOf(ExpenseLineInput(null, 200), ExpenseLineInput(null, 300, paidByUserId = Uuid.random().toString())),
+                ),
+            )
+        }.assertError(HttpStatusCode.BadRequest, "invalid_member")
     }
 
     @Test

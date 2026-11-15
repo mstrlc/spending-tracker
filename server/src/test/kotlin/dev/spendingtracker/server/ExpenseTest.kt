@@ -126,7 +126,7 @@ class ExpenseTest {
         )
         assertEquals(null, receipt.categoryId)
         assertEquals(
-            listOf(ExpenseLine(food.id, 350, "Groceries"), ExpenseLine(home.id, 150, "Detergent")),
+            listOf(ExpenseLine(food.id, 350, "Groceries", null), ExpenseLine(home.id, 150, "Detergent", null)),
             receipt.lines,
         )
 

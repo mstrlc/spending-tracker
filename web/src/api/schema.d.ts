@@ -1237,7 +1237,10 @@ export interface components {
             /** String */
             claimName?: null | string;
         };
-        /** JointFunding */
+        /**
+         * JointFunding
+         * @enum {string}
+         */
         JointFunding: "pot" | "contributions";
         /** Household */
         Household: {
@@ -1491,6 +1494,8 @@ export interface components {
             amountMinor: number;
             /** String */
             notes: string;
+            /** String */
+            paidByUserId: null | string;
         };
         /** ExpenseLineInput */
         ExpenseLineInput: {
@@ -1503,6 +1508,8 @@ export interface components {
             amountMinor: number;
             /** String */
             notes?: string;
+            /** String */
+            paidByUserId?: null | string;
         };
         /** BankRowRef */
         BankRowRef: {

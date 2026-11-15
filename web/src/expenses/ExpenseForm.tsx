@@ -46,7 +46,12 @@ type LineDraft = {
   categoryId: string;
   amount: string;
   notes: string;
+  /** "" for joint. */
+  paidByUserId: string;
 };
+
+/** The "Whose" picker's value while split lines belong to different people. */
+const MIXED = "__mixed";
 
 /** What a new expense starts with, such as a bank row's suggestion. */
 export type ExpenseDraft = Partial<
@@ -79,7 +84,7 @@ function expenseToInput(e: Expense): ExpenseInput {
     notes: e.notes,
     split: e.split,
     createsDebt: e.createsDebt,
-    lines: e.lines.map((l) => ({ categoryId: l.categoryId, amountMinor: l.amountMinor, notes: l.notes })),
+    lines: e.lines.map((l) => ({ categoryId: l.categoryId, amountMinor: l.amountMinor, notes: l.notes, paidByUserId: l.paidByUserId })),
     refundOfId: e.refundOfId,
     version: e.version,
     bankRows: [],
@@ -134,10 +139,11 @@ export function ExpenseForm({
           categoryId: l.categoryId ?? "",
           amount: toInputValue(l.amountMinor, household.currency),
           notes: l.notes,
+          paidByUserId: l.paidByUserId ?? "",
         }))
       : [
-          { categoryId: expense?.categoryId ?? "", amount: "", notes: "" },
-          { categoryId: "", amount: "", notes: "" },
+          { categoryId: expense?.categoryId ?? "", amount: "", notes: "", paidByUserId: start.paidByUserId ?? "" },
+          { categoryId: "", amount: "", notes: "", paidByUserId: start.paidByUserId ?? "" },
         ],
   );
   const [accountId, setAccountId] = useState(start.accountId ?? "");
@@ -191,10 +197,11 @@ export function ExpenseForm({
       const parts = refund !== null ? refundLines(o.lines, refund) : o.lines.map((l) => ({ categoryId: l.categoryId, amountMinor: 0, notes: "" }));
       setHasLines(true);
       setLines(
-        parts.map((l) => ({
+        parts.map((l, i) => ({
           categoryId: l.categoryId ?? "",
           amount: refund !== null ? toInputValue(l.amountMinor, household.currency) : "",
           notes: "",
+          paidByUserId: o.lines[i]?.paidByUserId ?? "",
         })),
       );
     } else {
@@ -224,7 +231,10 @@ export function ExpenseForm({
 
   function addLine() {
     const nextAmount = remainingMinor !== null && remainingMinor !== 0 ? toInputValue(remainingMinor, household.currency) : "";
-    setLines((prev) => [...prev, { categoryId: "", amount: nextAmount, notes: "" }]);
+    // A new line belongs to whoever the lines so far share, else is joint.
+    const owners = new Set(lines.map((l) => l.paidByUserId));
+    const owner = owners.size === 1 ? [...owners][0] : "";
+    setLines((prev) => [...prev, { categoryId: "", amount: nextAmount, notes: "", paidByUserId: owner }]);
   }
 
   function removeLine(index: number) {
@@ -241,22 +251,36 @@ export function ExpenseForm({
     }
   }
 
+  /** Sets whose the expense is, and every split line's with it. */
+  function changeOwner(value: string) {
+    setPaidByUserId(value);
+    setLines((prev) => prev.map((l) => ({ ...l, paidByUserId: value })));
+  }
+
   function changeAccount(value: string) {
     setAccountId(value);
     if (ownerPicked) return;
-    setPaidByUserId(accounts.find((a) => a.id === value)?.ownerUserId ?? "");
+    changeOwner(accounts.find((a) => a.id === value)?.ownerUserId ?? "");
   }
 
+  // Whose it is: the lines' common whose when split (MIXED when they differ), else the picker's.
+  const lineOwners = [...new Set(lines.map((l) => l.paidByUserId))];
+  const mixed = hasLines && lineOwners.length > 1;
+  const owner = mixed ? MIXED : hasLines ? (lineOwners[0] ?? "") : paidByUserId;
   // Who paid: the account's owner, null for a joint account, undefined when there's no account.
   const account = accounts.find((a) => a.id === accountId);
   const payer = account ? (account.ownerUserId ?? null) : undefined;
-  const mismatch = payer !== undefined && payer !== (paidByUserId || null);
+  const mismatch = payer !== undefined && (mixed ? lineOwners.some((o) => (o || null) !== payer) : payer !== (owner || null));
   const name = (userId: string | null) => members.find((m) => m.userId === userId)?.displayName ?? "Someone";
-  const debtLabel = !paidByUserId
-    ? `The others owe ${name(payer ?? null)} their share`
-    : payer === null
-      ? `${name(paidByUserId)} owes the others their share of the joint account`
-      : `${name(paidByUserId)} owes ${name(payer ?? null)} for it`;
+  const debtLabel = mixed
+    ? payer === null
+      ? "Each person's lines cost them the others' share of the joint account"
+      : `Lines that aren't ${name(payer ?? null)}'s make others owe ${name(payer ?? null)}`
+    : !owner
+      ? `The others owe ${name(payer ?? null)} their share`
+      : payer === null
+        ? `${name(owner)} owes the others their share of the joint account`
+        : `${name(owner)} owes ${name(payer ?? null)} for it`;
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -276,6 +300,7 @@ export function ExpenseForm({
           categoryId: l.categoryId || null,
           amountMinor: parseMoney(l.amount, household.currency),
           notes: l.notes,
+          paidByUserId: l.paidByUserId || null,
         }))
       : [];
     if (hasLines) {
@@ -310,7 +335,7 @@ export function ExpenseForm({
           merchant,
           categoryId: hasLines ? null : categoryId || null,
           accountId: accountId || null,
-          paidByUserId: paidByUserId || null,
+          paidByUserId: hasLines ? (mixed ? null : lineOwners[0] || null) : paidByUserId || null,
           tripId: tripId || null,
           originalAmountMinor: foreign ? originalAmountMinor : null,
           originalCurrency: foreign ? currency : null,
@@ -318,7 +343,7 @@ export function ExpenseForm({
           split,
           createsDebt,
           lines: hasLines
-            ? parsedLines.map((l) => ({ categoryId: l.categoryId, amountMinor: l.amountMinor!, notes: l.notes }))
+            ? parsedLines.map((l) => ({ categoryId: l.categoryId, amountMinor: l.amountMinor!, notes: l.notes, paidByUserId: l.paidByUserId }))
             : [],
           refundOfId: refundOfId && amountMinor < 0 ? refundOfId : null,
           version: expense?.version,
@@ -341,9 +366,11 @@ export function ExpenseForm({
           setNotes("");
           setRefundOfId("");
           setHasLines(false);
+          const keep = mixed ? "" : owner;
+          setPaidByUserId(keep);
           setLines([
-            { categoryId: "", amount: "", notes: "" },
-            { categoryId: "", amount: "", notes: "" },
+            { categoryId: "", amount: "", notes: "", paidByUserId: keep },
+            { categoryId: "", amount: "", notes: "", paidByUserId: keep },
           ]);
           amountRef.current?.focus();
         },
@@ -476,17 +503,28 @@ export function ExpenseForm({
             onCheckedChange={(checked) => {
               const next = checked === true;
               setHasLines(next);
-              if (next && !lines[0]?.categoryId && categoryId) {
-                updateLine(0, { categoryId });
+              if (next) {
+                // The lines start as the expense's: its category on the first, its whose on all.
+                setLines((prev) =>
+                  prev.map((l, i) => ({
+                    ...l,
+                    paidByUserId,
+                    categoryId: i === 0 && !l.categoryId && categoryId ? categoryId : l.categoryId,
+                  })),
+                );
+              } else if (mixed) {
+                setPaidByUserId("");
+              } else {
+                setPaidByUserId(owner);
               }
             }}
           />
           <Label htmlFor="expense-lines" className="font-normal">
-            Split across categories
+            {members.length > 1 ? "Split into lines (categories or people)" : "Split across categories"}
           </Label>
         </div>
         {hasLines && (
-          <Field label="Category lines" name="lines" error={save.error}>
+          <Field label="Lines" name="lines" error={save.error}>
             <div className="flex flex-col gap-2 rounded-md border p-3">
               {lines.map((line, i) => (
                 <div key={i} className="flex flex-col gap-1.5">
@@ -528,12 +566,32 @@ export function ExpenseForm({
                       <X />
                     </Button>
                   </div>
-                  <Input
-                    aria-label={`Line ${i + 1} note`}
-                    placeholder="Optional note for this line"
-                    value={line.notes}
-                    onChange={(e) => updateLine(i, { notes: e.target.value })}
-                  />
+                  <div className={members.length > 1 ? "grid grid-cols-[8rem_1fr] gap-2" : undefined}>
+                    {members.length > 1 && (
+                      <NativeSelect
+                        aria-label={`Line ${i + 1} whose`}
+                        className="w-full"
+                        value={line.paidByUserId}
+                        onChange={(e) => {
+                          updateLine(i, { paidByUserId: e.target.value });
+                          setOwnerPicked(true);
+                        }}
+                      >
+                        <NativeSelectOption value="">Joint</NativeSelectOption>
+                        {members.map((m) => (
+                          <NativeSelectOption key={m.userId} value={m.userId}>
+                            {m.displayName}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                    )}
+                    <Input
+                      aria-label={`Line ${i + 1} note`}
+                      placeholder="Optional note for this line"
+                      value={line.notes}
+                      onChange={(e) => updateLine(i, { notes: e.target.value })}
+                    />
+                  </div>
                 </div>
               ))}
               <div className="flex items-center justify-between pt-1">
@@ -565,12 +623,14 @@ export function ExpenseForm({
           <Field label="Whose" name="paidByUserId" error={save.error}>
             <NativeSelect
               className="w-full"
-              value={paidByUserId}
+              value={owner}
               onChange={(e) => {
-                setPaidByUserId(e.target.value);
+                if (e.target.value === MIXED) return;
+                changeOwner(e.target.value);
                 setOwnerPicked(true);
               }}
             >
+              {mixed && <NativeSelectOption value={MIXED}>Different on each line</NativeSelectOption>}
               <NativeSelectOption value="">Joint</NativeSelectOption>
               {members.map((m) => (
                 <NativeSelectOption key={m.userId} value={m.userId}>

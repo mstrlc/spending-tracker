@@ -108,6 +108,7 @@ object ExpenseLines : Table("expense_lines") {
     val categoryId = uuid("category_id").nullable()
     val amountMinor = long("amount_minor")
     val notes = text("notes")
+    val paidByUserId = uuid("paid_by_user_id").nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

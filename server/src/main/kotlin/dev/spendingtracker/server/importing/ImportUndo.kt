@@ -348,6 +348,7 @@ internal fun undoImport(householdId: Uuid, importId: Uuid, userId: Uuid, dryRun:
                 member[Users.email] != null -> "Has a login"
                 anyExists(Accounts.select(Accounts.id).where { (Accounts.householdId eq householdId) and (Accounts.ownerUserId eq uid) }) -> "Owns an account"
                 anyExists(Expenses.select(Expenses.id).where { (Expenses.householdId eq householdId) and (Expenses.paidByUserId eq uid) }) -> "Used on expenses"
+                anyExists(ExpenseLines.select(ExpenseLines.id).where { (ExpenseLines.householdId eq householdId) and (ExpenseLines.paidByUserId eq uid) }) -> "Used on expenses"
                 anyExists(Income.select(Income.id).where { (Income.householdId eq householdId) and (Income.recipientUserId eq uid) }) -> "Used on income"
                 anyExists(Assets.select(Assets.id).where { (Assets.householdId eq householdId) and (Assets.ownerUserId eq uid) }) -> "Owns an asset"
                 anyExists(Settlements.select(Settlements.id).where { (Settlements.householdId eq householdId) and ((Settlements.fromUserId eq uid) or (Settlements.toUserId eq uid)) }) -> "Has settlements"
