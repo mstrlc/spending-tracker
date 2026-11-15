@@ -425,6 +425,7 @@ export function useSaveTransfer(householdId: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: keys.transfers(householdId) });
       qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+      qc.invalidateQueries({ queryKey: keys.assets(householdId) });
       qc.invalidateQueries({ queryKey: ["households", householdId, "activity"] });
     },
   });
@@ -442,6 +443,7 @@ export function useDeleteTransfer(householdId: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: keys.transfers(householdId) });
       qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+      qc.invalidateQueries({ queryKey: keys.assets(householdId) });
       qc.invalidateQueries({ queryKey: keys.bankRows(householdId) });
       qc.invalidateQueries({ queryKey: keys.bankFeeds(householdId) });
       qc.invalidateQueries({ queryKey: ["households", householdId, "activity"] });
@@ -1222,9 +1224,11 @@ export function useDecideBankRows(householdId: string) {
         qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
         qc.invalidateQueries({ queryKey: keys.income(householdId) });
       }
-      // Transfers change the joint contributions, settlements the balance, and undo may delete either.
+      // Transfers change the joint contributions and liability entries, settlements the balance, and undo may delete either.
       if (decision.action === "undo" || decision.action === "transfer" || decision.action === "settle") {
         qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+        qc.invalidateQueries({ queryKey: keys.transfers(householdId) });
+        qc.invalidateQueries({ queryKey: keys.assets(householdId) });
       }
     },
   });
@@ -1285,6 +1289,7 @@ export function useApplyInboxRules(householdId: string) {
       qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
       qc.invalidateQueries({ queryKey: keys.income(householdId) });
       qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+      qc.invalidateQueries({ queryKey: keys.assets(householdId) });
       invalidateInbox(qc, householdId);
     },
   });

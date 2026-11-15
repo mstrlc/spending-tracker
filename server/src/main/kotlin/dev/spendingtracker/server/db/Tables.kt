@@ -221,6 +221,7 @@ object AssetContributions : Table("asset_contributions") {
     val originalCurrency = text("original_currency").nullable()
     val quantity = decimal("quantity", 30, 10).nullable()
     val accountId = uuid("account_id").nullable()
+    val transferId = uuid("transfer_id").nullable()
     val notes = text("notes")
     val importId = uuid("import_id").nullable()
     val version = integer("version")

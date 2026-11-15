@@ -44,7 +44,7 @@ private const val MAX_LIMIT = 200
 private val HIDDEN_FIELDS = setOf(
     "id", "household_id", "user_id", "version", "created_at", "updated_at", "joined_at",
     "created_by", "external_ref", "invited_by", "accepted_by", "asset_id", "rule_id", "expense_id",
-    "import_id",
+    "import_id", "transfer_id",
 )
 
 /** Must be inside a HouseholdAccess scope. */

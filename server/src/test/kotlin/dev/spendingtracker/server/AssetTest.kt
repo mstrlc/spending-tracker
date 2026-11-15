@@ -27,6 +27,7 @@ import dev.spendingtracker.shared.api.Fee
 import dev.spendingtracker.shared.api.FeeInput
 import dev.spendingtracker.shared.api.FxRateQuote
 import dev.spendingtracker.shared.api.StartBankConnection
+import dev.spendingtracker.shared.api.TransferInput
 import dev.spendingtracker.shared.api.Valuation
 import dev.spendingtracker.shared.api.ValuationInput
 import dev.spendingtracker.shared.api.ValueSource
@@ -358,6 +359,16 @@ class AssetTest {
             assertEquals(ValueSource.BANK, gotCard.valueSource)
             assertEquals(-12_500, gotCard.valueMinor)
             assertEquals(0L, gotCard.gainMinor)
+
+            // Transfer into the card account adds a repayment contribution without overriding the bank-fed value.
+            client.post("$household/transfers") {
+                setBody(TransferInput(LocalDate(2026, 3, 21), 5_000, savingsAccount.id, cardAccount.id, "Pay card"))
+            }
+            val gotCardAfterRepay = client.get("$household/assets").body<List<Asset>>().single { it.id == cardDebt.id }
+            assertEquals(ValueSource.BANK, gotCardAfterRepay.valueSource)
+            assertEquals(-12_500, gotCardAfterRepay.valueMinor)
+            assertEquals(5_000L, gotCardAfterRepay.repaidMinor)
+            assertEquals(0L, gotCardAfterRepay.borrowedMinor)
 
             // History: Feb 28 falls back to hand valuation (80,000); Mar 31+ uses bank balance (350,000).
             val savingsHistory = client.get("$household/assets/history?assetId=${savings.id}").body<AssetHistory>().points

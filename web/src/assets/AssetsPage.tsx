@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { AssetIcon, PersonLabel, gainClass } from "../chips";
 import {
   useAccounts,
@@ -419,11 +420,12 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
                     : amount < 0 ? "Took out" : "Put in";
               // Fees are already in the gain: shown muted, as costs rather than money moving.
               const muted = isValuation || h.type === "fee";
+              const fromTransfer = h.type === "contribution" && h.contribution.transferId !== null;
               return (
-                <li key={`${h.type}-${item.id}`}>
+                <li key={`${h.type}-${item.id}`} className="flex items-center gap-1">
                   <button
                     type="button"
-                    className="flex w-full items-baseline justify-between gap-3 rounded-md px-2 py-2 text-left text-sm outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 text-left text-sm outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
                     onClick={() =>
                       setEntry(
                         h.type === "valuation"
@@ -442,6 +444,7 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
                           ` · ${formatAsset(h.contribution.originalAmountMinor, h.contribution.originalCurrency)} ${h.contribution.originalCurrency}`}
                         {h.type === "contribution" && h.contribution.quantity !== null && ` · ${formatShares(Math.abs(h.contribution.quantity))}`}
                         {account && ` · ${account}`}
+                        {fromTransfer && " · From transfer"}
                         {item.notes && ` · ${item.notes}`}
                       </span>
                     </span>
@@ -449,6 +452,14 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
                       {h.type === "contribution" ? formatSigned(amount, currency) : formatAsset(amount, currency)}
                     </span>
                   </button>
+                  {fromTransfer && (
+                    <Link
+                      to={`/households/${household.id}/transfers`}
+                      className="shrink-0 rounded px-1.5 py-1 text-xs text-muted-foreground underline hover:text-foreground"
+                    >
+                      Transfer
+                    </Link>
+                  )}
                 </li>
               );
             })}

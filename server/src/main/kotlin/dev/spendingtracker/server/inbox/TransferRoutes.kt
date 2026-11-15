@@ -12,6 +12,8 @@ import dev.spendingtracker.server.common.pathId
 import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.versionParam
 import dev.spendingtracker.server.db.Accounts
+import dev.spendingtracker.server.db.AssetContributions
+import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.BankFeeds
 import dev.spendingtracker.server.db.BankRows
 import dev.spendingtracker.server.db.Settlements
@@ -21,6 +23,7 @@ import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.server.market.market
 import dev.spendingtracker.shared.api.ApiError
+import dev.spendingtracker.shared.api.AssetKind
 import dev.spendingtracker.shared.api.BankRow
 import dev.spendingtracker.shared.api.BankRowRef
 import dev.spendingtracker.shared.api.SettleBankRows
@@ -169,17 +172,15 @@ fun Route.transferRoutes() {
             val transfer = dbQuery {
                 checkAccount(householdId, validated.fromId, "fromAccountId")
                 checkAccount(householdId, validated.toId, "toAccountId")
-                val id = Uuid.random()
-                Transfers.insert {
-                    it[Transfers.id] = id
-                    it[Transfers.householdId] = householdId
-                    it[date] = validated.date
-                    it[amountMinor] = validated.amountMinor
-                    it[fromAccountId] = validated.fromId
-                    it[toAccountId] = validated.toId
-                    it[notes] = validated.notes
-                    it[createdBy] = call.userId
-                }
+                val id = insertTransfer(
+                    householdId = householdId,
+                    userId = call.userId,
+                    date = validated.date,
+                    amountMinor = validated.amountMinor,
+                    fromAccountId = validated.fromId,
+                    toAccountId = validated.toId,
+                    notes = validated.notes,
+                )
                 Transfers.selectAll().where { match(householdId, id) }.single().toTransfer(null)
             }
             call.respond(HttpStatusCode.Created, transfer)
@@ -250,6 +251,16 @@ fun Route.transferRoutes() {
                     it[updatedAt] = Clock.System.now()
                 }
                 checkVersioned(affected, { true }, "Transfer")
+                syncLiabilityContribution(
+                    householdId = householdId,
+                    userId = call.userId,
+                    transferId = id,
+                    date = validated.date,
+                    amountMinor = validated.amountMinor,
+                    fromAccountId = validated.fromId,
+                    toAccountId = validated.toId,
+                    notes = validated.notes,
+                )
                 Transfers.selectAll().where { match(householdId, id) }.single().toTransfer(rows)
             }
             call.respond(transfer)
@@ -324,18 +335,116 @@ fun createTransfer(
     val amount = sides.amount(householdCurrency)
     val from = sides.out?.get(BankFeeds.accountId) ?: other!!
     val to = sides.inn?.get(BankFeeds.accountId) ?: other!!
+    return insertTransfer(
+        householdId = householdId,
+        userId = userId,
+        date = sides.date,
+        amountMinor = amount,
+        fromAccountId = from,
+        toAccountId = to,
+        notes = notes,
+    )
+}
+
+private val liabilityDbKinds = AssetKind.entries.filter { it.liability }.map { it.name.lowercase() }
+
+private fun insertTransfer(
+    householdId: Uuid,
+    userId: Uuid,
+    date: LocalDate,
+    amountMinor: Long,
+    fromAccountId: Uuid,
+    toAccountId: Uuid,
+    notes: String,
+): Uuid {
     val id = Uuid.random()
     Transfers.insert {
         it[Transfers.id] = id
         it[Transfers.householdId] = householdId
-        it[date] = sides.date
-        it[amountMinor] = amount
-        it[fromAccountId] = from
-        it[toAccountId] = to
+        it[Transfers.date] = date
+        it[Transfers.amountMinor] = amountMinor
+        it[Transfers.fromAccountId] = fromAccountId
+        it[Transfers.toAccountId] = toAccountId
         it[Transfers.notes] = notes
         it[createdBy] = userId
     }
+    syncLiabilityContribution(householdId, userId, id, date, amountMinor, fromAccountId, toAccountId, notes)
     return id
+}
+
+/**
+ * Keeps the contribution on a liability linked to [fromAccountId] or [toAccountId] in sync with the transfer:
+ * money into the liability's account is a repayment (positive), money out is borrowing (negative), with the other
+ * side as the contribution's account.
+ */
+private fun syncLiabilityContribution(
+    householdId: Uuid,
+    userId: Uuid,
+    transferId: Uuid,
+    date: LocalDate,
+    amountMinor: Long,
+    fromAccountId: Uuid,
+    toAccountId: Uuid,
+    notes: String,
+) {
+    val linked = if (fromAccountId == toAccountId) {
+        emptyMap()
+    } else {
+        Assets.select(Assets.id, Assets.accountId)
+            .where {
+                (Assets.householdId eq householdId) and
+                    (Assets.kind inList liabilityDbKinds) and
+                    (Assets.accountId inList listOf(fromAccountId, toAccountId))
+            }
+            .associate { it[Assets.accountId]!! to it[Assets.id] }
+    }
+    val target = when {
+        toAccountId in linked -> Triple(linked.getValue(toAccountId), amountMinor, fromAccountId)
+        fromAccountId in linked -> Triple(linked.getValue(fromAccountId), -amountMinor, toAccountId)
+        else -> null
+    }
+    val existing = AssetContributions.select(AssetContributions.id, AssetContributions.assetId, AssetContributions.version)
+        .where { (AssetContributions.householdId eq householdId) and (AssetContributions.transferId eq transferId) }
+        .singleOrNull()
+    if (target == null) {
+        if (existing != null) {
+            AssetContributions.deleteWhere {
+                (AssetContributions.householdId eq householdId) and (AssetContributions.id eq existing[AssetContributions.id])
+            }
+        }
+        return
+    }
+    val (assetId, signedAmount, otherAccountId) = target
+    if (existing != null && existing[AssetContributions.assetId] == assetId) {
+        AssetContributions.update({
+            (AssetContributions.householdId eq householdId) and (AssetContributions.id eq existing[AssetContributions.id])
+        }) {
+            it[AssetContributions.date] = date
+            it[AssetContributions.amountMinor] = signedAmount
+            it[AssetContributions.accountId] = otherAccountId
+            it[AssetContributions.notes] = notes
+            it[AssetContributions.version] = existing[AssetContributions.version] + 1
+            it[updatedAt] = Clock.System.now()
+        }
+        return
+    }
+    if (existing != null) {
+        AssetContributions.deleteWhere {
+            (AssetContributions.householdId eq householdId) and (AssetContributions.id eq existing[AssetContributions.id])
+        }
+    }
+    AssetContributions.insert {
+        it[AssetContributions.id] = Uuid.random()
+        it[AssetContributions.householdId] = householdId
+        it[AssetContributions.assetId] = assetId
+        it[AssetContributions.date] = date
+        it[AssetContributions.amountMinor] = signedAmount
+        it[AssetContributions.accountId] = otherAccountId
+        it[AssetContributions.transferId] = transferId
+        it[AssetContributions.notes] = notes
+        it[AssetContributions.version] = 1
+        it[createdBy] = userId
+    }
 }
 
 private data class ValidatedTransfer(

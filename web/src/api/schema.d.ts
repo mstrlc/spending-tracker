@@ -956,7 +956,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** @description Updates a transfer. */
+        /** @description Updates a transfer. On a transfer made from bank rows, only notes (and, for a one-row transfer, the unread side's account) can change; anything else returns 409 transfer_from_bank_rows. */
         put: operations["updateTransfer"];
         post?: never;
         /** @description Deletes a transfer. The bank rows it was made from go back to the inbox. */
@@ -1839,6 +1839,8 @@ export interface components {
             quantity: null | number;
             /** String */
             accountId: null | string;
+            /** String */
+            transferId: null | string;
             /** String */
             notes: string;
             /**
@@ -6871,7 +6873,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "application/json": components["schemas"]["TransferInput"];
             };
@@ -6893,6 +6895,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Not a member of this household, or no such household */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -6911,7 +6914,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "application/json": components["schemas"]["TransferInput"];
             };

@@ -312,12 +312,17 @@ private fun Route.contributionRoutes() {
         val contribution = dbQuery {
             input.checkAccount(householdId)
             val match = matchContribution(householdId, assetId, id)
+            val existing = AssetContributions.selectAll().where(match).singleOrNull()
+                ?: throw notFound("Contribution")
+            if (existing[AssetContributions.transferId] != null) {
+                throw conflict("contribution_from_transfer", "This entry came from a transfer; edit or delete the transfer instead")
+            }
             val affected = AssetContributions.update({ match and (AssetContributions.version eq version) }) {
                 it.write(input)
                 it[AssetContributions.version] = version + 1
                 it[updatedAt] = Clock.System.now()
             }
-            checkVersioned(affected, { !AssetContributions.selectAll().where(match).empty() }, "Contribution")
+            checkVersioned(affected, { true }, "Contribution")
             AssetContributions.selectAll().where { AssetContributions.id eq id }.single().toContribution()
         }
         call.respond(contribution)
@@ -342,8 +347,13 @@ private fun Route.contributionRoutes() {
         val version = call.versionParam()
         dbQuery {
             val match = matchContribution(householdId, assetId, id)
+            val existing = AssetContributions.selectAll().where(match).singleOrNull()
+                ?: throw notFound("Contribution")
+            if (existing[AssetContributions.transferId] != null) {
+                throw conflict("contribution_from_transfer", "This entry came from a transfer; edit or delete the transfer instead")
+            }
             val affected = AssetContributions.deleteWhere { match and (AssetContributions.version eq version) }
-            checkVersioned(affected, { !AssetContributions.selectAll().where(match).empty() }, "Contribution")
+            checkVersioned(affected, { true }, "Contribution")
         }
         call.respond(HttpStatusCode.NoContent)
     }
@@ -876,6 +886,7 @@ private fun ResultRow.toContribution() = Contribution(
     originalCurrency = this[AssetContributions.originalCurrency],
     quantity = this[AssetContributions.quantity]?.toDouble(),
     accountId = this[AssetContributions.accountId]?.toString(),
+    transferId = this[AssetContributions.transferId]?.toString(),
     notes = this[AssetContributions.notes],
     version = this[AssetContributions.version],
 )
