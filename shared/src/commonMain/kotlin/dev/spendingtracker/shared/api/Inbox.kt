@@ -135,6 +135,7 @@ enum class SuggestedRecord {
     @SerialName("expense") EXPENSE,
     @SerialName("income") INCOME,
     @SerialName("transfer") TRANSFER,
+    @SerialName("settlement") SETTLEMENT,
 }
 
 /**
@@ -148,6 +149,11 @@ enum class SuggestedRecord {
  * pending row looks like the other side ([transferCandidates], best first, at most 3), the counterparty's IBAN is
  * one of the household's accounts ([transferAccountId], only when there is no candidate), or the hint says so. The
  * expense and income fields stay filled, as for the record the row would be otherwise.
+ *
+ * The record is [SuggestedRecord.SETTLEMENT] when money moves between two members' personal accounts (not joint, not
+ * the same member's) by counterparty IBAN, a pending row on the other member's feed ([transferCandidates] stays
+ * filled so both rows can be settled together), or a member name hint. [settleFromUserId] and [settleToUserId] say
+ * who paid whom.
  *
  * A rule that matches the row ([ruleId], [ruleName]) takes precedence over the guess from past decisions: its record,
  * merchant, category, whose, income source and other account replace the guesses, and [skipReason] is set when the
@@ -174,6 +180,8 @@ data class BankRowSuggestion(
     val duplicates: List<DuplicateCandidate>,
     val transferCandidates: List<TransferCandidate>,
     val transferAccountId: String?,
+    val settleFromUserId: String?,
+    val settleToUserId: String?,
     val ruleId: String?,
     val ruleName: String?,
     val skipReason: String?,

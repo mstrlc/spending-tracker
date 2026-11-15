@@ -112,19 +112,7 @@ fun Route.transferRoutes() {
             val rows = dbQuery {
                 if (!isMember(householdId, from)) throw badRequest("invalid_member", "Must be a member of the household", "fromUserId")
                 if (!isMember(householdId, to)) throw badRequest("invalid_member", "Must be a member of the household", "toUserId")
-                val sides = Sides.of(lockRows(householdId, input.rows))
-                val amount = sides.amount(call.household.currency)
-                val id = Uuid.random()
-                Settlements.insert {
-                    it[Settlements.id] = id
-                    it[Settlements.householdId] = householdId
-                    it[date] = sides.date
-                    it[fromUserId] = from
-                    it[toUserId] = to
-                    it[amountMinor] = amount
-                    it[Settlements.notes] = notes
-                    it[createdBy] = call.userId
-                }
+                val id = createSettlement(householdId, call.userId, call.household.currency, lockRows(householdId, input.rows), from, to, notes)
                 fileBankRows(householdId, input.rows, call.userId, settlementId = id, created = true)
                 reload(householdId, input.rows.map { Uuid.parse(it.id) })
             }
@@ -357,6 +345,35 @@ private data class ValidatedTransfer(
     val toId: Uuid,
     val notes: String,
 )
+
+/**
+ * Inserts a settlement made from [rows] (one or two, as for a transfer) between [from] and [to].
+ * Call inside a transaction, after exchange rates are fresh.
+ */
+fun createSettlement(
+    householdId: Uuid,
+    userId: Uuid,
+    householdCurrency: String,
+    rows: List<ResultRow>,
+    from: Uuid,
+    to: Uuid,
+    notes: String,
+): Uuid {
+    val sides = Sides.of(rows)
+    val amount = sides.amount(householdCurrency)
+    val id = Uuid.random()
+    Settlements.insert {
+        it[Settlements.id] = id
+        it[Settlements.householdId] = householdId
+        it[date] = sides.date
+        it[fromUserId] = from
+        it[toUserId] = to
+        it[amountMinor] = amount
+        it[Settlements.notes] = notes
+        it[createdBy] = userId
+    }
+    return id
+}
 
 private fun TransferInput.validated(allowSameAccount: Boolean = false): ValidatedTransfer {
     if (amountMinor <= 0) throw badRequest("invalid_amount", "The amount has to be more than zero", "amountMinor")

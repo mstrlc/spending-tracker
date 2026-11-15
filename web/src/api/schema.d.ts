@@ -2698,6 +2698,10 @@ export interface components {
             /** String */
             transferAccountId: null | string;
             /** String */
+            settleFromUserId: null | string;
+            /** String */
+            settleToUserId: null | string;
+            /** String */
             ruleId: null | string;
             /** String */
             ruleName: null | string;
@@ -2713,7 +2717,7 @@ export interface components {
          * SuggestedRecord
          * @enum {string}
          */
-        SuggestedRecord: "expense" | "income" | "transfer";
+        SuggestedRecord: "expense" | "income" | "transfer" | "settlement";
         /** DuplicateCandidate */
         DuplicateCandidate: {
             record: components["schemas"]["SuggestedRecord"];
@@ -2917,6 +2921,10 @@ export interface components {
             /** String */
             otherAccountId: null | string;
             /** String */
+            settleFromUserId: null | string;
+            /** String */
+            settleToUserId: null | string;
+            /** String */
             skipReason: string;
             /**
              * Int
@@ -2950,7 +2958,7 @@ export interface components {
          * RuleOutcome
          * @enum {string}
          */
-        RuleOutcome: "expense" | "income" | "deduction" | "transfer" | "skip";
+        RuleOutcome: "expense" | "income" | "deduction" | "transfer" | "settlement" | "skip";
         /** InboxRuleInput */
         InboxRuleInput: {
             /** String */
@@ -2977,6 +2985,10 @@ export interface components {
             incomeSource?: string;
             /** String */
             otherAccountId?: null | string;
+            /** String */
+            settleFromUserId?: null | string;
+            /** String */
+            settleToUserId?: null | string;
             /** String */
             skipReason?: string;
             /**

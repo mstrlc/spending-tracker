@@ -119,10 +119,11 @@ export function draftSettle(
 ): SettleDraft {
   const out = rows.find((r) => r.amountMinor < 0);
   const incoming = rows.find((r) => r.amountMinor > 0);
+  const suggested = rows.find((r) => r.suggestion?.settleFromUserId || r.suggestion?.settleToUserId)?.suggestion;
   const named = (row: BankRow | undefined, skip: string | null) =>
     row ? memberInText(`${row.counterpartyName} ${row.text}`, members, skip) : null;
-  const fromUserId = (out ? ownerOf(out.accountId) : null) ?? null;
-  const toUserId = (incoming ? ownerOf(incoming.accountId) : null) ?? null;
+  const fromUserId = (out ? ownerOf(out.accountId) : null) ?? suggested?.settleFromUserId ?? null;
+  const toUserId = (incoming ? ownerOf(incoming.accountId) : null) ?? suggested?.settleToUserId ?? null;
   const from = fromUserId ?? (incoming ? named(incoming, toUserId) : null);
   const to = toUserId ?? (out ? named(out, from) : null);
   const priced = out?.suggestion?.amountMinor ?? incoming?.suggestion?.amountMinor ?? null;

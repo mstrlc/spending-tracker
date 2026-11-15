@@ -36,6 +36,11 @@ export async function loadDecision(householdId: string, row: BankRow): Promise<R
       const other = t.fromAccountId === row.accountId ? t.toAccountId : t.fromAccountId;
       return { outcome: "transfer", otherAccountId: other === row.accountId ? null : other };
     }
+    case "settlement": {
+      const settlements = unwrap(await api.GET("/api/households/{householdId}/settlements", { params: { path, query } }));
+      const s = settlements.find((x) => x.id === row.settlementId);
+      return s ? { outcome: "settlement", fromUserId: s.fromUserId, toUserId: s.toUserId } : null;
+    }
     case "skipped":
       return { outcome: "skip", reason: row.skipReason ?? "" };
     default:
