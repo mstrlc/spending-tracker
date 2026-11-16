@@ -109,7 +109,7 @@ fun Route.assetRoutes() = route("/assets") {
                 liabilitiesMinor = liabilitiesMinor,
                 netMinor = assetsMinor + liabilitiesMinor,
                 contributedMinor = owned.sumOf { it.second.contributedMinor },
-                gainMinor = owned.sumOf { it.second.gainMinor },
+                gainMinor = invested.sumOf { it.second.gainMinor ?: 0L },
                 feesMinor = assets.sumOf { it.second.feesMinor },
                 annualReturn = xirr(portfolioFlows),
             ),

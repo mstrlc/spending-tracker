@@ -50,7 +50,8 @@ enum class ValueSource {
  * contributions record shares is valued at the market: [shares] at the latest close ([valuedOn]), converted at
  * the ČNB fixing, plus any contributions without shares at cost. Otherwise [valueMinor] is the latest valuation plus
  * contributions made after it (at cost), or just [contributedMinor] while the holding has never been valued
- * ([valuedOn] null). [gainMinor] is [valueMinor] − [contributedMinor].
+ * ([valuedOn] null). [gainMinor] is [valueMinor] − [contributedMinor], or `null` when nothing has been recorded
+ * going in ([firstContributedOn] null).
  *
  * Sign convention for [AssetKind.liability] kinds:
  * - Valuations ([Valuation.valueMinor], >= 0) store **what's owed** as a positive number.
@@ -80,7 +81,7 @@ data class Asset(
     val contributedMinor: Long,
     val valueMinor: Long,
     val valuedOn: LocalDate?,
-    val gainMinor: Long,
+    val gainMinor: Long?,
     /** Annualised money-weighted return (XIRR); null for liabilities, under 30 days of history, or if non-convergent. */
     val annualReturn: Double?,
     val firstContributedOn: LocalDate?,

@@ -184,7 +184,9 @@ export function AssetsPage() {
                       )}
                       <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>
                       <TableCell className="amount text-right">{formatAsset(i.valueMinor, currency)}</TableCell>
-                      <TableCell className={cn("amount text-right max-md:hidden", gainClass(i.gainMinor))}>{formatSigned(i.gainMinor, currency)}</TableCell>
+                      <TableCell className={cn("amount text-right max-md:hidden", i.gainMinor !== null && gainClass(i.gainMinor))}>
+                        {i.gainMinor === null ? "–" : formatSigned(i.gainMinor, currency)}
+                      </TableCell>
                       <TableCell className="amount text-right">
                         <div className={cn(r !== null && gainClass(r))}>{r === null ? "–" : formatPercent(r)}</div>
                         {i.annualReturn !== null && (
@@ -324,7 +326,7 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
           {!isLiability && (
             <div className="flex flex-col gap-1">
               <dt className="text-sm text-muted-foreground">Gain{ratio !== null && ` · ${formatPercent(ratio)}`}</dt>
-              <dd className="amount">{formatSigned(asset.gainMinor, currency)}</dd>
+              <dd className="amount">{asset.gainMinor === null ? "–" : formatSigned(asset.gainMinor, currency)}</dd>
             </div>
           )}
           {!isLiability && asset.annualReturn !== null && (

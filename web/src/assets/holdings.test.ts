@@ -30,6 +30,13 @@ describe("portfolioTotals", () => {
     expect(formatPercent(gainRatio(totals)!)).toBe("+6.0%");
   });
 
+  it("ignores null gain on uncontributed holdings", () => {
+    const savings: Asset = { ...holding(0, 350_000), kind: "savings", valueSource: "bank", gainMinor: null };
+    const totals = portfolioTotals([holding(100_000, 112_000), savings]);
+    expect(totals).toEqual({ contributedMinor: 100_000, valueMinor: 462_000, gainMinor: 12_000, feesMinor: 0 });
+    expect(gainRatio(savings)).toBeNull();
+  });
+
   it("has no percentage when nothing is in", () => {
     expect(gainRatio({ contributedMinor: 0, gainMinor: 0 })).toBeNull();
     expect(formatPercent(-0.02)).toBe("−2.0%");

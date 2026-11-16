@@ -36,7 +36,7 @@ export function portfolioTotals(assets: Asset[]): Totals {
       (sum, i) => ({
         contributedMinor: sum.contributedMinor + i.contributedMinor,
         valueMinor: sum.valueMinor + i.valueMinor,
-        gainMinor: sum.gainMinor + i.gainMinor,
+        gainMinor: sum.gainMinor + (i.gainMinor ?? 0),
         feesMinor: sum.feesMinor + i.feesMinor,
       }),
       { contributedMinor: 0, valueMinor: 0, gainMinor: 0, feesMinor: 0 },
@@ -44,8 +44,8 @@ export function portfolioTotals(assets: Asset[]): Totals {
 }
 
 /** Gain as a share of what went in, or null when nothing (or less than nothing) is in. */
-export function gainRatio({ contributedMinor, gainMinor }: Pick<Totals, "contributedMinor" | "gainMinor">): number | null {
-  return contributedMinor > 0 ? gainMinor / contributedMinor : null;
+export function gainRatio({ contributedMinor, gainMinor }: { contributedMinor: number; gainMinor: number | null }): number | null {
+  return contributedMinor > 0 && gainMinor !== null ? gainMinor / contributedMinor : null;
 }
 
 /** "+8.6%", "−2.0%", "0.0%". */
@@ -140,11 +140,11 @@ export function feeSummary(fees: Fee[], points: HistoryPoint[], holding: Pick<As
   const feesMinor = fees.reduce((sum, f) => sum + f.amountMinor, 0);
   const average = mean(chargedPoints(fees, points).map((p) => p.valueMinor));
   const months = new Set(fees.map((f) => f.date.slice(0, 7))).size;
-  const beforeFees = holding.gainMinor + feesMinor;
+  const beforeFees = holding.gainMinor === null ? null : holding.gainMinor + feesMinor;
   return {
     feesMinor,
     ofContributed: holding.contributedMinor > 0 ? feesMinor / holding.contributedMinor : null,
-    ofGainBeforeFees: beforeFees > 0 ? feesMinor / beforeFees : null,
+    ofGainBeforeFees: beforeFees !== null && beforeFees > 0 ? feesMinor / beforeFees : null,
     yearlyRate: average && months ? (feesMinor / average) * (12 / months) : null,
   };
 }
