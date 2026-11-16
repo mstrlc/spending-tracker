@@ -9,6 +9,7 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { CategoriesPage } from "./categories/CategoriesPage";
 import { ExpensesPage } from "./expenses/ExpensesPage";
 import { IncomePage } from "./income/IncomePage";
+import { TransfersPage } from "./transfers/TransfersPage";
 import { AssetsPage } from "./assets/AssetsPage";
 import { TripsPage } from "./trips/TripsPage";
 import { BalancesPage } from "./debts/BalancesPage";
@@ -50,6 +51,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="rules" element={<RulesPage />} />
               <Route path="expenses" element={<ExpensesPage />} />
               <Route path="income" element={<IncomePage />} />
+              <Route path="transfers" element={<TransfersPage />} />
               <Route path="assets" element={<AssetsPage />} />
               <Route path="merchants" element={<MerchantsPage />} />
               <Route path="balances" element={<BalancesPage />} />

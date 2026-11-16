@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type FormEvent } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import {
+  ArrowLeftRightIcon,
   ChevronsUpDownIcon,
   GaugeIcon,
   HandCoinsIcon,
@@ -116,6 +117,7 @@ const SECTIONS = [
   { to: "rules", label: "Rules", icon: <ListFilterIcon /> },
   { to: "expenses", label: "Expenses", icon: <ReceiptIcon /> },
   { to: "income", label: "Income", icon: <HandCoinsIcon /> },
+  { to: "transfers", label: "Transfers", icon: <ArrowLeftRightIcon /> },
   { to: "assets", label: "Assets", icon: <TrendingUpIcon /> },
   { to: "balances", label: "Balances", icon: <ScaleIcon /> },
   { to: "merchants", label: "Merchants", icon: <StoreIcon /> },

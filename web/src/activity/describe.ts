@@ -30,6 +30,7 @@ const NOUNS: Record<ActivityEntry["entity"], string> = {
   split_rule: "split",
   split_share: "share of",
   settlement: "settlement",
+  transfer: "transfer",
   bank_row: "bank row",
   import: "import",
 };
@@ -68,6 +69,8 @@ const LABELS: Record<string, string> = {
   weight: "Share",
   fromUserId: "Paid by",
   toUserId: "To",
+  fromAccountId: "From",
+  toAccountId: "To",
   createsDebt: "Creates a debt",
   refundOfId: "Refund of",
   deductedFromId: "Taken off",
@@ -118,6 +121,8 @@ export function formatValue(field: string, value: string | null, lookups: Lookup
       if (value === null) return field === "parentId" ? "Top level" : field === "defaultCategoryId" ? "None" : "Uncategorized";
       return lookups.categories.find((c) => c.id === value)?.name ?? "a deleted category";
     case "accountId":
+    case "fromAccountId":
+    case "toAccountId":
       if (value === null) return "No account";
       return lookups.accounts.find((a) => a.id === value)?.name ?? "a deleted account";
     case "paidByUserId":

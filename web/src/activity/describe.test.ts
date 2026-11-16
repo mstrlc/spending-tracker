@@ -64,3 +64,36 @@ test("members joining and leaving read as their own actions", () => {
   expect(describeAction(entry({ entity: "member", entityId: "u2", action: "delete", label: "Bob" }))).toEqual(["Alice removed", "Bob", ""]);
   expect(describeAction(entry({ action: "delete", label: "" }))).toEqual(["Alice deleted expense", "untitled expense", ""]);
 });
+
+test("transfers format their accounts and labels", () => {
+  const transferLookups: Lookups = {
+    ...lookups,
+    accounts: [
+      { id: "a1", name: "Current", ownerUserId: "u1", kind: "bank", iban: null, status: "active", version: 1 },
+      { id: "a2", name: "Savings", ownerUserId: null, kind: "bank", iban: null, status: "active", version: 1 },
+    ],
+  };
+  expect(describeAction(entry({ entity: "transfer", action: "create", label: "Current → Savings" }))).toEqual([
+    "Alice added transfer",
+    "Current → Savings",
+    "",
+  ]);
+  const changes = describeChanges(
+    entry({
+      entity: "transfer",
+      action: "update",
+      label: "Current → Savings",
+      changes: [
+        { field: "fromAccountId", before: "a1", after: "a2" },
+        { field: "toAccountId", before: "a2", after: "gone" },
+        { field: "amountMinor", before: "10000", after: "20000" },
+      ],
+    }),
+    transferLookups,
+  );
+  expect(changes.map((c) => [c.label, c.before, c.after])).toEqual([
+    ["From", "Current", "Savings"],
+    ["To", "Savings", "a deleted account"],
+    ["Amount", expect.stringContaining("100.00"), expect.stringContaining("200.00")],
+  ]);
+});

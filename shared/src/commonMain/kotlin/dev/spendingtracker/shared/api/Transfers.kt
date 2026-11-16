@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 /**
  * Money moving between the household's own accounts: neither income nor spending. [amountMinor] is in the household
  * currency, what left [fromAccountId]. The two accounts are the same for an exchange between two pockets of one
- * account. [rowIds]: the bank rows it was made from (one or two).
+ * account. [rowIds]: the bank rows it was made from (one or two, empty when entered by hand); [bankAccountIds]: the
+ * distinct account ids those bank rows belong to (those sides cannot be changed by editing).
  */
 @Serializable
 data class Transfer(
@@ -18,6 +19,25 @@ data class Transfer(
     val notes: String,
     val version: Int,
     val rowIds: List<String>,
+    val bankAccountIds: List<String>,
+)
+
+/**
+ * Body for creating and updating a transfer; [version] is required when updating.
+ *
+ * Hand-entered transfers require distinct [fromAccountId] and [toAccountId] in the household (an exchange between
+ * pockets of one account is only created from its two bank rows). On a transfer made from bank rows, only [notes]
+ * (and, when made from one row, the unread side's account) can change; any other change returns 409
+ * `transfer_from_bank_rows`.
+ */
+@Serializable
+data class TransferInput(
+    val date: LocalDate,
+    val amountMinor: Long,
+    val fromAccountId: String,
+    val toAccountId: String,
+    val notes: String = "",
+    val version: Int? = null,
 )
 
 /**

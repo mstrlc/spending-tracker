@@ -21,6 +21,7 @@ import type {
   MerchantInput,
   SettlementInput,
   SplitRuleInput,
+  TransferInput,
   TripInput,
   ValuationInput,
 } from "./types";
@@ -40,6 +41,10 @@ export const keys = {
     from === undefined ? (["households", id, "expenses"] as const) : (["households", id, "expenses", from, to] as const),
   income: (id: string, from?: string, to?: string) =>
     from === undefined ? (["households", id, "income"] as const) : (["households", id, "income", from, to] as const),
+  transfers: (id: string, from?: string, to?: string, accountId?: string) =>
+    from === undefined
+      ? (["households", id, "transfers"] as const)
+      : (["households", id, "transfers", from, to, accountId ?? ""] as const),
   assets: (id: string) => ["households", id, "assets"] as const,
   trips: (id: string) => ["households", id, "trips"] as const,
   merchants: (id: string) => ["households", id, "merchants"] as const,
@@ -388,6 +393,59 @@ export function useDeleteSettlement(householdId: string) {
         }),
       ),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.balances(householdId) }),
+  });
+}
+
+// ---- Transfers ----
+
+export function useTransfers(householdId: string, from: string, to: string, accountId?: string) {
+  return useQuery({
+    queryKey: keys.transfers(householdId, from, to, accountId),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/households/{householdId}/transfers", {
+          params: { path: { householdId }, query: { from, to, ...(accountId ? { accountId } : {}) } },
+        }),
+      ),
+  });
+}
+
+export function useSaveTransfer(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id?: string; input: TransferInput }) =>
+      id === undefined
+        ? unwrap(await api.POST("/api/households/{householdId}/transfers", { params: { path: { householdId } }, body: input }))
+        : unwrap(
+            await api.PUT("/api/households/{householdId}/transfers/{transferId}", {
+              params: { path: { householdId, transferId: id } },
+              body: input,
+            }),
+          ),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.transfers(householdId) });
+      qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+      qc.invalidateQueries({ queryKey: ["households", householdId, "activity"] });
+    },
+  });
+}
+
+export function useDeleteTransfer(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/transfers/{transferId}", {
+          params: { path: { householdId, transferId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.transfers(householdId) });
+      qc.invalidateQueries({ queryKey: keys.balances(householdId) });
+      qc.invalidateQueries({ queryKey: keys.bankRows(householdId) });
+      qc.invalidateQueries({ queryKey: keys.bankFeeds(householdId) });
+      qc.invalidateQueries({ queryKey: ["households", householdId, "activity"] });
+    },
   });
 }
 

@@ -937,10 +937,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Transfers newest first, filtered by inclusive date range, with the bank rows they were made from. */
+        /** @description Transfers newest first, filtered by inclusive date range and optional account, with the bank rows they were made from. */
         get: operations["listTransfers"];
         put?: never;
-        post?: never;
+        /** @description Records a transfer between two distinct accounts of the household by hand. */
+        post: operations["createTransfer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -955,7 +956,8 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /** @description Updates a transfer. */
+        put: operations["updateTransfer"];
         post?: never;
         /** @description Deletes a transfer. The bank rows it was made from go back to the inbox. */
         delete: operations["deleteTransfer"];
@@ -2854,6 +2856,29 @@ export interface components {
             version: number;
             /** ArrayList<String> */
             rowIds: string[];
+            /** ArrayList<String> */
+            bankAccountIds: string[];
+        };
+        /** TransferInput */
+        TransferInput: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            fromAccountId: string;
+            /** String */
+            toAccountId: string;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
         };
         /** InboxRule */
         InboxRule: {
@@ -3069,7 +3094,7 @@ export interface components {
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement" | "bank_row" | "import";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement" | "transfer" | "bank_row" | "import";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -6781,6 +6806,8 @@ export interface operations {
                 from?: string;
                 /** @description Inclusive end date, YYYY-MM-DD */
                 to?: string;
+                /** @description Matches transfers from or to this account */
+                accountId?: string;
             };
             header?: never;
             path: {
@@ -6812,6 +6839,95 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    createTransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transfer"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateTransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                transferId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transfer"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
             };
         };
     };
