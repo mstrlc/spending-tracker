@@ -1,5 +1,6 @@
 package dev.spendingtracker.server.inbox
 
+import dev.spendingtracker.server.order.matchOrders
 import dev.spendingtracker.server.common.ApiException
 import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.BankFeeds
@@ -13,6 +14,7 @@ import dev.spendingtracker.shared.api.BankRowRef
 import dev.spendingtracker.shared.api.BankRowSuggestion
 import dev.spendingtracker.shared.api.ExpenseInput
 import dev.spendingtracker.shared.api.IncomeInput
+import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.RuleOutcome
 import dev.spendingtracker.shared.api.SuggestedRecord
 import kotlinx.datetime.DatePeriod
@@ -50,6 +52,8 @@ private val PROCESSING_ORDER = compareBy<ResultRow>({ it[BankRows.date] }, { it[
  * exchange rates of the rows' years are fresh; whoever made the request is the audit actor.
  */
 fun applyRules(householdId: Uuid, householdCurrency: String, userId: Uuid, onlyRowIds: Set<Uuid>? = null): ApplyRulesResult {
+    // Orders first: a row an order paid gets its split drafted before a rule could file it whole.
+    matchOrders(householdId, householdCurrency)
     val autoMatch = Households.select(Households.autoMatch).where { Households.id eq householdId }.single()[Households.autoMatch]
     val rules = loadRules(householdId)
     val pending = rowsWithFeed().where { (BankRows.householdId eq householdId) and pendingRows() }.toList()
@@ -106,6 +110,7 @@ private class Engine(
                 RuleOutcome.DEDUCTION -> income(row, rule, suggestion)
                 RuleOutcome.TRANSFER -> transfer(row, rule, suggestion)
                 RuleOutcome.SETTLEMENT -> settlement(row, rule, suggestion)
+                RuleOutcome.CONTRIBUTION -> contribution(row, rule)
             }
         } catch (e: ApiException) {
             // Something about this row or rule doesn't fit (no rate, an unknown reference): it stays in the inbox for a person.
@@ -166,6 +171,7 @@ private class Engine(
                 date = row[BankRows.date],
                 amountMinor = amount,
                 source = s.incomeSource,
+                categoryId = if (s.incomeKind == IncomeKind.EARNING) s.categoryId else null,
                 accountId = row[BankFeeds.accountId].toString(),
                 recipientUserId = s.paidByUserId,
                 // A deduction rule's suggestion is minus the row's amount, earned in the month the rule says.
@@ -199,6 +205,14 @@ private class Engine(
         val id = createSettlement(householdId, userId, currency, rows, from, to, "")
         fileBankRows(householdId, rows.map { it.ref() }, userId, settlementId = id, created = true, auto = true, ruleId = rule.id)
         done(*rows.toTypedArray())
+    }
+
+    /** Money into (or out of) the rule's asset. */
+    private fun contribution(row: ResultRow, rule: RuleDef) {
+        val assetId = rule.assetId ?: return
+        val id = createContribution(householdId, userId, currency, listOf(row), assetId, "")
+        fileBankRows(householdId, listOf(row.ref()), userId, contributionId = id, created = true, auto = true, ruleId = rule.id)
+        done(row)
     }
 
     /** Transfer pairs among the pending rows that no rule speaks for: each the only candidate of the other. */

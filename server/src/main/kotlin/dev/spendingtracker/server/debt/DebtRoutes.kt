@@ -1,6 +1,7 @@
 package dev.spendingtracker.server.debt
 
 import dev.spendingtracker.server.auth.userId
+import dev.spendingtracker.server.category.dbValue
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.checkVersioned
 import dev.spendingtracker.server.common.conflict
@@ -27,6 +28,7 @@ import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.BalanceEntry
 import dev.spendingtracker.shared.api.BalanceEntryKind
 import dev.spendingtracker.shared.api.Balances
+import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.Debt
 import dev.spendingtracker.shared.api.ExpenseLine
 import dev.spendingtracker.shared.api.JointContribution
@@ -400,10 +402,14 @@ private fun SplitRuleInput.validated() =
     ValidRule(validFrom, parseId(categoryId, "categoryId"), shares.validatedWeights())
 
 private fun ValidRule.checkReferences(householdId: Uuid) {
-    if (categoryId != null &&
-        Categories.selectAll().where { (Categories.id eq categoryId) and (Categories.householdId eq householdId) }.empty()
-    ) {
-        throw badRequest("invalid_category", "Unknown category", "categoryId")
+    if (categoryId != null) {
+        val cat = Categories.select(Categories.kind)
+            .where { (Categories.id eq categoryId) and (Categories.householdId eq householdId) }
+            .singleOrNull()
+            ?: throw badRequest("invalid_category", "Unknown category", "categoryId")
+        if (cat[Categories.kind] == CategoryKind.INCOME.dbValue) {
+            throw badRequest("invalid_category", "Split rules cannot use an income category", "categoryId")
+        }
     }
     weights.checkMembers(householdId)
 }

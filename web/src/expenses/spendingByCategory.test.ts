@@ -28,22 +28,22 @@ describe("spendingByCategory", () => {
       categories,
     );
     expect(slices).toEqual([
-      { name: "Housing", amountMinor: 9000 },
-      { name: "Groceries", amountMinor: 1500 },
-      { name: "Uncategorized", amountMinor: 300 },
+      { name: "Housing", amountMinor: 9000, tone: "hue-2" },
+      { name: "Groceries", amountMinor: 1500, tone: "hue-1" },
+      { name: "Uncategorized", amountMinor: 300, tone: "neutral" },
     ]);
   });
 
   test("nets refunds against their category and drops categories that end at zero or below", () => {
     const slices = spendingByCategory([expense(1000, "food"), expense(-1000, "food"), expense(200, "rent")], categories);
-    expect(slices).toEqual([{ name: "Housing", amountMinor: 200 }]);
+    expect(slices).toEqual([{ name: "Housing", amountMinor: 200, tone: "hue-2" }]);
   });
 
   test("splits an expense with category lines across each line's category", () => {
     const splitReceipt = expense(1800, null, [line("food", 700), line("rent", 600), line("fund", 500)]);
     expect(spendingByCategory([splitReceipt], categories)).toEqual([
-      { name: "Groceries", amountMinor: 700 },
-      { name: "Housing", amountMinor: 600 },
+      { name: "Groceries", amountMinor: 700, tone: "hue-1" },
+      { name: "Housing", amountMinor: 600, tone: "hue-2" },
     ]);
     expect(expenseTotals([splitReceipt], categories)).toEqual({
       spent: 1300,
@@ -58,7 +58,7 @@ describe("spendingByCategory", () => {
       many,
     );
     expect(slices.map((s) => s.name)).toEqual(["C0", "C1", "C2", "C3", "C4", "Other"]);
-    expect(slices[5].amountMinor).toBe(300 + 200 + 100);
+    expect(slices[5]).toEqual({ name: "Other", amountMinor: 300 + 200 + 100, tone: "neutral" });
   });
 });
 
@@ -74,12 +74,14 @@ describe("refunds", () => {
     // The refund (dated in another month, so not in this list at all) can't be double counted when it is.
     const rows = [original(1000, "food", 400), refund(-400, "food"), original(500, "home", 0)];
     expect(spendingByCategory(rows, categories)).toEqual([
-      { name: "Groceries", amountMinor: 600 },
-      { name: "Housing", amountMinor: 500 },
+      { name: "Groceries", amountMinor: 600, tone: "hue-1" },
+      { name: "Housing", amountMinor: 500, tone: "hue-2" },
     ]);
     expect(expenseTotals(rows, categories)).toEqual({ spent: 1100, invested: 0 });
     // Only the original is in this month's list: it is the one that carries the refund.
-    expect(spendingByCategory([original(1000, "food", 400)], categories)).toEqual([{ name: "Groceries", amountMinor: 600 }]);
+    expect(spendingByCategory([original(1000, "food", 400)], categories)).toEqual([
+      { name: "Groceries", amountMinor: 600, tone: "hue-1" },
+    ]);
   });
 
   test("spread a split original's refunds over its lines in proportion", () => {
@@ -89,8 +91,8 @@ describe("refunds", () => {
       { categoryId: "leisure", amountMinor: 300 },
     ]);
     expect(spendingByCategory([receipt], categories)).toEqual([
-      { name: "Housing", amountMinor: 450 },
-      { name: "Leisure", amountMinor: 300 },
+      { name: "Housing", amountMinor: 450, tone: "hue-2" },
+      { name: "Leisure", amountMinor: 300, tone: "hue-3" },
     ]);
   });
 

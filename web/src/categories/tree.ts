@@ -9,6 +9,16 @@ export function categoryTree(categories: Category[]): CategoryNode[] {
     .map((parent) => ({ ...parent, children: categories.filter((c) => c.parentId === parent.id) }));
 }
 
+/** Spending and investing categories (everything except income categories). */
+export function spendingCategories(categories: Category[]): Category[] {
+  return categories.filter((c) => c.kind !== "income");
+}
+
+/** Income categories only. */
+export function incomeCategories(categories: Category[]): Category[] {
+  return categories.filter((c) => c.kind === "income");
+}
+
 /** "Food › Snacks" for subcategories, the plain name for top-level ones. */
 export function categoryLabel(categories: Category[], id: string | null): string {
   if (id === null) return "";

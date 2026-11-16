@@ -4,6 +4,7 @@ import dev.spendingtracker.shared.api.Category
 import dev.spendingtracker.shared.api.CategoryInput
 import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.ExpenseInput
+import dev.spendingtracker.shared.api.IncomeInput
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.delete
@@ -74,5 +75,27 @@ class CategoryTest {
         client.delete("$household/categories/${used.id}?version=1")
             .assertError(HttpStatusCode.Conflict, "category_in_use")
         assertEquals(HttpStatusCode.NoContent, client.delete("$household/categories/${unused.id}?version=1").status)
+    }
+
+    @Test
+    fun incomeCategoryKindIsProtectedWhenInUse() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+        val salary = client.get("$household/categories").body<List<Category>>().single { it.name == "Salary" }
+        val bonus = client.create("$household/categories", CategoryInput("Bonus", parentId = salary.id))
+        assertEquals(CategoryKind.INCOME, bonus.kind)
+
+        client.post("$household/income") { setBody(IncomeInput(LocalDate(2026, 10, 1), 50_000_00, "Employer", categoryId = bonus.id)) }
+        client.delete("$household/categories/${bonus.id}?version=1")
+            .assertError(HttpStatusCode.Conflict, "category_in_use")
+        client.put("$household/categories/${salary.id}") {
+            setBody(CategoryInput("Salary", kind = CategoryKind.CONSUMPTION, version = salary.version))
+        }.assertError(HttpStatusCode.Conflict, "category_in_use")
+
+        val groceries = client.get("$household/categories").body<List<Category>>().single { it.name == "Groceries" }
+        client.post("$household/expenses") { setBody(ExpenseInput(LocalDate(2026, 10, 1), 500, categoryId = groceries.id)) }
+        client.put("$household/categories/${groceries.id}") {
+            setBody(CategoryInput("Groceries", kind = CategoryKind.INCOME, version = groceries.version))
+        }.assertError(HttpStatusCode.Conflict, "category_in_use")
     }
 }

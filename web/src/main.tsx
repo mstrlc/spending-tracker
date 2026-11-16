@@ -1,7 +1,7 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { AccountsPage } from "./accounts/AccountsPage";
 import { ActivityPage } from "./activity/ActivityPage";
 import { LoginPage, SignupPage } from "./auth/AuthPages";
@@ -30,12 +30,50 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
 
+const APP_TITLE = "Finance Tracker";
+
+const PAGE_TITLES: Record<string, string> = {
+  overview: "Overview",
+  inbox: "Inbox",
+  "bank-connected": "Bank connected",
+  rules: "Rules",
+  expenses: "Expenses",
+  income: "Income",
+  transfers: "Transfers",
+  assets: "Assets",
+  merchants: "Merchants",
+  balances: "Balances",
+  trips: "Trips",
+  accounts: "Accounts",
+  categories: "Categories",
+  members: "Members",
+  activity: "Activity",
+  import: "Import",
+  login: "Log in",
+  signup: "Sign up",
+  onboarding: "New household",
+  invite: "Invite",
+};
+
+/** Keeps the browser tab title in sync with the active route. */
+function PageTitle() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const segments = pathname.split("/").filter(Boolean);
+    const key = segments[0] === "h" ? segments[2] : segments[0];
+    const page = key ? PAGE_TITLES[key] : undefined;
+    document.title = page ? `${page} | ${APP_TITLE}` : APP_TITLE;
+  }, [pathname]);
+  return null;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
       <DialogsProvider>
       <BrowserRouter>
+        <PageTitle />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />

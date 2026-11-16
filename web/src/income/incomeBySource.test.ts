@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { Income } from "../api/types";
-import { incomeBySource } from "./IncomePage";
+import type { Category, Income } from "../api/types";
+import { incomeByCategory, incomeBySource } from "./IncomePage";
 import { incomeTotals } from "./net";
 
 const income = (amountMinor: number, source: string) => ({ amountMinor, source }) as Income;
@@ -33,5 +33,32 @@ describe("deductions", () => {
       deducted: 250,
       net: 750,
     });
+  });
+});
+
+describe("incomeByCategory", () => {
+  const cat = (id: string, name: string, parentId: string | null = null) =>
+    ({ id, name, parentId, kind: "income" }) as Category;
+  const earning = (amountMinor: number, categoryId: string | null) =>
+    ({ amountMinor, categoryId, kind: "earning" }) as Income;
+
+  test("rolls subcategories up into their top-level category and ignores deductions", () => {
+    const categories = [cat("sal", "Salary"), cat("bon", "Bonus", "sal"), cat("fre", "Freelance")];
+    expect(
+      incomeByCategory(
+        [
+          earning(500, "sal"),
+          earning(200, "bon"),
+          earning(300, "fre"),
+          earning(100, null),
+          { amountMinor: 400, categoryId: null, kind: "deduction" } as Income,
+        ],
+        categories,
+      ),
+    ).toEqual([
+      { name: "Salary", amountMinor: 700, tone: "hue-1" },
+      { name: "Freelance", amountMinor: 300, tone: "hue-2" },
+      { name: "Uncategorized", amountMinor: 100, tone: "neutral" },
+    ]);
   });
 });

@@ -220,13 +220,13 @@ export function BalancesPage() {
           </EmptyState>
         )}
         {entries.length > 0 && (
-          <Table>
+          <Table className="table-fixed md:min-w-[40rem]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="max-md:hidden">Day</TableHead>
+                <TableHead className="w-28 max-md:hidden">Day</TableHead>
                 <TableHead>What</TableHead>
-                <TableHead>Effect</TableHead>
-                <TableHead className="text-right">Amount ({household.currency})</TableHead>
+                <TableHead className="w-[32%] md:w-[30%]">Effect</TableHead>
+                <TableHead className="w-28 text-right md:w-32">Amount ({household.currency})</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -316,12 +316,12 @@ export function BalancesPage() {
             </p>
           </div>
           <Surface>
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Who</TableHead>
+                  <TableHead className="w-[28%]">Who</TableHead>
                   <TableHead>Joint account</TableHead>
-                  <TableHead className="text-right">Net ({household.currency})</TableHead>
+                  <TableHead className="w-32 text-right">Net ({household.currency})</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

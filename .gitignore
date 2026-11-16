@@ -25,3 +25,6 @@ web/dist/
 
 # Real household data exported from ../household-spending-tracker (never commit)
 /data/legacy/
+
+# Real order emails, the order parsers' fixtures (never commit)
+/data/order-emails/

@@ -26,6 +26,7 @@ import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.AssetKind
 import dev.spendingtracker.shared.api.BankRow
 import dev.spendingtracker.shared.api.BankRowRef
+import dev.spendingtracker.shared.api.ContributeBankRows
 import dev.spendingtracker.shared.api.SettleBankRows
 import dev.spendingtracker.shared.api.Transfer
 import dev.spendingtracker.shared.api.TransferBankRows
@@ -117,6 +118,31 @@ fun Route.transferRoutes() {
                 if (!isMember(householdId, to)) throw badRequest("invalid_member", "Must be a member of the household", "toUserId")
                 val id = createSettlement(householdId, call.userId, call.household.currency, lockRows(householdId, input.rows), from, to, notes)
                 fileBankRows(householdId, input.rows, call.userId, settlementId = id, created = true)
+                reload(householdId, input.rows.map { Uuid.parse(it.id) })
+            }
+            call.respond(rows)
+        }
+
+        post("/contribute", {
+            operationId = "contributeBankRows"
+            description = "Files one pending row as a contribution to an asset: money out is money put in, money in is money " +
+                "taken out. It counts as invested, not spent. Putting the row back deletes the contribution."
+            request { body<ContributeBankRows>() }
+            response {
+                code(HttpStatusCode.OK) { body<List<BankRow>>() }
+                code(HttpStatusCode.BadRequest) { body<ApiError>() }
+                code(HttpStatusCode.NotFound) { body<ApiError>() }
+                code(HttpStatusCode.Conflict) { body<ApiError>() }
+            }
+        }) {
+            val householdId = call.household.id
+            val input = call.receive<ContributeBankRows>()
+            val notes = optionalText(input.notes, "notes", max = 2000)
+            val assetId = parseId(input.assetId, "assetId") ?: throw badRequest("required", "Choose an asset", "assetId")
+            call.refreshRates(input.rows)
+            val rows = dbQuery {
+                val id = createContribution(householdId, call.userId, call.household.currency, lockRows(householdId, input.rows), assetId, notes)
+                fileBankRows(householdId, input.rows, call.userId, contributionId = id, created = true)
                 reload(householdId, input.rows.map { Uuid.parse(it.id) })
             }
             call.respond(rows)
@@ -479,6 +505,46 @@ fun createSettlement(
         it[toUserId] = to
         it[amountMinor] = amount
         it[Settlements.notes] = notes
+        it[createdBy] = userId
+    }
+    return id
+}
+
+/**
+ * Makes the asset contribution one pending row stands for: money out of the account is money put into [assetId], money
+ * in is money taken out, in the household currency (a foreign row keeps its own amount as the original). Call inside
+ * a transaction.
+ */
+fun createContribution(
+    householdId: Uuid,
+    userId: Uuid,
+    householdCurrency: String,
+    rows: List<ResultRow>,
+    assetId: Uuid,
+    notes: String,
+): Uuid {
+    if (rows.size != 1) throw badRequest("one_row", "Pick one bank row", "rows")
+    val sides = Sides.of(rows)
+    val row = rows.single()
+    if (Assets.selectAll().where { (Assets.id eq assetId) and (Assets.householdId eq householdId) }.empty()) {
+        throw badRequest("invalid_asset", "Unknown asset", "assetId")
+    }
+    val sign = if (row[BankRows.amountMinor] < 0) 1 else -1
+    val currency = row[BankRows.currency]
+    val id = Uuid.random()
+    AssetContributions.insert {
+        it[AssetContributions.id] = id
+        it[AssetContributions.householdId] = householdId
+        it[AssetContributions.assetId] = assetId
+        it[date] = sides.date
+        it[amountMinor] = sign * sides.amount(householdCurrency)
+        if (currency != householdCurrency) {
+            it[originalAmountMinor] = sign * abs(row[BankRows.amountMinor])
+            it[originalCurrency] = currency
+        }
+        it[accountId] = row[BankFeeds.accountId]
+        it[AssetContributions.notes] = notes
+        it[version] = 1
         it[createdBy] = userId
     }
     return id

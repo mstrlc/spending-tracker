@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Chip, Dot, categoryTone } from "../chips";
-import { ArchiveIcon, TrendingUpIcon } from "lucide-react";
+import { ArchiveIcon, ArrowDownLeftIcon, TrendingUpIcon } from "lucide-react";
 import { useCategories, useDeleteCategory, useSaveCategory } from "../api/hooks";
 import type { Category, CategoryInput, CategoryKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
-import { categoryTree } from "./tree";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { categoryTree, incomeCategories, spendingCategories } from "./tree";
 
 export function CategoriesPage() {
   const household = useHousehold();
@@ -23,10 +24,20 @@ export function CategoriesPage() {
   const pendingDeletes = usePendingDeleteIds();
   const [name, setName] = useState("");
   const [parentId, setParentId] = useState("");
-  const [kind, setKind] = useState<CategoryKind>("consumption");
+  // Spending (and investing) categories and income categories are separate lists: an expense never takes an income
+  // category, nor income a spending one.
+  const [side, setSide] = useState<"spending" | "income">("spending");
+  const [spendingKind, setSpendingKind] = useState<Exclude<CategoryKind, "income">>("consumption");
   const [renaming, setRenaming] = useState<string | null>(null);
 
-  const tree = categoryTree((categories.data ?? []).filter((c) => !pendingDeletes.has(c.id)));
+  const shown = (categories.data ?? []).filter((c) => !pendingDeletes.has(c.id));
+  const tree = categoryTree(side === "income" ? incomeCategories(shown) : spendingCategories(shown));
+  const kind: CategoryKind = side === "income" ? "income" : spendingKind;
+
+  function switchSide(next: "spending" | "income") {
+    setSide(next);
+    setParentId("");
+  }
 
   function add(e: FormEvent) {
     e.preventDefault();
@@ -88,12 +99,23 @@ export function CategoriesPage() {
     <>
       <PageHeader title="Categories" />
       <PageIntro>
-        Investing categories hold money moved into investments: counted as invested, not spent. Archive a category to
-        hide it from new expenses while keeping its history.
+        {side === "income"
+          ? "Income categories say what kind of money came in (the source says who paid). Only income lines and income rules use them."
+          : "Spending categories are for expenses. Investing ones hold money moved into investments: counted as invested, not spent."}{" "}
+        Archive a category to hide it from new entries while keeping its history.
       </PageIntro>
 
+      <Tabs value={side} onValueChange={(v) => switchSide(v as "spending" | "income")}>
+        <TabsList aria-label="Which categories">
+          <TabsTrigger value="spending">Spending</TabsTrigger>
+          <TabsTrigger value="income">
+            <ArrowDownLeftIcon /> Income
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <Surface className="p-4">
-        <form onSubmit={add} className="flex flex-wrap items-end gap-3" aria-label="Add category">
+        <form onSubmit={add} className="flex flex-wrap items-end gap-3" aria-label={side === "income" ? "Add income category" : "Add category"}>
           <Field label="Category name" name="name" error={save.error} className="w-56">
             <Input required value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
@@ -107,16 +129,20 @@ export function CategoriesPage() {
               ))}
             </NativeSelect>
           </Field>
-          {!parentId && (
+          {!parentId && side === "spending" && (
             <Field label="Counts as" name="kind" error={save.error} className="w-40">
-              <NativeSelect className="w-full" value={kind} onChange={(e) => setKind(e.target.value as CategoryKind)}>
+              <NativeSelect
+                className="w-full"
+                value={spendingKind}
+                onChange={(e) => setSpendingKind(e.target.value as Exclude<CategoryKind, "income">)}
+              >
                 <NativeSelectOption value="consumption">Spending</NativeSelectOption>
                 <NativeSelectOption value="investment">Investing</NativeSelectOption>
               </NativeSelect>
             </Field>
           )}
           <Button type="submit" disabled={save.isPending}>
-            Add category
+            {side === "income" ? "Add income category" : "Add category"}
           </Button>
         </form>
         <FormError error={save.error} fields={["name", "parentId", "kind"]} />

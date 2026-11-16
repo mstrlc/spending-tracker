@@ -66,6 +66,21 @@ describe("bank row drafts", () => {
     expect(draft.originalCurrency).toBeUndefined();
   });
 
+  it("starts from a row's prepared split, its source and notes (and a lone line's note) as the notes", () => {
+    const alza = suggestion({ amountMinor: 1_500_00, merchant: "Alza.cz", categoryId: "c0", paidByUserId: "u1" });
+    const lines = [
+      { categoryId: "c1", amountMinor: 1_200_00, notes: "Headphones", paidByUserId: "u1" },
+      { categoryId: "c2", amountMinor: 300_00, notes: "Bulbs", paidByUserId: null },
+    ];
+    const split = draftExpense([row({ amountMinor: -1_500_00, suggestion: alza, draft: { lines, merchant: "Alza", notes: "Gift", source: "Alza order 1" } })]);
+    expect(split).toMatchObject({ amountMinor: 1_500_00, merchant: "Alza", notes: "Alza order 1 · Gift", lines, categoryId: undefined });
+
+    // One line is a category and whose; an empty merchant keeps the suggestion's.
+    const single = draftExpense([row({ amountMinor: -300_00, suggestion: alza, draft: { lines: [{ ...lines[1], amountMinor: 300_00 }], merchant: "" } })]);
+    expect(single).toMatchObject({ merchant: "Alza.cz", categoryId: "c2", paidByUserId: null, notes: "Bulbs" });
+    expect(single.lines).toBeUndefined();
+  });
+
   it("keeps the foreign amount, and leaves the amount empty without a rate", () => {
     const euro = row({ amountMinor: -250, currency: "EUR", suggestion: suggestion({ amountMinor: 6_250, originalAmountMinor: 250, originalCurrency: "EUR" }) });
     expect(draftExpense([euro])).toMatchObject({ amountMinor: 6_250, originalAmountMinor: 250, originalCurrency: "EUR" });

@@ -37,6 +37,8 @@ data class Account(
     val iban: String?,
     /** A savings account's tax withheld from interest, in percent (15 in Czechia); null for other kinds. */
     val interestTaxPercent: Int? = null,
+    /** The last four digits of the account's payment cards, as other banks' rows name them ("Top-Up by *3656"). */
+    val cards: List<String> = emptyList(),
 )
 
 /** Body for creating and updating an account; [version] is required when updating. */
@@ -51,4 +53,6 @@ data class AccountInput(
     val iban: String? = null,
     /** Savings accounts only: tax withheld from interest in percent, 0–99; null on a savings account means 15. */
     val interestTaxPercent: Int? = null,
+    /** The last four digits of each of the account's cards; no other account of the household may have one of them. */
+    val cards: List<String> = emptyList(),
 )

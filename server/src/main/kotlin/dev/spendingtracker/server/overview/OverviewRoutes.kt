@@ -14,6 +14,14 @@ import dev.spendingtracker.server.expense.loadSpendingParts
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.merchant.merchantNames
 import dev.spendingtracker.server.asset.Dated
+import dev.spendingtracker.server.asset.wealthOn
+import dev.spendingtracker.server.db.BankConnections
+import dev.spendingtracker.server.db.BankRows
+import dev.spendingtracker.server.inbox.loadFeeds
+import dev.spendingtracker.server.inbox.pendingRows
+import dev.spendingtracker.shared.api.FeedFreshness
+import dev.spendingtracker.shared.api.Freshness
+import dev.spendingtracker.shared.api.NetWorth
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.AssetKind
 import dev.spendingtracker.shared.api.IncomeKind
@@ -37,12 +45,14 @@ import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import kotlin.time.Clock
+import kotlin.uuid.Uuid
 
 /** Must be inside a HouseholdAccess scope. */
 fun Route.overviewRoutes() = route("/overview") {
     get({
         operationId = "getOverview"
-        description = "Cash flow, typical month, spending anomalies, subscriptions and top lists for one month."
+        description = "Cash flow, typical month, spending anomalies, subscriptions and top lists for one month, " +
+            "net worth and runway at its end (or today), and how current the bank data is."
         request {
             queryParameter<String>("month") { description = "YYYY-MM; defaults to the month of today" }
             queryParameter<String>("today") {
@@ -111,12 +121,16 @@ fun Route.overviewRoutes() = route("/overview") {
         val history = monthsBetween(minOf(start, month), month).map { monthFlow(it, spends, earnings, contributions) }
         val complete = history.dropLast(1).takeLast(TYPICAL_WINDOW)
         val anomalyMonth = anomalyMonth(month, today)
+        val typical = typicalMonth(complete)
+        val on = minOf(month.lastDay, today)
+        val wealth = call.wealthOn(on)
+        val freshness = dbQuery { freshness(householdId, month) }
         val overview = Overview(
             month = month.toString(),
             daysElapsed = daysElapsed(month, today),
             daysInMonth = month.numberOfDays,
             thisMonth = history.last(),
-            typicalMonth = typicalMonth(complete),
+            typicalMonth = typical,
             history = history,
             anomalyMonth = anomalyMonth.toString(),
             anomalies = firstMonth?.let { spendingAnomalies(spends, anomalyMonth, it, today) }.orEmpty(),
@@ -124,9 +138,47 @@ fun Route.overviewRoutes() = route("/overview") {
             topCategories = topCategories(spends, month),
             topMerchants = topMerchants(spends, month),
             topSources = topSources(earnings, month),
+            netWorth = NetWorth(
+                on = on,
+                netMinor = wealth.accountsMinor + wealth.assetsMinor + wealth.liabilitiesMinor,
+                accountsMinor = wealth.accountsMinor,
+                assetsMinor = wealth.assetsMinor,
+                liabilitiesMinor = wealth.liabilitiesMinor,
+                liquidMinor = wealth.liquidMinor,
+                runwayMonths = typical?.spendingMinor?.takeIf { it > 0 }?.let { wealth.liquidMinor.coerceAtLeast(0).toDouble() / it },
+                accountsRead = wealth.accountsRead,
+            ),
+            freshness = freshness,
         )
         call.respond(overview)
     }
+}
+
+/** Each feed's reach and last sync, the one reaching least far first, and the pending rows. Call inside a transaction. */
+private fun freshness(householdId: Uuid, month: YearMonth): Freshness {
+    val consents = BankConnections.select(BankConnections.id, BankConnections.consentExpiresAt)
+        .where { BankConnections.householdId eq householdId }
+        .associate { it[BankConnections.id].toString() to it[BankConnections.consentExpiresAt]?.toString() }
+    val feeds = loadFeeds(householdId)
+    val pendingInMonth = BankRows.selectAll()
+        .where { (BankRows.householdId eq householdId) and pendingRows() and BankRows.date.between(month.firstDay, month.lastDay) }
+        .count().toInt()
+    return Freshness(
+        feeds = feeds.sortedWith(compareBy(nullsFirst()) { it.lastDate })
+            .map {
+                FeedFreshness(
+                    feedId = it.id,
+                    accountId = it.accountId,
+                    name = it.name,
+                    live = it.connectionId != null,
+                    lastDate = it.lastDate,
+                    lastSyncedAt = it.lastSyncedAt,
+                    consentExpiresAt = it.connectionId?.let(consents::get),
+                )
+            },
+        pendingRows = feeds.sumOf { it.pendingCount },
+        pendingInMonth = pendingInMonth,
+    )
 }
 
 private data class Flows(val spends: List<Spend>, val earnings: List<Earning>, val contributions: List<Dated>)

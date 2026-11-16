@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { useAccounts, useBankFeeds, useCategories, useMembers, useSaveInboxRule } from "../api/hooks";
+import { useAccounts, useAssets, useBankFeeds, useCategories, useMembers, useSaveInboxRule } from "../api/hooks";
 import type { InboxRule, InboxRuleInput, RuleDirection, RuleOutcome } from "../api/types";
-import { categoryTree } from "../categories/tree";
+import { categoryTree, incomeCategories, spendingCategories } from "../categories/tree";
 import { useHousehold } from "../households/HouseholdPages";
 import { Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ const FIELDS = [
   "otherAccountId",
   "settleFromUserId",
   "settleToUserId",
+  "assetId",
   "skipReason",
   "monthOffset",
   "priority",
@@ -45,6 +46,7 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
   const accounts = useAccounts(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
   const categories = useCategories(household.id).data ?? [];
+  const assets = useAssets(household.id).data ?? [];
   const save = useSaveInboxRule(household.id);
 
   const [name, setName] = useState(start.name ?? "");
@@ -62,12 +64,24 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
   const [otherAccountId, setOtherAccountId] = useState(start.otherAccountId ?? "");
   const [settleFromUserId, setSettleFromUserId] = useState(start.settleFromUserId ?? "");
   const [settleToUserId, setSettleToUserId] = useState(start.settleToUserId ?? "");
+  const [assetId, setAssetId] = useState(start.assetId ?? "");
   const [skipReason, setSkipReason] = useState(start.skipReason ?? "");
   const [monthOffset, setMonthOffset] = useState(start.monthOffset ?? -1);
   const [auto, setAuto] = useState(start.auto ?? false);
   const [priority, setPriority] = useState(String(start.priority ?? 0));
 
-  const tree = categoryTree(categories.filter((c) => !c.archived || c.id === categoryId));
+  const visibleCategories = outcome === "income" ? incomeCategories(categories) : spendingCategories(categories);
+  const tree = categoryTree(visibleCategories.filter((c) => !c.archived || c.id === categoryId));
+  const categoryOptions = tree.map((parent) => (
+    <NativeSelectOptGroup key={parent.id} label={parent.name}>
+      <NativeSelectOption value={parent.id}>{parent.name}</NativeSelectOption>
+      {parent.children.map((child) => (
+        <NativeSelectOption key={child.id} value={child.id}>
+          {parent.name} › {child.name}
+        </NativeSelectOption>
+      ))}
+    </NativeSelectOptGroup>
+  ));
   const noMatch = !merchantKey.trim() && !textContains.trim() && !counterpartyIban.trim();
   const person = (
     <NativeSelect className="w-full" value={personUserId} onChange={(e) => setPersonUserId(e.target.value)}>
@@ -98,6 +112,7 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
       otherAccountId: otherAccountId || null,
       settleFromUserId: settleFromUserId || null,
       settleToUserId: settleToUserId || null,
+      assetId: assetId || null,
       skipReason,
       monthOffset,
       auto,
@@ -179,6 +194,7 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
               <NativeSelectOption value="deduction">A deduction from income</NativeSelectOption>
               <NativeSelectOption value="transfer">A transfer to or from another account</NativeSelectOption>
               <NativeSelectOption value="settlement">A settlement between members</NativeSelectOption>
+              <NativeSelectOption value="contribution">An investment into an asset</NativeSelectOption>
               <NativeSelectOption value="skip">Skipped</NativeSelectOption>
             </NativeSelect>
           </Field>
@@ -190,16 +206,7 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
               <Field label="Category" name="categoryId" error={save.error}>
                 <NativeSelect className="w-full" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
                   <NativeSelectOption value="">The merchant's category</NativeSelectOption>
-                  {tree.map((parent) => (
-                    <NativeSelectOptGroup key={parent.id} label={parent.name}>
-                      <NativeSelectOption value={parent.id}>{parent.name}</NativeSelectOption>
-                      {parent.children.map((child) => (
-                        <NativeSelectOption key={child.id} value={child.id}>
-                          {parent.name} › {child.name}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelectOptGroup>
-                  ))}
+                  {categoryOptions}
                 </NativeSelect>
               </Field>
               <Field label="Whose" name="personUserId" error={save.error}>
@@ -211,6 +218,12 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
             <>
               <Field label="Source" name="incomeSource" error={save.error}>
                 <Input placeholder="Leave empty to use the counterparty's name" value={incomeSource} onChange={(e) => setIncomeSource(e.target.value)} />
+              </Field>
+              <Field label="Category" name="categoryId" error={save.error}>
+                <NativeSelect className="w-full" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                  <NativeSelectOption value="">Uncategorized</NativeSelectOption>
+                  {categoryOptions}
+                </NativeSelect>
               </Field>
               <Field label="Received by" name="personUserId" error={save.error}>
                 {person}
@@ -279,6 +292,23 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
                 </NativeSelect>
               </Field>
             </div>
+          )}
+          {outcome === "contribution" && (
+            <>
+              <Field label="Asset" name="assetId" error={save.error}>
+                <NativeSelect required className="w-full" value={assetId} onChange={(e) => setAssetId(e.target.value)}>
+                  <NativeSelectOption value="">Choose an asset</NativeSelectOption>
+                  {assets.map((a) => (
+                    <NativeSelectOption key={a.id} value={a.id}>
+                      {a.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <p className="-mt-2 text-xs text-muted-foreground">
+                Money out is put into the asset, money in is taken out of it. It counts as invested, not spent.
+              </p>
+            </>
           )}
           {outcome === "skip" && (
             <Field label="Why" name="skipReason" error={save.error}>

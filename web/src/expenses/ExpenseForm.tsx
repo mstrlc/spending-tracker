@@ -10,8 +10,8 @@ import {
   useSaveExpense,
   useTrips,
 } from "../api/hooks";
-import type { BankRowRef, Expense, ExpenseInput } from "../api/types";
-import { categoryTree } from "../categories/tree";
+import type { BankRowRef, Expense, ExpenseInput, ExpenseLineInput } from "../api/types";
+import { categoryTree, spendingCategories } from "../categories/tree";
 import { formatDay, todayIso } from "../lib/dates";
 import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 import { SplitEditor } from "../debts/SplitEditor";
+import { useExpenseOrders } from "../api/hooks";
 import { draftFrom, owesLine, sharesFrom } from "../debts/split";
 import { refundLines, refundOriginals } from "./refunds";
 
@@ -68,7 +69,10 @@ export type ExpenseDraft = Partial<
     | "originalCurrency"
     | "refundOfId"
   >
->;
+> & {
+  /** Split lines to start from (two or more), such as a bank row's prepared draft. */
+  lines?: ExpenseLineInput[];
+};
 
 function expenseToInput(e: Expense): ExpenseInput {
   return {
@@ -127,18 +131,21 @@ export function ExpenseForm({
   const save = useUndoableSave("Expense", saveExpense, deleteExpense);
   const remove = useUndoableDelete("Expense", deleteExpense);
   const amountRef = useRef<HTMLInputElement>(null);
+  // The e-shop orders its payment paid: their items, kept apart from the split.
+  const orders = useExpenseOrders(household.id, expense?.id).data ?? [];
 
   const [date, setDate] = useState(start.date ?? defaultDate ?? todayIso());
   const [amount, setAmount] = useState(start.amountMinor != null ? toInputValue(start.amountMinor, household.currency) : "");
   const [merchant, setMerchant] = useState(start.merchant ?? "");
   const [categoryId, setCategoryId] = useState(start.categoryId ?? "");
-  const [hasLines, setHasLines] = useState((expense?.lines.length ?? 0) > 0);
+  const startLines = expense ? expense.lines : (draft?.lines ?? []);
+  const [hasLines, setHasLines] = useState(expense ? expense.lines.length > 0 : startLines.length >= 2);
   const [lines, setLines] = useState<LineDraft[]>(() =>
-    expense && expense.lines.length > 0
-      ? expense.lines.map((l) => ({
+    startLines.length >= (expense ? 1 : 2)
+      ? startLines.map((l) => ({
           categoryId: l.categoryId ?? "",
           amount: toInputValue(l.amountMinor, household.currency),
-          notes: l.notes,
+          notes: l.notes ?? "",
           paidByUserId: l.paidByUserId ?? "",
         }))
       : [
@@ -170,7 +177,7 @@ export function ExpenseForm({
 
   // Archived categories and closed accounts stay selectable only for rows that already use them.
   const usedCategoryIds = new Set([expense?.categoryId, ...(expense?.lines.map((l) => l.categoryId) ?? [])]);
-  const tree = categoryTree(categories.filter((c) => !c.archived || usedCategoryIds.has(c.id)));
+  const tree = categoryTree(spendingCategories(categories).filter((c) => !c.archived || usedCategoryIds.has(c.id)));
   const accountOptions = accounts.filter((a) => a.status === "active" || a.id === expense?.accountId);
   const knownMerchant = merchants.find((m) => m.name.toLowerCase() === merchant.trim().toLowerCase());
   const merchantHint = merchant.trim() && !knownMerchant && merchants.length > 0 ? "New merchant: it'll be added to your list." : null;
@@ -704,6 +711,24 @@ export function ExpenseForm({
         <Field label="Notes" name="notes" error={save.error}>
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
+        {orders.map((order) => (
+          <section key={order.id} className="flex flex-col gap-1 text-sm" aria-label={`Items of order ${order.number}`}>
+            <h3 className="font-medium">
+              {order.merchant || order.shop} order {order.number}
+            </h3>
+            <ul className="flex flex-col divide-y text-muted-foreground">
+              {order.items.map((item) => (
+                <li key={item.id} className="flex items-baseline justify-between gap-3 py-1">
+                  <span className="min-w-0">
+                    {item.quantity !== 1 && `${item.quantity}× `}
+                    {item.name}
+                  </span>
+                  <span className="amount shrink-0">{formatMoney(item.amountMinor, order.currency)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
         <FormError error={save.error} fields={FIELDS} />
         <ErrorText error={remove.error} />
         {lastAdded && !save.error && (

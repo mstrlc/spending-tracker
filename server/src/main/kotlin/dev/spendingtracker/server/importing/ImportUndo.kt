@@ -106,7 +106,7 @@ internal fun undoImport(householdId: Uuid, importId: Uuid, userId: Uuid, dryRun:
     // 1. Leaf records first.
     val importedRows = BankRows.select(
         BankRows.version, BankRows.createdRecord, BankRows.decidedAuto,
-        BankRows.expenseId, BankRows.incomeId, BankRows.transferId, BankRows.settlementId,
+        BankRows.expenseId, BankRows.incomeId, BankRows.transferId, BankRows.settlementId, BankRows.contributionId,
     ).where { (BankRows.householdId eq householdId) and (BankRows.importId eq importId) }.toList()
     val bankRowVersions = importedRows.map { it[BankRows.version] }
     // Records the inbox rules made from the import's rows when it stored them (or a later automatic pass) aren't
@@ -210,6 +210,9 @@ internal fun undoImport(householdId: Uuid, importId: Uuid, userId: Uuid, dryRun:
     }
     orphans(BankRows.settlementId).takeIf { it.isNotEmpty() }?.let { gone ->
         Settlements.deleteWhere { (Settlements.householdId eq householdId) and (Settlements.id inList gone) }
+    }
+    orphans(BankRows.contributionId).takeIf { it.isNotEmpty() }?.let { gone ->
+        AssetContributions.deleteWhere { (AssetContributions.householdId eq householdId) and (AssetContributions.id inList gone) }
     }
 
     // 2. Containers, in dependency order.

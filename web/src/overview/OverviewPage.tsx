@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 import { useCategories, useOverview } from "../api/hooks";
-import type { Category, MonthFlow, Overview } from "../api/types";
+import type { Category, FeedFreshness, Freshness, MonthFlow, NetWorth, Overview } from "../api/types";
+import { categoryTone, Chip } from "../chips";
 import { useHousehold } from "../households/HouseholdPages";
-import { formatMonth, todayIso } from "../lib/dates";
+import { formatDate, formatMonth, shiftDays, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { rankSlices, ShareBar } from "../shares";
@@ -41,7 +43,9 @@ export function OverviewPage() {
           <SkeletonRows />
         </Surface>
       )}
-      {overview.data && <OverviewBody data={overview.data} categories={categories} currency={household.currency} />}
+      {overview.data && (
+        <OverviewBody data={overview.data} categories={categories} currency={household.currency} inboxPath={`/h/${household.id}/inbox`} />
+      )}
     </>
   );
 }
@@ -100,12 +104,25 @@ function FigureList({ rows }: { rows: { key: string; name: ReactNode; detail?: R
 
 const Empty = ({ children }: { children: ReactNode }) => <p className="text-sm text-muted-foreground">{children}</p>;
 
-function OverviewBody({ data, categories, currency }: { data: Overview; categories: Category[]; currency: string }) {
+function OverviewBody({
+  data,
+  categories,
+  currency,
+  inboxPath,
+}: {
+  data: Overview;
+  categories: Category[];
+  currency: string;
+  inboxPath: string;
+}) {
   const { thisMonth, typicalMonth } = data;
   const inProgress = data.daysElapsed > 0 && data.daysElapsed < data.daysInMonth;
   const pace = inProgress ? Math.round((thisMonth.spendingMinor / data.daysElapsed) * data.daysInMonth) : null;
   const rate = thisMonth.incomeMinor > 0 ? Math.round((saved(thisMonth) / thisMonth.incomeMinor) * 100) : null;
-  const categorySlices = rankSlices(new Map(data.topCategories.map((c) => [categoryName(categories, c.categoryId), c.amountMinor])));
+  const categorySlices = rankSlices(
+    new Map(data.topCategories.map((c) => [categoryName(categories, c.categoryId), c.amountMinor])),
+    new Map(data.topCategories.map((c) => [categoryName(categories, c.categoryId), categoryTone(categories, c.categoryId)])),
+  );
   const subscriptionTotal = data.subscriptions.reduce((sum, s) => sum + s.monthlyMinor, 0);
 
   return (
@@ -143,6 +160,7 @@ function OverviewBody({ data, categories, currency }: { data: Overview; categori
             )}
           </p>
         )}
+        <PendingNote freshness={data.freshness} month={data.month} inboxPath={inboxPath} />
         <ShareBar label="Spending by category" slices={categorySlices} />
       </div>
 
@@ -150,6 +168,9 @@ function OverviewBody({ data, categories, currency }: { data: Overview; categori
         <OverviewCard title="Income and spending" className="lg:col-span-2 2xl:col-span-3">
           <FlowChart history={data.history} currency={currency} />
         </OverviewCard>
+
+        <NetWorthCard netWorth={data.netWorth} currency={currency} />
+        <FreshnessCard feeds={data.freshness.feeds} />
 
         <OverviewCard
           title="Unusual spending"
@@ -274,5 +295,127 @@ function FlowChart({ history, currency }: { history: MonthFlow[]; currency: stri
         ))}
       </div>
     </figure>
+  );
+}
+
+/** Bank rows not filed yet are left out of the figures: say so when any are from this month. */
+function PendingNote({ freshness, month, inboxPath }: { freshness: Freshness; month: string; inboxPath: string }) {
+  if (freshness.pendingInMonth === 0) return null;
+  const rows = (n: number) => `${n} bank ${n === 1 ? "row" : "rows"}`;
+  return (
+    <p className="max-w-prose text-sm text-muted-foreground">
+      {rows(freshness.pendingInMonth)} from {formatMonth(month)} still{" "}
+      {freshness.pendingInMonth === 1 ? "waits" : "wait"} in the{" "}
+      <Link to={inboxPath} className="font-medium text-foreground underline underline-offset-4">
+        Inbox
+      </Link>{" "}
+      and {freshness.pendingInMonth === 1 ? "isn't" : "aren't"} counted yet
+      {freshness.pendingRows > freshness.pendingInMonth && ` (${freshness.pendingRows} in all)`}.
+    </p>
+  );
+}
+
+/** "10 months" for a runway, "over 10 years" when it's long enough not to matter. */
+function runwayLabel(months: number): string {
+  if (months >= 120) return "over 10 years";
+  if (months >= 24) return `${Math.floor(months / 12)} years`;
+  if (months < 1) return `${Math.max(0, Math.round(months * 30))} days`;
+  const whole = Math.floor(months);
+  return `${whole} ${whole === 1 ? "month" : "months"}`;
+}
+
+function NetWorthCard({ netWorth, currency }: { netWorth: NetWorth; currency: string }) {
+  const nothing = netWorth.assetsMinor === 0 && netWorth.liabilitiesMinor === 0 && netWorth.accountsRead === 0;
+  const isToday = netWorth.on === todayIso();
+  return (
+    <OverviewCard title="Net worth" subtitle={isToday ? "Today" : `On ${formatDate(netWorth.on)}`}>
+      {nothing ? (
+        <Empty>No assets, debts or bank balances yet.</Empty>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <p className="text-2xl font-medium">
+            <Signed minor={netWorth.netMinor} currency={currency} />
+          </p>
+          <FigureList
+            rows={[
+              {
+                key: "accounts",
+                name: "In accounts",
+                detail:
+                  netWorth.accountsRead === 0
+                    ? "No balance read from a bank yet"
+                    : `Bank balances of ${netWorth.accountsRead} ${netWorth.accountsRead === 1 ? "account" : "accounts"}, less what assets already count`,
+                figure: <Signed minor={netWorth.accountsMinor} currency={currency} />,
+              },
+              { key: "assets", name: "Assets", figure: <Signed minor={netWorth.assetsMinor} currency={currency} /> },
+              { key: "owed", name: "Owed", figure: <Signed minor={netWorth.liabilitiesMinor} currency={currency} /> },
+              {
+                key: "liquid",
+                name: "Money at hand",
+                detail:
+                  netWorth.runwayMonths !== null
+                    ? `Lasts ${runwayLabel(netWorth.runwayMonths)} at a typical month's spending, with no income`
+                    : "Current, savings and cash accounts, and savings",
+                figure: <Signed minor={netWorth.liquidMinor} currency={currency} />,
+              },
+            ]}
+          />
+        </div>
+      )}
+    </OverviewCard>
+  );
+}
+
+/** A feed is behind when nothing came in for a week: a lapsed sync, or statements not uploaded lately. */
+const STALE_DAYS = 7;
+
+function feedStatus(feed: FeedFreshness, today: string): { detail: string; stale: boolean } {
+  const synced = feed.lastSyncedAt ? formatDate(feed.lastSyncedAt.slice(0, 10)) : null;
+  const expired = feed.consentExpiresAt !== null && feed.consentExpiresAt.slice(0, 10) < today;
+  if (feed.live) {
+    if (expired) return { detail: "Bank access expired: reconnect it", stale: true };
+    const syncedLately = feed.lastSyncedAt !== null && feed.lastSyncedAt.slice(0, 10) >= shiftDays(today, -2);
+    return { detail: synced ? `Synced ${synced}` : "Not synced yet", stale: !syncedLately };
+  }
+  const behind = feed.lastDate === null || feed.lastDate < shiftDays(today, -STALE_DAYS);
+  return { detail: "From statements", stale: behind };
+}
+
+/** Lists only the feeds that are behind; the rest are summed up in one line. */
+function FreshnessCard({ feeds }: { feeds: FeedFreshness[] }) {
+  const today = todayIso();
+  const behind = feeds.map((feed) => ({ feed, status: feedStatus(feed, today) })).filter((f) => f.status.stale);
+  const plural = (n: number) => `${n} ${n === 1 ? "feed" : "feeds"}`;
+  return (
+    <OverviewCard
+      title="Bank data"
+      subtitle={
+        feeds.length === 0
+          ? undefined
+          : behind.length === 0
+            ? `All ${plural(feeds.length)} up to date`
+            : `${plural(behind.length)} of ${feeds.length} behind`
+      }
+    >
+      {feeds.length === 0 ? (
+        <Empty>No bank feeds yet: everything here was entered by hand.</Empty>
+      ) : behind.length === 0 ? (
+        <Empty>Every live feed synced in the last two days, and statements reach the last week.</Empty>
+      ) : (
+        <FigureList
+          rows={behind.map(({ feed, status }) => ({
+            key: feed.feedId,
+            name: feed.name,
+            detail: status.detail,
+            figure: (
+              <>
+                <Chip tone="warning">Behind</Chip>
+                {feed.lastDate ? formatDate(feed.lastDate) : "No rows"}
+              </>
+            ),
+          }))}
+        />
+      )}
+    </OverviewCard>
   );
 }

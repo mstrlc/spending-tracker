@@ -1,11 +1,15 @@
+import type { TableSort } from "../sorting";
 import type { Account, BankRow, Category } from "../api/types";
 import type { RecordKind } from "../chips";
 
 /** What a pending row probably is, from its suggestion: the kind its chip and main button show. */
 export function suggestedKind(row: BankRow): RecordKind {
   const s = row.suggestion;
+  // A prepared split makes it an expense, whatever the guess was.
+  if (row.draft) return row.amountMinor > 0 ? "refund" : "expense";
   if (s?.skipReason != null) return "skip";
   if (s?.record === "settlement") return "settlement";
+  if (s?.record === "contribution") return "contribution";
   if (s?.record === "transfer") return "transfer";
   if (s?.record !== "income") return row.amountMinor > 0 ? "refund" : "expense";
   return s.incomeKind === "deduction" ? "deduction" : "income";
@@ -37,7 +41,7 @@ export function rowPerson(row: BankRow, accounts: Account[]): string | null {
 const comparable = (row: BankRow) =>
   Math.sign(row.amountMinor) * Math.abs(row.suggestion?.amountMinor ?? row.amountMinor);
 
-export type InboxSort = "newest" | "oldest" | "spent" | "received" | "largest" | "name";
+export type InboxSort = "newest" | "oldest" | "spent" | "received" | "largest" | "smallest" | "name" | "nameDesc";
 
 export const SORTS: { value: InboxSort; label: string }[] = [
   { value: "newest", label: "Newest first" },
@@ -45,7 +49,9 @@ export const SORTS: { value: InboxSort; label: string }[] = [
   { value: "spent", label: "Most spent first" },
   { value: "received", label: "Most received first" },
   { value: "largest", label: "Largest either way" },
+  { value: "smallest", label: "Smallest either way" },
   { value: "name", label: "Name A–Z" },
+  { value: "nameDesc", label: "Name Z–A" },
 ];
 
 export type InboxFilters = {
@@ -123,7 +129,32 @@ export function filterRows(rows: BankRow[], f: InboxFilters, accounts: Account[]
     spent: (a, b) => comparable(a) - comparable(b) || byDate(a, b),
     received: (a, b) => comparable(b) - comparable(a) || byDate(a, b),
     largest: (a, b) => Math.abs(comparable(b)) - Math.abs(comparable(a)) || byDate(a, b),
+    smallest: (a, b) => Math.abs(comparable(a)) - Math.abs(comparable(b)) || byDate(a, b),
     name: (a, b) => (a.text || a.counterpartyAccount).localeCompare(b.text || b.counterpartyAccount) || byDate(a, b),
+    nameDesc: (a, b) => (b.text || b.counterpartyAccount).localeCompare(a.text || a.counterpartyAccount) || byDate(a, b),
   };
   return kept.sort(compare[f.sort]);
 }
+
+/** The Inbox's sort as a table header shows it: which column, which way; null for a sort no header stands for. */
+export function headerSort(sort: InboxSort): TableSort<InboxColumn> {
+  const map: Partial<Record<InboxSort, TableSort<InboxColumn>>> = {
+    newest: { key: "day", dir: "desc" },
+    oldest: { key: "day", dir: "asc" },
+    largest: { key: "amount", dir: "desc" },
+    smallest: { key: "amount", dir: "asc" },
+    name: { key: "name", dir: "asc" },
+    nameDesc: { key: "name", dir: "desc" },
+  };
+  return map[sort] ?? null;
+}
+
+/** The Inbox sort a header sort stands for; the table's own order (none) is newest first. */
+export function inboxSortOf(sort: TableSort<InboxColumn>): InboxSort {
+  if (!sort) return "newest";
+  if (sort.key === "day") return sort.dir === "desc" ? "newest" : "oldest";
+  if (sort.key === "amount") return sort.dir === "desc" ? "largest" : "smallest";
+  return sort.dir === "asc" ? "name" : "nameDesc";
+}
+
+export type InboxColumn = "day" | "name" | "amount";

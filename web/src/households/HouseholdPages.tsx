@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type FormEvent } from "react";
+import { createContext, useContext, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import {
   ArrowLeftRightIcon,
@@ -43,6 +43,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -113,22 +114,44 @@ export function OnboardingPage() {
   );
 }
 
-const SECTIONS = [
-  { to: "overview", label: "Overview", icon: <GaugeIcon /> },
-  { to: "inbox", label: "Inbox", icon: <InboxIcon /> },
-  { to: "rules", label: "Rules", icon: <ListFilterIcon /> },
-  { to: "expenses", label: "Expenses", icon: <ReceiptIcon /> },
-  { to: "income", label: "Income", icon: <HandCoinsIcon /> },
-  { to: "transfers", label: "Transfers", icon: <ArrowLeftRightIcon /> },
-  { to: "assets", label: "Assets", icon: <TrendingUpIcon /> },
-  { to: "balances", label: "Balances", icon: <ScaleIcon /> },
-  { to: "merchants", label: "Merchants", icon: <StoreIcon /> },
-  { to: "trips", label: "Trips", icon: <LuggageIcon /> },
-  { to: "accounts", label: "Accounts", icon: <WalletIcon /> },
-  { to: "categories", label: "Categories", icon: <TagIcon /> },
-  { to: "members", label: "Members", icon: <UsersIcon /> },
-  { to: "activity", label: "Activity", icon: <HistoryIcon /> },
-  { to: "import", label: "Import", icon: <ImportIcon />, ownerOnly: true },
+type Section = { to: string; label: string; icon: ReactNode; ownerOnly?: boolean };
+
+/** The sidebar's sections in groups: the daily ones first, unlabelled, then money, organising and setup. */
+const SECTION_GROUPS: { label?: string; sections: Section[] }[] = [
+  {
+    sections: [
+      { to: "overview", label: "Overview", icon: <GaugeIcon /> },
+      { to: "inbox", label: "Inbox", icon: <InboxIcon /> },
+    ],
+  },
+  {
+    label: "Money",
+    sections: [
+      { to: "expenses", label: "Expenses", icon: <ReceiptIcon /> },
+      { to: "income", label: "Income", icon: <HandCoinsIcon /> },
+      { to: "transfers", label: "Transfers", icon: <ArrowLeftRightIcon /> },
+      { to: "balances", label: "Balances", icon: <ScaleIcon /> },
+      { to: "assets", label: "Assets", icon: <TrendingUpIcon /> },
+    ],
+  },
+  {
+    label: "Organise",
+    sections: [
+      { to: "trips", label: "Trips", icon: <LuggageIcon /> },
+      { to: "merchants", label: "Merchants", icon: <StoreIcon /> },
+      { to: "categories", label: "Categories", icon: <TagIcon /> },
+      { to: "rules", label: "Rules", icon: <ListFilterIcon /> },
+    ],
+  },
+  {
+    label: "Household",
+    sections: [
+      { to: "accounts", label: "Accounts", icon: <WalletIcon /> },
+      { to: "members", label: "Members", icon: <UsersIcon /> },
+      { to: "activity", label: "Activity", icon: <HistoryIcon /> },
+      { to: "import", label: "Import", icon: <ImportIcon />, ownerOnly: true },
+    ],
+  },
 ];
 
 export function HouseholdLayout() {
@@ -221,21 +244,30 @@ function AppSidebar({ household, households }: { household: Household; household
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarMenu aria-label="Sections">
-            {SECTIONS.filter((s) => !s.ownerOnly || household.role === "owner").map((s) => (
-              <SidebarMenuItem key={s.to}>
-                <SidebarMenuButton asChild isActive={pathname.startsWith(`/h/${household.id}/${s.to}`)}>
-                  <NavLink to={s.to} onClick={() => setOpenMobile(false)}>
-                    {s.icon}
-                    <span>{s.label}</span>
-                  </NavLink>
-                </SidebarMenuButton>
-                {s.to === "inbox" && inboxCount > 0 && <SidebarMenuBadge aria-label={`${inboxCount} to decide`}>{inboxCount}</SidebarMenuBadge>}
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
+        <nav aria-label="Sections" className="contents">
+          {SECTION_GROUPS.map((group, i) => (
+            <SidebarGroup key={group.label ?? i} className="py-1">
+              {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+              <SidebarMenu aria-label={group.label}>
+                {group.sections
+                  .filter((s) => !s.ownerOnly || household.role === "owner")
+                  .map((s) => (
+                    <SidebarMenuItem key={s.to}>
+                      <SidebarMenuButton asChild isActive={pathname.startsWith(`/h/${household.id}/${s.to}`)}>
+                        <NavLink to={s.to} onClick={() => setOpenMobile(false)}>
+                          {s.icon}
+                          <span>{s.label}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                      {s.to === "inbox" && inboxCount > 0 && (
+                        <SidebarMenuBadge aria-label={`${inboxCount} to decide`}>{inboxCount}</SidebarMenuBadge>
+                      )}
+                    </SidebarMenuItem>
+                  ))}
+              </SidebarMenu>
+            </SidebarGroup>
+          ))}
+        </nav>
       </SidebarContent>
 
       <SidebarFooter>

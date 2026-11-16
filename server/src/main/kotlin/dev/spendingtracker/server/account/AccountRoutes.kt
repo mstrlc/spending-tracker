@@ -34,6 +34,7 @@ import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import kotlin.time.Clock
@@ -69,6 +70,7 @@ fun Route.accountRoutes() = route("/accounts") {
         val account = uniqueName {
             dbQuery {
                 input.checkOwner(householdId)
+                input.checkCards(householdId, null)
                 Accounts.insert {
                     it[Accounts.id] = id
                     it[Accounts.householdId] = householdId
@@ -78,6 +80,7 @@ fun Route.accountRoutes() = route("/accounts") {
                     it[kind] = input.kind.dbValue
                     it[iban] = input.iban
                     it[interestTaxPercent] = input.interestTaxPercent
+                    it[cards] = input.cards.joinToString(" ")
                     it[version] = 1
                 }
                 Accounts.selectAll().where { Accounts.id eq id }.single().toAccount()
@@ -107,6 +110,7 @@ fun Route.accountRoutes() = route("/accounts") {
         val account = uniqueName {
             dbQuery {
                 input.checkOwner(householdId)
+                input.checkCards(householdId, id)
                 val affected = Accounts.update({ match(householdId, id) and (Accounts.version eq version) }) {
                     it[name] = input.name
                     it[ownerUserId] = input.owner
@@ -114,6 +118,7 @@ fun Route.accountRoutes() = route("/accounts") {
                     it[kind] = input.kind.dbValue
                     it[iban] = input.iban
                     it[interestTaxPercent] = input.interestTaxPercent
+                    it[cards] = input.cards.joinToString(" ")
                     it[Accounts.version] = version + 1
                     it[updatedAt] = Clock.System.now()
                 }
@@ -162,6 +167,7 @@ private data class ValidAccount(
     val kind: AccountKind,
     val iban: String?,
     val interestTaxPercent: Int?,
+    val cards: List<String>,
 )
 
 /** Czech banks withhold 15% of interest. */
@@ -171,7 +177,21 @@ private fun AccountInput.validated(): ValidAccount {
     // Only a savings account has interest tax; one without a rate given gets the Czech 15%.
     val tax = if (kind != AccountKind.SAVINGS) null else interestTaxPercent ?: DEFAULT_INTEREST_TAX_PERCENT
     if (tax != null && tax !in 0..99) throw badRequest("invalid_interest_tax", "Interest tax must be between 0 and 99%", "interestTaxPercent")
-    return ValidAccount(requiredText(name, "name", max = 100), parseId(ownerUserId, "ownerUserId"), status, kind, normalizeIban(iban), tax)
+    val cards = cards.map { it.trim().removePrefix("*").trim() }.filter { it.isNotEmpty() }.distinct()
+    if (cards.any { !CARD_DIGITS.matches(it) }) throw badRequest("invalid_card", "A card is its last four digits", "cards")
+    return ValidAccount(requiredText(name, "name", max = 100), parseId(ownerUserId, "ownerUserId"), status, kind, normalizeIban(iban), tax, cards)
+}
+
+private val CARD_DIGITS = Regex("^[0-9]{4}$")
+
+/** None of the cards is another account's ([self] is the account being saved). Call inside a transaction. */
+private fun ValidAccount.checkCards(householdId: Uuid, self: Uuid?) {
+    if (cards.isEmpty()) return
+    val taken = Accounts.select(Accounts.id, Accounts.cards).where { Accounts.householdId eq householdId }
+        .filter { it[Accounts.id] != self }
+        .flatMap { it[Accounts.cards].split(' ') }
+        .toSet()
+    if (cards.any { it in taken }) throw conflict("card_taken", "Another account has this card", "cards")
 }
 
 /** [raw] without spaces, upper case, checked against the IBAN format and its check digits; blank is none. */
@@ -218,4 +238,5 @@ private fun ResultRow.toAccount() = Account(
     kind = AccountKind.entries.first { it.dbValue == this[Accounts.kind] },
     iban = this[Accounts.iban],
     interestTaxPercent = this[Accounts.interestTaxPercent],
+    cards = this[Accounts.cards].split(' ').filter { it.isNotEmpty() },
 )

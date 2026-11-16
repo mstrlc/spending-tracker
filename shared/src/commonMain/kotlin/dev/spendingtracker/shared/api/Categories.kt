@@ -3,11 +3,12 @@ package dev.spendingtracker.shared.api
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** Investment categories hold capital moved into investments: counted as invested, not spent. */
+/** Investment categories hold capital moved into investments: counted as invested, not spent. Income categories classify earnings. */
 @Serializable
 enum class CategoryKind {
     @SerialName("consumption") CONSUMPTION,
     @SerialName("investment") INVESTMENT,
+    @SerialName("income") INCOME,
 }
 
 /** One node of the two-level category tree. Subcategories inherit [kind] from their parent. */

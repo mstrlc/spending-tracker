@@ -20,6 +20,9 @@ import dev.spendingtracker.server.market.Market
 import dev.spendingtracker.server.market.MarketData
 import dev.spendingtracker.server.market.market
 import dev.spendingtracker.server.market.securityRoutes
+import dev.spendingtracker.server.order.OrderParser
+import dev.spendingtracker.server.order.defaultOrderParsers
+import dev.spendingtracker.server.order.orderParsers
 import io.github.smiley4.ktoropenapi.OpenApi
 import io.github.smiley4.ktoropenapi.config.SchemaGenerator
 import io.github.smiley4.ktoropenapi.openApi
@@ -73,8 +76,10 @@ fun Application.module(
     marketData: MarketData = LiveMarketData(),
     bankSetup: BankSetup? = null,
     bankSyncHour: Int? = null,
+    orderParsers: List<OrderParser> = defaultOrderParsers,
 ) {
     market = Market(marketData)
+    this.orderParsers = orderParsers
     this.bankSetup = bankSetup
     if (bankSetup != null && bankSyncHour != null) {
         launch {

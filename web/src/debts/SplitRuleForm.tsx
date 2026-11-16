@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useCategories, useDeleteSplitRule, useIncome, useMembers, useSaveSplitRule } from "../api/hooks";
 import type { SplitRule } from "../api/types";
-import { categoryTree } from "../categories/tree";
+import { categoryTree, spendingCategories } from "../categories/tree";
 import { formatMonth, monthRange, shiftMonth, todayIso } from "../lib/dates";
 import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
@@ -33,7 +33,7 @@ export function SplitRuleForm({ rule, onDone }: { rule?: SplitRule; onDone: () =
   const income = useIncome(household.id, incomeFrom, incomeTo);
   const byIncome = income.data ? weightsFromIncome(income.data, members) : null;
 
-  const tree = categoryTree(categories.filter((c) => !c.archived || c.id === rule?.categoryId));
+  const tree = categoryTree(spendingCategories(categories).filter((c) => !c.archived || c.id === rule?.categoryId));
 
   function submit(e: FormEvent) {
     e.preventDefault();

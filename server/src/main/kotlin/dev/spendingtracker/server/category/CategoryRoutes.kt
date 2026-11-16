@@ -8,7 +8,15 @@ import dev.spendingtracker.server.common.pathId
 import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.common.versionParam
+import dev.spendingtracker.server.apiJson
+import dev.spendingtracker.server.db.BankRows
 import dev.spendingtracker.server.db.Categories
+import dev.spendingtracker.server.db.ExpenseLines
+import dev.spendingtracker.server.db.Expenses
+import dev.spendingtracker.server.db.InboxRules
+import dev.spendingtracker.server.db.Income
+import dev.spendingtracker.server.db.Merchants
+import dev.spendingtracker.server.db.SplitRules
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.db.isForeignKeyViolation
 import dev.spendingtracker.server.db.isUniqueViolation
@@ -17,6 +25,7 @@ import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.Category
 import dev.spendingtracker.shared.api.CategoryInput
 import dev.spendingtracker.shared.api.CategoryKind
+import dev.spendingtracker.shared.api.SplitDraft
 import io.github.smiley4.ktoropenapi.delete
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
@@ -30,10 +39,13 @@ import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.core.plus
 import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import kotlin.time.Clock
@@ -42,7 +54,9 @@ import kotlin.uuid.Uuid
 private val DEFAULT_CATEGORIES = listOf(
     "Housing", "Groceries", "Eating out", "Transport", "Health", "Shopping",
     "Leisure", "Travel", "Subscriptions", "Gifts", "Other",
-).map { it to CategoryKind.CONSUMPTION } + ("Investments" to CategoryKind.INVESTMENT)
+).map { it to CategoryKind.CONSUMPTION } +
+    ("Investments" to CategoryKind.INVESTMENT) +
+    listOf("Salary", "Scholarship", "Business", "Side work", "Family & gifts", "Bank bonuses & interest", "Other income").map { it to CategoryKind.INCOME }
 
 /** Gives a new household a starter set of top-level categories. Call inside a transaction. */
 fun seedDefaultCategories(householdId: Uuid) {
@@ -137,6 +151,7 @@ fun Route.categoryRoutes() = route("/categories") {
                 } else {
                     input.kind
                 }
+                checkKindChange(householdId, id, kind)
                 val now = Clock.System.now()
                 val affected = Categories.update({ match(householdId, id) and (Categories.version eq version) }) {
                     it[Categories.parentId] = parentId
@@ -164,7 +179,7 @@ fun Route.categoryRoutes() = route("/categories") {
 
     delete("/{categoryId}", {
         operationId = "deleteCategory"
-        description = "Fails with 409 category_in_use while expenses or subcategories reference it; archive it instead."
+        description = "Fails with 409 category_in_use while expenses, income or subcategories reference it; archive it instead."
         request {
             pathParameter<String>("categoryId")
             queryParameter<Int>("version") { required = true }
@@ -185,7 +200,7 @@ fun Route.categoryRoutes() = route("/categories") {
             }
         } catch (e: Exception) {
             if (e.isForeignKeyViolation()) {
-                throw conflict("category_in_use", "Expenses or subcategories use this category. Archive it instead.")
+                throw conflict("category_in_use", "Expenses, income or subcategories use this category. Archive it instead.")
             }
             throw e
         }
@@ -205,6 +220,40 @@ private fun parentKind(householdId: Uuid, parentId: Uuid): CategoryKind {
 private fun hasChildren(householdId: Uuid, id: Uuid) =
     !Categories.selectAll().where { (Categories.householdId eq householdId) and (Categories.parentId eq id) }.empty()
 
+private fun checkKindChange(householdId: Uuid, id: Uuid, newKind: CategoryKind) {
+    val current = Categories.select(Categories.kind).where { match(householdId, id) }.singleOrNull() ?: return
+    val wasIncome = current[Categories.kind] == CategoryKind.INCOME.dbValue
+    val isIncome = newKind == CategoryKind.INCOME
+    if (wasIncome == isIncome) return
+    val ids = Categories.select(Categories.id)
+        .where { (Categories.householdId eq householdId) and (Categories.parentId eq id) }
+        .map { it[Categories.id] } + id
+    if (isIncome) {
+        val usedBySpending = !Expenses.select(Expenses.id).where { (Expenses.householdId eq householdId) and (Expenses.categoryId inList ids) }.empty() ||
+            !ExpenseLines.select(ExpenseLines.id).where { (ExpenseLines.householdId eq householdId) and (ExpenseLines.categoryId inList ids) }.empty() ||
+            !Merchants.select(Merchants.id).where { (Merchants.householdId eq householdId) and (Merchants.defaultCategoryId inList ids) }.empty() ||
+            !SplitRules.select(SplitRules.id).where { (SplitRules.householdId eq householdId) and (SplitRules.categoryId inList ids) }.empty() ||
+            !InboxRules.select(InboxRules.id).where { (InboxRules.householdId eq householdId) and (InboxRules.categoryId inList ids) and (InboxRules.outcome eq "expense") }.empty() ||
+            draftsUse(householdId, ids)
+        if (usedBySpending) throw conflict("category_in_use", "Expenses, merchants or rules use this category as spending.")
+    } else {
+        val usedByIncome = !Income.select(Income.id).where { (Income.householdId eq householdId) and (Income.categoryId inList ids) }.empty() ||
+            !InboxRules.select(InboxRules.id).where { (InboxRules.householdId eq householdId) and (InboxRules.categoryId inList ids) and (InboxRules.outcome eq "income") }.empty()
+        if (usedByIncome) throw conflict("category_in_use", "Income or rules use this category as income.")
+    }
+}
+
+/** Whether a bank row's split draft (V38; filed rows keep theirs) has a line in one of [ids]. */
+private fun draftsUse(householdId: Uuid, ids: List<Uuid>): Boolean {
+    val wanted = ids.map { it.toString() }.toSet()
+    return BankRows.select(BankRows.splitDraft)
+        .where { (BankRows.householdId eq householdId) and BankRows.splitDraft.isNotNull() }
+        .any { row ->
+            val draft = row[BankRows.splitDraft]?.let { apiJson.decodeFromString<SplitDraft>(it) }
+            draft?.lines?.any { it.categoryId in wanted } == true
+        }
+}
+
 private suspend fun <T> uniqueName(block: suspend () -> T): T =
     try {
         block()
@@ -217,9 +266,18 @@ private fun match(householdId: Uuid, id: Uuid) = (Categories.id eq id) and (Cate
 
 private fun exists(householdId: Uuid, id: Uuid) = !Categories.selectAll().where { match(householdId, id) }.empty()
 
-private val CategoryKind.dbValue get() = if (this == CategoryKind.INVESTMENT) "investment" else "consumption"
+internal val CategoryKind.dbValue
+    get() = when (this) {
+        CategoryKind.CONSUMPTION -> "consumption"
+        CategoryKind.INVESTMENT -> "investment"
+        CategoryKind.INCOME -> "income"
+    }
 
-private fun kindFrom(value: String) = if (value == "investment") CategoryKind.INVESTMENT else CategoryKind.CONSUMPTION
+internal fun kindFrom(value: String) = when (value) {
+    "investment" -> CategoryKind.INVESTMENT
+    "income" -> CategoryKind.INCOME
+    else -> CategoryKind.CONSUMPTION
+}
 
 private fun ResultRow.toCategory() = Category(
     id = this[Categories.id].toString(),

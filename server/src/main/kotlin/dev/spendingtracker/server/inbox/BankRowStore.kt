@@ -1,11 +1,13 @@
 package dev.spendingtracker.server.inbox
 
+import dev.spendingtracker.server.apiJson
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.conflict
 import dev.spendingtracker.server.common.notFound
 import dev.spendingtracker.server.common.parseId
 import dev.spendingtracker.server.common.versionConflict
 import dev.spendingtracker.server.db.Accounts
+import dev.spendingtracker.server.db.AssetContributions
 import dev.spendingtracker.server.db.BankFeeds
 import dev.spendingtracker.server.db.BankRows
 import dev.spendingtracker.server.db.Households
@@ -20,6 +22,7 @@ import dev.spendingtracker.shared.api.BankRow
 import dev.spendingtracker.shared.api.BankRowOutcome
 import dev.spendingtracker.shared.api.BankRowRef
 import dev.spendingtracker.shared.api.BankRowSuggestion
+import dev.spendingtracker.shared.api.SplitDraft
 import kotlinx.datetime.LocalDate
 import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.JoinType
@@ -40,23 +43,30 @@ import org.jetbrains.exposed.v1.jdbc.update
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
-/** What the household knows for hints: its accounts' and feeds' IBANs, and its members' names. Call inside a transaction. */
+/** What the household knows for hints: its accounts' and feeds' IBANs and whose they are, and its members' names. Call inside a transaction. */
 fun loadHintContext(householdId: Uuid): HintContext {
-    val ibans = Accounts.select(Accounts.iban).where { Accounts.householdId eq householdId }.mapNotNull { it[Accounts.iban] } +
-        BankFeeds.select(BankFeeds.iban).where { BankFeeds.householdId eq householdId }.mapNotNull { it[BankFeeds.iban] }
-    val names = HouseholdMembers.join(Users, JoinType.INNER, HouseholdMembers.userId, Users.id)
-        .select(Users.displayName, HouseholdMembers.legalName).where { HouseholdMembers.householdId eq householdId }
-        .flatMap { listOfNotNull(it[Users.displayName], it[HouseholdMembers.legalName].takeIf { n -> n.isNotBlank() }) }
-    return HintContext(ibans.toSet(), names)
+    val accounts = Accounts.select(Accounts.id, Accounts.iban, Accounts.ownerUserId).where { Accounts.householdId eq householdId }.toList()
+    val ownerOf = accounts.associate { it[Accounts.id] to it[Accounts.ownerUserId] }
+    val ownerByIban = BankFeeds.select(BankFeeds.iban, BankFeeds.accountId).where { BankFeeds.householdId eq householdId }
+        .mapNotNull { r -> r[BankFeeds.iban]?.let { it to ownerOf[r[BankFeeds.accountId]] } }.toMap() +
+        accounts.mapNotNull { r -> r[Accounts.iban]?.let { it to r[Accounts.ownerUserId] } }.toMap()
+    val namesByMember = HouseholdMembers.join(Users, JoinType.INNER, HouseholdMembers.userId, Users.id)
+        .select(HouseholdMembers.userId, Users.displayName, HouseholdMembers.legalName).where { HouseholdMembers.householdId eq householdId }
+        .associate {
+            it[HouseholdMembers.userId] to listOfNotNull(it[Users.displayName], it[HouseholdMembers.legalName].takeIf { n -> n.isNotBlank() })
+        }
+    return HintContext(ownerByIban.keys, namesByMember.values.flatten(), ownerByIban, namesByMember)
 }
 
 /** How a feed's rows are read: its bank, and whether its account is a credit card or savings. Call inside a transaction. */
 fun feedShape(institution: String, accountId: Uuid): FeedShape {
-    val kind = Accounts.select(Accounts.kind).where { Accounts.id eq accountId }.single()[Accounts.kind]
+    val account = Accounts.select(Accounts.kind, Accounts.ownerUserId).where { Accounts.id eq accountId }.single()
+    val kind = account[Accounts.kind]
     return FeedShape(
         bankInstitution(institution),
         isCard = kind == AccountKind.CREDIT_CARD.name.lowercase(),
         isSavings = kind == AccountKind.SAVINGS.name.lowercase(),
+        ownerUserId = account[Accounts.ownerUserId],
     )
 }
 
@@ -144,7 +154,8 @@ fun storeRows(
 
 /** Rows nothing was decided about: the inbox. */
 fun pendingRows(): Op<Boolean> = BankRows.expenseId.isNull() and BankRows.incomeId.isNull() and
-    BankRows.transferId.isNull() and BankRows.settlementId.isNull() and BankRows.skipReason.isNull()
+    BankRows.transferId.isNull() and BankRows.settlementId.isNull() and BankRows.contributionId.isNull() and
+    BankRows.skipReason.isNull()
 
 fun ResultRow.isPending() = outcome() == BankRowOutcome.PENDING
 
@@ -153,6 +164,7 @@ fun ResultRow.outcome() = when {
     this[BankRows.incomeId] != null -> BankRowOutcome.INCOME
     this[BankRows.transferId] != null -> BankRowOutcome.TRANSFER
     this[BankRows.settlementId] != null -> BankRowOutcome.SETTLEMENT
+    this[BankRows.contributionId] != null -> BankRowOutcome.CONTRIBUTION
     this[BankRows.skipReason] != null -> BankRowOutcome.SKIPPED
     else -> BankRowOutcome.PENDING
 }
@@ -179,6 +191,9 @@ fun ResultRow.toBankRow(suggestion: BankRowSuggestion? = null, outcomeLabel: Str
     incomeId = this[BankRows.incomeId]?.toString(),
     transferId = this[BankRows.transferId]?.toString(),
     settlementId = this[BankRows.settlementId]?.toString(),
+    contributionId = this[BankRows.contributionId]?.toString(),
+    remember = this[BankRows.remember],
+    draft = this[BankRows.splitDraft]?.let { apiJson.decodeFromString<SplitDraft>(it) },
     skipReason = this[BankRows.skipReason],
     decidedByUserId = this[BankRows.decidedBy]?.toString(),
     decidedAuto = this[BankRows.decidedAuto],
@@ -207,7 +222,7 @@ fun lockRows(householdId: Uuid, refs: List<BankRowRef>, field: String = "rows"):
 }
 
 /**
- * Files [refs] under an expense, income line, transfer or settlement (one of the four ids), or with a [skipReason]. [created]: the
+ * Files [refs] under an expense, income line, transfer, settlement or asset contribution (one of the five ids), or with a [skipReason]. [created]: the
  * record was made from these rows just now, so undoing them all deletes it. [auto]: a rule ([ruleId]) or the matcher decided,
  * not [userId]. Call inside a transaction.
  */
@@ -219,6 +234,7 @@ fun fileBankRows(
     incomeId: Uuid? = null,
     transferId: Uuid? = null,
     settlementId: Uuid? = null,
+    contributionId: Uuid? = null,
     created: Boolean = false,
     skipReason: String? = null,
     auto: Boolean = false,
@@ -235,6 +251,7 @@ fun fileBankRows(
         it[BankRows.incomeId] = incomeId
         it[BankRows.transferId] = transferId
         it[BankRows.settlementId] = settlementId
+        it[BankRows.contributionId] = contributionId
         it[BankRows.skipReason] = skipReason
         it[createdRecord] = created
         it[decidedBy] = if (auto) null else userId
@@ -259,6 +276,7 @@ fun undoBankRows(householdId: Uuid, refs: List<BankRowRef>) {
         it[incomeId] = null
         it[transferId] = null
         it[settlementId] = null
+        it[contributionId] = null
         it[skipReason] = null
         it[createdRecord] = false
         it[decidedBy] = null
@@ -273,6 +291,9 @@ fun undoBankRows(householdId: Uuid, refs: List<BankRowRef>) {
     deleteOrphans(rows, BankRows.incomeId) { gone -> Income.deleteWhere { (Income.householdId eq householdId) and (Income.id inList gone) } }
     deleteOrphans(rows, BankRows.transferId) { gone -> Transfers.deleteWhere { (Transfers.householdId eq householdId) and (Transfers.id inList gone) } }
     deleteOrphans(rows, BankRows.settlementId) { gone -> Settlements.deleteWhere { (Settlements.householdId eq householdId) and (Settlements.id inList gone) } }
+    deleteOrphans(rows, BankRows.contributionId) { gone ->
+        AssetContributions.deleteWhere { (AssetContributions.householdId eq householdId) and (AssetContributions.id inList gone) }
+    }
 }
 
 /** Deletes (with [delete]) the records [rows] were filed under by [column] that were made from them and that no other row is filed under. */

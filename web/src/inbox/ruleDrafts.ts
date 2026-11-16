@@ -3,10 +3,11 @@ import type { BankRow, InboxRule, InboxRuleInput, RuleOutcome } from "../api/typ
 /** What a row was decided to be, as far as a rule can say it: filled in from the record it became. */
 export type RuleDecision =
   | { outcome: "expense"; merchant: string; categoryId: string | null; paidByUserId: string | null }
-  | { outcome: "income"; source: string; recipientUserId: string | null }
+  | { outcome: "income"; source: string; categoryId: string | null; recipientUserId: string | null }
   | { outcome: "deduction"; source: string; recipientUserId: string | null; monthOffset: number }
   | { outcome: "transfer"; otherAccountId: string | null }
   | { outcome: "settlement"; fromUserId: string; toUserId: string }
+  | { outcome: "contribution"; assetId: string }
   | { outcome: "skip"; reason: string };
 
 /** The starting point of the rule form: any input field, the rest left to the form's defaults. */
@@ -42,13 +43,15 @@ export function draftRule(row: BankRow, decision: RuleDecision | null): RuleDraf
     case "expense":
       return { ...draft, outcome, merchant: decision.merchant, categoryId: decision.categoryId, personUserId: decision.paidByUserId };
     case "income":
-      return { ...draft, outcome, incomeSource: decision.source, personUserId: decision.recipientUserId };
+      return { ...draft, outcome, incomeSource: decision.source, categoryId: decision.categoryId, personUserId: decision.recipientUserId };
     case "deduction":
       return { ...draft, outcome, incomeSource: decision.source, personUserId: decision.recipientUserId, monthOffset: decision.monthOffset };
     case "transfer":
       return { ...draft, outcome, otherAccountId: decision.otherAccountId };
     case "settlement":
       return { ...draft, outcome, settleFromUserId: decision.fromUserId, settleToUserId: decision.toUserId };
+    case "contribution":
+      return { ...draft, outcome, assetId: decision.assetId };
     case "skip":
       return { ...draft, outcome, skipReason: decision.reason };
   }

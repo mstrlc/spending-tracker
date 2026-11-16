@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAccounts, useCategories, useExpenses, useMembers } from "../api/hooks";
 import type { Category, Expense } from "../api/types";
 import { PlusIcon } from "lucide-react";
-import { AccountLabel, CategoryLabel, Dot, KindChip, ExpenseWhose, categoryTone, signedAmountClass } from "../chips";
+import { AccountLabel, CategoryLabel, Dot, KindChip, ExpenseWhose, categoryTone, signedAmountClass, type Tone } from "../chips";
 import { currentMonth, formatDay, formatMonth, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
@@ -10,9 +10,10 @@ import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { rankSlices, ShareBar, type Slice } from "../shares";
 import { EmptyState, ErrorText, Money, PageHeader, Sheet, SkeletonRows, Summary, Surface } from "../ui";
 import { usePendingDeleteIds } from "../undo";
+import { EmptyFilterRow, SortableHead, useTableSortAndFilter } from "../sorting";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { ExpenseForm } from "./ExpenseForm";
 import { spendingParts } from "./refunds";
@@ -41,6 +42,7 @@ export function expenseTotals(expenses: Expense[], categories: Category[]) {
 export function spendingByCategory(expenses: Expense[], categories: Category[]): Slice[] {
   const byId = new Map(categories.map((c) => [c.id, c]));
   const sums = new Map<string, number>();
+  const tones = new Map<string, Tone>();
   for (const e of expenses) {
     for (const p of spendingParts(e)) {
       const category = p.categoryId ? byId.get(p.categoryId) : undefined;
@@ -48,9 +50,10 @@ export function spendingByCategory(expenses: Expense[], categories: Category[]):
       const top = category?.parentId ? byId.get(category.parentId) : category;
       const name = top?.name ?? "Uncategorized";
       sums.set(name, (sums.get(name) ?? 0) + p.amountMinor);
+      if (!tones.has(name)) tones.set(name, categoryTone(categories, top?.id));
     }
   }
-  return rankSlices(sums);
+  return rankSlices(sums, tones);
 }
 
 type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; expense: Expense };
@@ -68,6 +71,32 @@ export function ExpensesPage() {
   const pendingDeletes = usePendingDeleteIds();
   const rows = (expenses.data ?? []).filter((e) => !pendingDeletes.has(e.id));
   const { spent, invested } = expenseTotals(rows, categories);
+  const categoryName = (e: Expense) =>
+    e.lines && e.lines.length > 0
+      ? [...new Set(e.lines.map((l) => categories.find((c) => c.id === l.categoryId)?.name ?? ""))].join(", ")
+      : (categories.find((c) => c.id === e.categoryId)?.name ?? "");
+  const accountName = (e: Expense) => accounts.find((a) => a.id === e.accountId)?.name ?? "";
+  const whoseName = (e: Expense) =>
+    e.paidByUserId ? (members.find((m) => m.userId === e.paidByUserId)?.displayName ?? "") : "Joint";
+  const { sort, onSort, clearFilters, shown, filterFor } = useTableSortAndFilter(
+    rows,
+    {
+      day: (e) => e.date,
+      merchant: (e) => e.merchant,
+      category: categoryName,
+      account: accountName,
+      whose: whoseName,
+      amount: (e) => e.amountMinor,
+    },
+    {
+      day: (e) => formatDay(e.date),
+      merchant: (e) => e.merchant || "Untitled expense",
+      category: (e) => categoryName(e) || "Uncategorized",
+      account: accountName,
+      whose: whoseName,
+      amount: (e) => formatAmount(Math.abs(e.amountMinor), household.currency),
+    },
+  );
   const showPaidBy = members.length > 1;
   // New expenses default to today in the current month, otherwise to the first of the month being viewed.
   const defaultDate = month === currentMonth() ? todayIso() : from;
@@ -113,22 +142,37 @@ export function ExpensesPage() {
           </EmptyState>
         )}
         {rows.length > 0 && (
-          <Table>
+          <Table className="table-fixed md:min-w-[46rem]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="max-md:hidden">Day</TableHead>
-                <TableHead>Merchant</TableHead>
-                <TableHead className="max-md:hidden">Category</TableHead>
-                <TableHead className="max-md:hidden">Account</TableHead>
-                {showPaidBy && <TableHead className="max-md:hidden">Whose</TableHead>}
-                <TableHead className="text-right">Amount ({household.currency})</TableHead>
+                <SortableHead column="day" first="desc" sort={sort} onSort={onSort} filter={filterFor("day")} className="w-28 max-md:hidden">
+                  Day
+                </SortableHead>
+                <SortableHead column="merchant" sort={sort} onSort={onSort} filter={filterFor("merchant")}>
+                  Merchant
+                </SortableHead>
+                <SortableHead column="category" sort={sort} onSort={onSort} filter={filterFor("category")} className="w-[17%] max-md:hidden">
+                  Category
+                </SortableHead>
+                <SortableHead column="account" sort={sort} onSort={onSort} filter={filterFor("account")} className="w-[17%] max-md:hidden">
+                  Account
+                </SortableHead>
+                {showPaidBy && (
+                  <SortableHead column="whose" sort={sort} onSort={onSort} filter={filterFor("whose")} className="w-[11%] max-md:hidden">
+                    Whose
+                  </SortableHead>
+                )}
+                <SortableHead column="amount" first="desc" sort={sort} onSort={onSort} filter={filterFor("amount")} className="w-36 text-right">
+                  Amount ({household.currency})
+                </SortableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((e) => {
+              {shown.length === 0 && <EmptyFilterRow colSpan={showPaidBy ? 6 : 5} onClear={clearFilters} />}
+              {shown.map((e) => {
                 const splitIds = e.lines && e.lines.length > 0 ? [...new Set(e.lines.map((l) => l.categoryId))] : null;
                 const categoryCell = splitIds ? (
-                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                  <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
                     <span className="flex -space-x-0.5">
                       {splitIds.map((id) => (
                         <Dot key={id ?? "none"} tone={categoryTone(categories, id)} className="ring-2 ring-background" />
@@ -182,14 +226,14 @@ export function ExpensesPage() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="max-md:hidden">
+                    <TableCell className="overflow-hidden max-md:hidden">
                       {categoryCell}
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-md:hidden">
+                    <TableCell className="overflow-hidden text-muted-foreground max-md:hidden">
                       <AccountLabel account={accounts.find((a) => a.id === e.accountId)} />
                     </TableCell>
                     {showPaidBy && (
-                      <TableCell className="text-muted-foreground max-md:hidden">
+                      <TableCell className="overflow-hidden text-muted-foreground max-md:hidden">
                         <ExpenseWhose members={members} expense={e} />
                       </TableCell>
                     )}

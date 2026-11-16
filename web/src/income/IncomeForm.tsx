@@ -1,7 +1,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import { PlusIcon, XIcon } from "lucide-react";
-import { useAccounts, useDeleteIncome, useIncome, useMembers, useSaveIncome } from "../api/hooks";
+import { useAccounts, useCategories, useDeleteIncome, useIncome, useMembers, useSaveIncome } from "../api/hooks";
 import type { BankRowRef, Income, IncomeInput, PayslipDeduction } from "../api/types";
+import { categoryTree, incomeCategories } from "../categories/tree";
 import { monthRange, todayIso } from "../lib/dates";
 import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
@@ -17,11 +18,11 @@ import { payslipSummary, sortEarningsForPicker } from "./net";
 
 type Kind = Income["kind"];
 
-const FIELDS = ["kind", "date", "earnedMonth", "amountMinor", "source", "accountId", "recipientUserId", "notes", "deductedFromId", "deductions"];
+const FIELDS = ["kind", "date", "earnedMonth", "amountMinor", "source", "categoryId", "accountId", "recipientUserId", "notes", "deductedFromId", "deductions"];
 
 /** What a new income line starts with, such as a bank row's suggestion. */
 export type IncomeDraft = Partial<
-  Pick<Income, "date" | "amountMinor" | "source" | "accountId" | "recipientUserId" | "notes" | "kind" | "earnedMonth" | "deductedFromId">
+  Pick<Income, "date" | "amountMinor" | "source" | "categoryId" | "accountId" | "recipientUserId" | "notes" | "kind" | "earnedMonth" | "deductedFromId">
 > & {
   /** Deductions to fill in on a new earning, such as tax withheld from interest. */
   deductions?: { source: string; amountMinor: number }[];
@@ -37,6 +38,7 @@ function incomeToInput(i: Income): IncomeInput {
     date: i.date,
     amountMinor: i.amountMinor,
     source: i.source,
+    categoryId: i.categoryId,
     accountId: i.accountId,
     recipientUserId: i.recipientUserId,
     earnedMonth: i.earnedMonth,
@@ -73,6 +75,7 @@ export function IncomeForm({
   const start: IncomeDraft = income ?? draft ?? {};
   const household = useHousehold();
   const accounts = useAccounts(household.id).data ?? [];
+  const categories = useCategories(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
   const saveIncome = useSaveIncome(household.id);
   const deleteIncome = useDeleteIncome(household.id);
@@ -86,6 +89,7 @@ export function IncomeForm({
   const [date, setDate] = useState(start.date ?? defaultDate ?? todayIso());
   const [amount, setAmount] = useState(start.amountMinor != null ? toInputValue(start.amountMinor, household.currency) : "");
   const [source, setSource] = useState(start.source ?? "");
+  const [categoryId, setCategoryId] = useState(start.categoryId ?? "");
   const [accountId, setAccountId] = useState(start.accountId ?? "");
   const [recipientUserId, setRecipientUserId] = useState(start.recipientUserId ?? "");
   const [notes, setNotes] = useState(start.notes ?? "");
@@ -110,8 +114,9 @@ export function IncomeForm({
   );
   const linkedDeductions = income && !deduction ? monthIncome.filter((i) => i.deductedFromId === income.id) : [];
 
-  // Closed accounts stay selectable only for rows that already use them.
+  // Closed accounts and archived categories stay selectable only for rows that already use them.
   const accountOptions = accounts.filter((a) => a.status === "active" || a.id === income?.accountId);
+  const categoryOptions = categoryTree(incomeCategories(categories).filter((c) => !c.archived || c.id === categoryId));
 
   const expectedNetMinor = !income && !deduction ? (draft?.expectedNetMinor ?? draft?.amountMinor ?? null) : null;
   const parsedDeductionMinors = payslipRows.map((r) => parseMoney(r.amount, household.currency) ?? 0);
@@ -153,6 +158,7 @@ export function IncomeForm({
           date,
           amountMinor,
           source,
+          categoryId: deduction ? null : categoryId || null,
           accountId: accountId || null,
           recipientUserId: recipientUserId || null,
           earnedMonth: activeMonth,
@@ -176,6 +182,7 @@ export function IncomeForm({
           setLastAdded(`Added ${what} · ${formatMoney(saved.amountMinor, household.currency)}`);
           setAmount("");
           setSource("");
+          setCategoryId("");
           setNotes("");
           setDeductedFromId("");
           setPayslipRows([]);
@@ -275,6 +282,23 @@ export function IncomeForm({
             onChange={(e) => setSource(e.target.value)}
           />
         </Field>
+        {!deduction && (
+          <Field label="Category" name="categoryId" error={save.error}>
+            <NativeSelect className="w-full" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <NativeSelectOption value="">Uncategorized</NativeSelectOption>
+              {categoryOptions.map((parent) => [
+                <NativeSelectOption key={parent.id} value={parent.id}>
+                  {parent.name}
+                </NativeSelectOption>,
+                ...parent.children.map((c) => (
+                  <NativeSelectOption key={c.id} value={c.id}>
+                    {parent.name} › {c.name}
+                  </NativeSelectOption>
+                )),
+              ])}
+            </NativeSelect>
+          </Field>
+        )}
         <Field label="Account" name="accountId" error={save.error}>
           <NativeSelect className="w-full" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <NativeSelectOption value="">None</NativeSelectOption>

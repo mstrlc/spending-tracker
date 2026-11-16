@@ -46,6 +46,7 @@ import kotlinx.serialization.encodeToString
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.lowerCase
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
@@ -264,8 +265,16 @@ fun Route.bankRoutes() {
                         if (BankFeeds.selectAll().where { (BankFeeds.householdId eq householdId) and (BankFeeds.externalId eq account.id) }.any()) {
                             throw conflict("account_already_connected", "This bank account already has a feed", "$path.externalId")
                         }
-                        val name = (wanted.name?.trim()?.takeIf { it.isNotEmpty() }
-                            ?: ledger[Accounts.name].let { if (currency != householdCurrency) "$it · $currency" else it }).take(100)
+                        val typed = wanted.name?.trim()?.takeIf { it.isNotEmpty() }?.take(100)
+                        if (typed != null && feedNameTaken(householdId, typed)) {
+                            throw conflict("name_taken", "A feed named \"$typed\" already exists", "$path.name")
+                        }
+                        // Unnamed: the ledger account's name (with the currency when it isn't the household's), numbered
+                        // when a bank gives several accounts in one currency that read into the same ledger account.
+                        val name = typed ?: uniqueFeedName(
+                            householdId,
+                            ledger[Accounts.name].let { if (currency != householdCurrency) "$it · $currency" else it },
+                        )
                         val feedId = Uuid.random()
                         BankFeeds.insert {
                             it[BankFeeds.id] = feedId
@@ -286,7 +295,7 @@ fun Route.bankRoutes() {
                     loadFeeds(householdId).filter { Uuid.parse(it.id) in created }
                 }
             } catch (e: Exception) {
-                if (e.isUniqueViolation()) throw conflict("name_taken", "A feed with this name already exists", "feeds")
+                if (e.isUniqueViolation()) throw conflict("name_taken", "Two of these feeds have the same name", "feeds")
                 throw e
             }
             call.respond(HttpStatusCode.Created, feeds)
@@ -470,4 +479,15 @@ internal fun institutionOf(name: String): BankInstitution {
         "raiffeisen" in n -> BankInstitution.RAIFFEISEN
         else -> BankInstitution.OTHER
     }
+}
+
+private fun feedNameTaken(householdId: Uuid, name: String): Boolean =
+    BankFeeds.select(BankFeeds.id).where { (BankFeeds.householdId eq householdId) and (BankFeeds.name.lowerCase() eq name.lowercase()) }.any()
+
+/** [base], or "[base] 2", "[base] 3", … : the first no other feed of the household has (names are unique ignoring case). */
+private fun uniqueFeedName(householdId: Uuid, base: String): String {
+    val stem = base.take(95)
+    return generateSequence(1) { it + 1 }
+        .map { n -> if (n == 1) base.take(100) else "$stem $n" }
+        .first { !feedNameTaken(householdId, it) }
 }

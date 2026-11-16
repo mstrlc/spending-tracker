@@ -1,4 +1,4 @@
-import type { BankRow } from "../api/types";
+import type { BankRow, SplitDraft } from "../api/types";
 import type { ExpenseDraft } from "../expenses/ExpenseForm";
 import type { IncomeDraft } from "../income/IncomeForm";
 
@@ -29,7 +29,7 @@ export function draftExpense(rows: BankRow[]): ExpenseDraft {
   const currency = rows[0].currency;
   const foreign = s?.originalCurrency != null && rows.every((r) => r.currency === currency);
   const original = total !== undefined && total > 0 ? s?.refundCandidates[0] : undefined;
-  return {
+  const base: ExpenseDraft = {
     date: earliest(rows),
     amountMinor: total === undefined ? undefined : -total,
     merchant: original?.label || s?.merchant,
@@ -39,6 +39,26 @@ export function draftExpense(rows: BankRow[]): ExpenseDraft {
     paidByUserId: s ? s.paidByUserId : undefined,
     originalAmountMinor: foreign ? -rows.reduce((a, r) => a + r.amountMinor, 0) : undefined,
     originalCurrency: foreign ? currency : undefined,
+  };
+  const draft = rows.length === 1 ? rows[0].draft : null;
+  return draft ? withSplitDraft(base, draft) : base;
+}
+
+/**
+ * [base] with what a row's prepared [draft] says: its merchant, its lines (one line is just a category and whose,
+ * its note joining the notes), and its source and notes as the notes. The amount stays the row's, so lines that don't add up show in the form.
+ */
+function withSplitDraft(base: ExpenseDraft, draft: SplitDraft): ExpenseDraft {
+  const single = draft.lines.length === 1 ? draft.lines[0] : null;
+  // Without lines, a single line's note (what was bought) would have nowhere to go but the notes.
+  const notes = [draft.source, single?.notes, draft.notes].filter(Boolean).join(" · ");
+  return {
+    ...base,
+    merchant: draft.merchant || base.merchant,
+    notes: notes || base.notes,
+    ...(single
+      ? { categoryId: single.categoryId ?? base.categoryId, paidByUserId: single.paidByUserId ?? null }
+      : { lines: draft.lines, categoryId: undefined }),
   };
 }
 
@@ -57,6 +77,7 @@ export function draftIncome(rows: BankRow[], accountOwner: string | null): Incom
     date: earliest(rows),
     amountMinor: total === undefined ? undefined : deduction ? -total : tax !== null ? total + tax : total,
     source: s?.incomeSource,
+    categoryId: deduction ? undefined : s?.categoryId,
     accountId: sameAccount(rows),
     recipientUserId: s?.ruleId ? s.paidByUserId : accountOwner,
     kind: deduction ? "deduction" : undefined,

@@ -60,8 +60,8 @@ describe("rule drafts", () => {
   });
 
   it("makes income and transfer rules for money in, and names them after the source", () => {
-    const income = draftRule(row({ amountMinor: 3_000_000, text: "Employer" }), { outcome: "income", source: "Acme Ltd", recipientUserId: null });
-    expect(income).toMatchObject({ name: "Acme Ltd", direction: "in", outcome: "income", incomeSource: "Acme Ltd", personUserId: null });
+    const income = draftRule(row({ amountMinor: 3_000_000, text: "Employer" }), { outcome: "income", source: "Acme Ltd", categoryId: "cat-salary", recipientUserId: null });
+    expect(income).toMatchObject({ name: "Acme Ltd", direction: "in", outcome: "income", incomeSource: "Acme Ltd", categoryId: "cat-salary", personUserId: null });
     const transfer = draftRule(row({ text: "To Savings" }), { outcome: "transfer", otherAccountId: "acc2" });
     expect(transfer).toMatchObject({ name: "To Savings", outcome: "transfer", otherAccountId: "acc2" });
   });
@@ -93,5 +93,13 @@ describe("rule drafts", () => {
     expect(monthLabel(-1)).toBe("For the previous month");
     expect(monthLabel(0)).toBe("For the same month");
     expect(monthLabel(-3)).toBe("For 3 months before");
+  });
+
+  it("makes a contribution rule from a row that went into an asset", () => {
+    const draft = draftRule(row({ text: "Portu", merchantKey: "PORTU", outcome: "contribution", contributionId: "c" }), {
+      outcome: "contribution",
+      assetId: "asset-1",
+    });
+    expect(draft).toMatchObject({ name: "Portu", merchantKey: "PORTU", direction: "out", outcome: "contribution", assetId: "asset-1" });
   });
 });

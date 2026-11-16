@@ -66,3 +66,26 @@ export function payslipSummary(grossMinor: number | null, deductionMinors: numbe
   const mismatch = expectedNetMinor !== null && netMinor !== null && netMinor !== expectedNetMinor;
   return { grossMinor, deductedMinor, netMinor, mismatch };
 }
+
+/** One person's income lines in a month ([userId] null for shared ones), with what they add up to net. */
+export type PersonIncome = { userId: string | null; rows: IncomeRow[]; net: number };
+
+/**
+ * [rows] (as [groupIncome] makes them) by who received them: members in [memberIds] order, then shared lines, each
+ * with its net total (earnings less deductions, linked ones included). People with nothing this month are left out.
+ */
+export function incomeByPerson(rows: IncomeRow[], memberIds: string[]): PersonIncome[] {
+  const order = [...memberIds, null];
+  const groups = new Map<string | null, IncomeRow[]>();
+  for (const row of rows) {
+    const key = row.income.recipientUserId && memberIds.includes(row.income.recipientUserId) ? row.income.recipientUserId : null;
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  return order
+    .filter((id) => groups.has(id))
+    .map((userId) => {
+      const own = groups.get(userId)!;
+      const net = own.reduce((sum, r) => sum + netAmount(r.income) + r.linkedDeductions.reduce((s, d) => s + netAmount(d), 0), 0);
+      return { userId, rows: own, net };
+    });
+}

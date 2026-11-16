@@ -409,4 +409,36 @@ class BankConnectionTest {
             assertEquals("EUR", feed.currency)
         }
     }
+
+    @Test
+    fun unnamedFeedsIntoOneLedgerAccountGetDistinctNames() {
+        // Revolut: no account names, and a joint and a personal account (or pockets) in the same currency.
+        val bank = FakeBankData().apply {
+            linkState = LinkState.LINKED
+            accountIds = listOf("ext-a", "ext-b", "ext-c")
+            accounts["ext-a"] = BankAccountInfo("ext-a", null, null, "CZK", "", "Alice & Bob")
+            accounts["ext-b"] = BankAccountInfo("ext-b", null, null, "CZK", "", "Alice")
+            accounts["ext-c"] = BankAccountInfo("ext-c", null, null, "EUR", "", "Alice")
+        }
+        apiTest(bank = bank) {
+            val client = newClient()
+            client.signup()
+            val household = client.createHousehold()
+            val base = "/api/households/${household.id}"
+            val account = client.post("$base/accounts") { setBody(AccountInput("Revolut", kind = AccountKind.BANK)) }.body<Account>()
+            val connection = client.connect(household.id)
+            val feeds = client.post("$base/bank-connections/${connection.id}/feeds") {
+                setBody(CreateConnectionFeeds(listOf("ext-a", "ext-b", "ext-c").map { FeedFromAccount(it, account.id) }))
+            }.body<List<BankFeed>>()
+            assertEquals(setOf("Revolut", "Revolut 2", "Revolut · EUR"), feeds.map { it.name }.toSet())
+
+            // A name typed in that another feed has is refused, naming it.
+            bank.accountIds = listOf("ext-d")
+            bank.accounts["ext-d"] = BankAccountInfo("ext-d", null, null, "CZK", "", "Bob")
+            val again = client.connect(household.id)
+            client.post("$base/bank-connections/${again.id}/feeds") {
+                setBody(CreateConnectionFeeds(listOf(FeedFromAccount("ext-d", account.id, name = "revolut 2"))))
+            }.assertError(HttpStatusCode.Conflict, "name_taken")
+        }
+    }
 }

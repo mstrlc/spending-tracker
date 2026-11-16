@@ -32,8 +32,9 @@ class HouseholdTest {
             client.get("/api/households/${household.id}/members").body<List<Member>>(),
         )
         val categories = client.get("/api/households/${household.id}/categories").body<List<Category>>()
-        assertEquals(12, categories.size)
+        assertEquals(19, categories.size)
         assertEquals(CategoryKind.INVESTMENT, categories.single { it.name == "Investments" }.kind)
+        assertEquals(CategoryKind.INCOME, categories.single { it.name == "Salary" }.kind)
     }
 
     @Test

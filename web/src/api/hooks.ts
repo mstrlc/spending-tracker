@@ -6,6 +6,7 @@ import type {
   ActivityEntity,
   BankFeedInput,
   BankRowRef,
+  SplitDraft,
   CategoryInput,
   ContributionInput,
   FeeInput,
@@ -19,6 +20,7 @@ import type {
   InboxRuleInput,
   AssetInput,
   MerchantInput,
+  OrderItemAssignment,
   SettlementInput,
   SplitRuleInput,
   TransferInput,
@@ -58,6 +60,7 @@ export const keys = {
   overview: (id: string, month: string) => ["households", id, "overview", month] as const,
   splitRules: (id: string) => ["households", id, "split-rules"] as const,
   inboxRules: (id: string) => ["households", id, "inbox-rules"] as const,
+  orders: (id: string) => ["households", id, "orders"] as const,
   settings: (id: string) => ["households", id, "settings"] as const,
   bankConnections: (id: string) => ["households", id, "bank-connections"] as const,
   bankInstitutions: (id: string, country: string) => ["households", id, "bank-institutions", country] as const,
@@ -1010,6 +1013,8 @@ function invalidateInbox(qc: ReturnType<typeof useQueryClient>, householdId: str
   qc.invalidateQueries({ queryKey: keys.bankConnections(householdId) });
   // Rules count the rows they filed.
   qc.invalidateQueries({ queryKey: keys.inboxRules(householdId) });
+  // Orders list the pending rows they could be.
+  qc.invalidateQueries({ queryKey: keys.orders(householdId) });
 }
 
 export function useBankConnections(householdId: string) {
@@ -1184,6 +1189,9 @@ export function useDecideBankRows(householdId: string) {
         | { action: "skip"; rows: BankRowRef[]; reason: string }
         | { action: "transfer"; rows: BankRowRef[]; otherAccountId?: string | null; notes?: string }
         | { action: "settle"; rows: BankRowRef[]; fromUserId: string; toUserId: string; notes?: string }
+        | { action: "contribute"; rows: BankRowRef[]; assetId: string; notes?: string }
+        | { action: "remember"; rows: BankRowRef[]; remember: boolean }
+        | { action: "draft"; row: BankRowRef; draft: SplitDraft | null }
         | { action: "undo"; rows: BankRowRef[] },
     ) => {
       const path = { householdId };
@@ -1216,6 +1224,29 @@ export function useDecideBankRows(householdId: string) {
               body: { rows: decision.rows, fromUserId: decision.fromUserId, toUserId: decision.toUserId, notes: decision.notes ?? "" },
             }),
           );
+        case "contribute":
+          return unwrap(
+            await api.POST("/api/households/{householdId}/bank-rows/contribute", {
+              params: { path },
+              body: { rows: decision.rows, assetId: decision.assetId, notes: decision.notes ?? "" },
+            }),
+          );
+        case "remember":
+          return unwrap(
+            await api.POST("/api/households/{householdId}/bank-rows/remember", {
+              params: { path },
+              body: { rows: decision.rows, remember: decision.remember },
+            }),
+          );
+        case "draft":
+          return [
+            unwrap(
+              await api.POST("/api/households/{householdId}/bank-rows/draft", {
+                params: { path },
+                body: { row: decision.row, draft: decision.draft },
+              }),
+            ),
+          ];
         case "undo":
           return unwrap(await api.POST("/api/households/{householdId}/bank-rows/undo", { params: { path }, body: { rows: decision.rows } }));
       }
@@ -1228,7 +1259,8 @@ export function useDecideBankRows(householdId: string) {
         qc.invalidateQueries({ queryKey: keys.income(householdId) });
       }
       // Transfers change the joint contributions and liability entries, settlements the balance, and undo may delete either.
-      if (decision.action === "undo" || decision.action === "transfer" || decision.action === "settle") {
+      // Contributions change what an asset is worth and what went in.
+      if (decision.action === "undo" || decision.action === "transfer" || decision.action === "settle" || decision.action === "contribute") {
         qc.invalidateQueries({ queryKey: keys.balances(householdId) });
         qc.invalidateQueries({ queryKey: keys.transfers(householdId) });
         qc.invalidateQueries({ queryKey: keys.assets(householdId) });
@@ -1316,5 +1348,75 @@ export function useSaveHouseholdSettings(householdId: string) {
       qc.invalidateQueries({ queryKey: keys.households });
       invalidate();
     },
+  });
+}
+
+/** Every e-shop order, newest first; the Inbox shows those waiting for their payment and each drafted row's items. */
+export function useOrders(householdId: string) {
+  return useQuery({
+    queryKey: keys.orders(householdId),
+    queryFn: async () => unwrap(await api.GET("/api/households/{householdId}/orders", { params: { path: { householdId } } })),
+  });
+}
+
+/** Orders whose bank row became [expenseId]: the expense's items. */
+export function useExpenseOrders(householdId: string, expenseId: string | undefined) {
+  return useQuery({
+    queryKey: [...keys.orders(householdId), "expense", expenseId],
+    enabled: expenseId !== undefined,
+    queryFn: async () =>
+      unwrap(await api.GET("/api/households/{householdId}/orders", { params: { path: { householdId }, query: { expenseId } } })),
+  });
+}
+
+/** Reads an order from an email (.eml text or pasted text); matching it may draft a row's split. */
+export function useReadOrderEmail(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (email: string) =>
+      unwrap(await api.POST("/api/households/{householdId}/orders/email", { params: { path: { householdId } }, body: { email } })),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
+export function useAssignOrderItems(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version, items }: { id: string; version: number; items: OrderItemAssignment[] }) =>
+      unwrap(
+        await api.PUT("/api/households/{householdId}/orders/{orderId}/items", {
+          params: { path: { householdId, orderId: id } },
+          body: { items, version },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
+/** Matches an order to a pending row by hand, or with a null row unmatches it. */
+export function useMatchOrder(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version, row }: { id: string; version: number; row: BankRowRef | null }) =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/orders/{orderId}/match", {
+          params: { path: { householdId, orderId: id } },
+          body: { row, version },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
+export function useDeleteOrder(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: string; version: number }) =>
+      unwrap(
+        await api.DELETE("/api/households/{householdId}/orders/{orderId}", {
+          params: { path: { householdId, orderId: id }, query: { version } },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
   });
 }

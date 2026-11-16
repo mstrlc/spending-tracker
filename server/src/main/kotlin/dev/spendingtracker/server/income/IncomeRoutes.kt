@@ -11,13 +11,16 @@ import dev.spendingtracker.server.common.parseId
 import dev.spendingtracker.server.common.pathId
 import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.versionParam
+import dev.spendingtracker.server.category.dbValue
 import dev.spendingtracker.server.db.Accounts
+import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.server.inbox.fileBankRows
 import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.shared.api.ApiError
+import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.IncomeInput
 import dev.spendingtracker.shared.api.IncomeKind
 import io.github.smiley4.ktoropenapi.delete
@@ -62,6 +65,7 @@ fun Route.incomeRoutes() = route("/income") {
         request {
             queryParameter<String>("from") { description = "Inclusive start date, YYYY-MM-DD; matched against the month earned" }
             queryParameter<String>("to") { description = "Inclusive end date, YYYY-MM-DD; matched against the month earned" }
+            queryParameter<String>("categoryId")
             queryParameter<String>("accountId")
             queryParameter<String>("recipientUserId")
         }
@@ -73,6 +77,7 @@ fun Route.incomeRoutes() = route("/income") {
         val householdId = call.household.id
         val from = call.dateParam("from")
         val to = call.dateParam("to")
+        val categoryId = parseId(call.request.queryParameters["categoryId"], "categoryId")
         val accountId = parseId(call.request.queryParameters["accountId"], "accountId")
         val recipientUserId = parseId(call.request.queryParameters["recipientUserId"], "recipientUserId")
         val income = dbQuery {
@@ -80,6 +85,12 @@ fun Route.incomeRoutes() = route("/income") {
             // Income belongs to the month it was earned in, whenever it arrived.
             if (from != null) filter = filter and (Income.earnedMonth greaterEq from.yearMonth.firstDay)
             if (to != null) filter = filter and (Income.earnedMonth lessEq to)
+            if (categoryId != null) {
+                val matching = (Categories.select(Categories.id)
+                    .where { (Categories.householdId eq householdId) and (Categories.parentId eq categoryId) }
+                    .map { it[Categories.id] } + categoryId).distinct()
+                filter = filter and (Income.categoryId inList matching)
+            }
             if (accountId != null) filter = filter and (Income.accountId eq accountId)
             if (recipientUserId != null) filter = filter and (Income.recipientUserId eq recipientUserId)
             val rows = Income.selectAll()
@@ -219,6 +230,7 @@ private data class ValidIncome(
     val date: LocalDate,
     val amountMinor: Long,
     val source: String,
+    val categoryId: Uuid?,
     val accountId: Uuid?,
     val recipientUserId: Uuid?,
     val notes: String,
@@ -229,6 +241,10 @@ private data class ValidIncome(
 )
 
 private fun IncomeInput.validated(onCreate: Boolean): ValidIncome {
+    val categoryId = parseId(categoryId, "categoryId")
+    if (categoryId != null && kind != IncomeKind.EARNING) {
+        throw badRequest("invalid_category", "Deductions cannot have a category", "categoryId")
+    }
     val deductedFrom = parseId(deductedFromId, "deductedFromId")
     if (deductedFrom != null && kind != IncomeKind.DEDUCTION) {
         throw badRequest("invalid_deducted_from", "Only a deduction can be linked to an earning", "deductedFromId")
@@ -250,6 +266,7 @@ private fun IncomeInput.validated(onCreate: Boolean): ValidIncome {
         date = date,
         amountMinor = nonZeroAmount(amountMinor),
         source = optionalText(source, "source", max = 200),
+        categoryId = categoryId,
         accountId = parseId(accountId, "accountId"),
         recipientUserId = parseId(recipientUserId, "recipientUserId"),
         notes = optionalText(notes, "notes", max = 2000),
@@ -264,6 +281,15 @@ private fun IncomeInput.validated(onCreate: Boolean): ValidIncome {
 
 /** Field-level errors for references the composite foreign keys would otherwise reject opaquely. */
 private fun ValidIncome.checkReferences(householdId: Uuid, selfId: Uuid? = null) {
+    if (categoryId != null) {
+        val cat = Categories.select(Categories.kind)
+            .where { (Categories.id eq categoryId) and (Categories.householdId eq householdId) }
+            .singleOrNull()
+            ?: throw badRequest("invalid_category", "Unknown category", "categoryId")
+        if (cat[Categories.kind] != CategoryKind.INCOME.dbValue) {
+            throw badRequest("invalid_category", "Income must use an income category", "categoryId")
+        }
+    }
     if (accountId != null &&
         Accounts.selectAll().where { (Accounts.id eq accountId) and (Accounts.householdId eq householdId) }.empty()
     ) {
@@ -292,6 +318,7 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[Income.date] = input.date
     this[Income.amountMinor] = input.amountMinor
     this[Income.sourceName] = input.source
+    this[Income.categoryId] = input.categoryId
     this[Income.accountId] = input.accountId
     this[Income.recipientUserId] = input.recipientUserId
     this[Income.notes] = input.notes
@@ -359,6 +386,7 @@ private fun ResultRow.toIncome(deductedMinor: Long = 0L) = IncomeDto(
     date = this[Income.date],
     amountMinor = this[Income.amountMinor],
     source = this[Income.sourceName],
+    categoryId = this[Income.categoryId]?.toString(),
     accountId = this[Income.accountId]?.toString(),
     recipientUserId = this[Income.recipientUserId]?.toString(),
     notes = this[Income.notes],

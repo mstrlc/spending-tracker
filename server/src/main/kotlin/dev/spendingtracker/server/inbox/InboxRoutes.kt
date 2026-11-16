@@ -13,9 +13,15 @@ import dev.spendingtracker.server.common.pathId
 import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.common.versionParam
+import dev.spendingtracker.server.apiJson
+import dev.spendingtracker.server.category.dbValue
 import dev.spendingtracker.server.db.Accounts
+import dev.spendingtracker.server.db.Categories
+import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.server.bank.startOfPragueDay
 import dev.spendingtracker.server.db.BankBalances
+import dev.spendingtracker.server.db.AssetContributions
+import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.BankFeeds
 import dev.spendingtracker.server.db.BankSyncs
 import dev.spendingtracker.server.db.BankRows
@@ -33,8 +39,12 @@ import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.BankFeed
 import dev.spendingtracker.shared.api.BankFeedInput
 import dev.spendingtracker.shared.api.BankRow
+import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.FeedBalance
 import dev.spendingtracker.shared.api.LinkBankRows
+import dev.spendingtracker.shared.api.RememberBankRows
+import dev.spendingtracker.shared.api.DraftBankRow
+import dev.spendingtracker.shared.api.SplitDraft
 import dev.spendingtracker.shared.api.SkipBankRows
 import dev.spendingtracker.shared.api.StatementResult
 import dev.spendingtracker.shared.api.StatementUpload
@@ -49,6 +59,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.route
 import kotlinx.datetime.LocalDate
+import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
@@ -305,6 +316,60 @@ private fun Route.bankRowRoutes() = route("/bank-rows") {
         call.respond(rows)
     }
 
+    post("/remember", {
+        operationId = "rememberBankRows"
+        description = "Sets whether rows teach the inbox: suggestions for later rows with the same descriptor come from " +
+            "the latest row that does. Turn it off for a one-off, so it doesn't become what that payee means."
+        request { body<RememberBankRows>() }
+        response {
+            code(HttpStatusCode.OK) { body<List<BankRow>>() }
+            code(HttpStatusCode.BadRequest) { body<ApiError>() }
+            code(HttpStatusCode.NotFound) { body<ApiError>() }
+            code(HttpStatusCode.Conflict) { body<ApiError>() }
+        }
+    }) {
+        val householdId = call.household.id
+        val input = call.receive<RememberBankRows>()
+        val rows = dbQuery {
+            val locked = lockRows(householdId, input.rows)
+            BankRows.update({ BankRows.id inList locked.map { it[BankRows.id] } }) {
+                it[remember] = input.remember
+                it[version] = BankRows.version + 1
+                it[updatedAt] = Clock.System.now()
+            }
+            reload(householdId, locked.map { it[BankRows.id] })
+        }
+        call.respond(rows)
+    }
+
+    post("/draft", {
+        operationId = "draftBankRow"
+        description = "Sets or clears the expense a pending row will become (lines with category, amount and whose, " +
+            "merchant, notes, source), prepared ahead from an e-shop order, say. The row stays in the inbox."
+        request { body<DraftBankRow>() }
+        response {
+            code(HttpStatusCode.OK) { body<BankRow>() }
+            code(HttpStatusCode.BadRequest) { body<ApiError>() }
+            code(HttpStatusCode.NotFound) { body<ApiError>() }
+            code(HttpStatusCode.Conflict) { body<ApiError>() }
+        }
+    }) {
+        val household = call.household
+        val input = call.receive<DraftBankRow>()
+        val row = dbQuery {
+            val locked = lockRows(household.id, listOf(input.row), "row").single()
+            if (!locked.isPending()) throw conflict("already_decided", "The bank row was already decided. Reload the inbox.", "row")
+            val draft = input.draft?.validated(household.id, locked, household.currency)
+            BankRows.update({ BankRows.id eq locked[BankRows.id] }) {
+                it[splitDraft] = draft?.let { d -> apiJson.encodeToString(SplitDraft.serializer(), d) }
+                it[version] = BankRows.version + 1
+                it[updatedAt] = Clock.System.now()
+            }
+            reload(household.id, listOf(locked[BankRows.id])).single()
+        }
+        call.respond(row)
+    }
+
     post("/skip", {
         operationId = "skipBankRows"
         description = "Skips pending rows with a reason: not spending or income (money between own accounts, a top-up), or already covered."
@@ -368,7 +433,10 @@ private fun outcomeLabels(householdId: Uuid, rows: List<ResultRow>): Map<Uuid, S
     val incomeIds = rows.mapNotNull { it[BankRows.incomeId] }.distinct()
     val transferIds = rows.mapNotNull { it[BankRows.transferId] }.distinct()
     val settlementIds = rows.mapNotNull { it[BankRows.settlementId] }.distinct()
-    if (expenseIds.isEmpty() && incomeIds.isEmpty() && transferIds.isEmpty() && settlementIds.isEmpty()) return emptyMap()
+    val contributionIds = rows.mapNotNull { it[BankRows.contributionId] }.distinct()
+    if (expenseIds.isEmpty() && incomeIds.isEmpty() && transferIds.isEmpty() && settlementIds.isEmpty() && contributionIds.isEmpty()) {
+        return emptyMap()
+    }
 
     val expenses = if (expenseIds.isEmpty()) emptyMap() else {
         val expMerchants = Expenses
@@ -413,11 +481,18 @@ private fun outcomeLabels(householdId: Uuid, rows: List<ResultRow>): Map<Uuid, S
         it[Settlements.id] to "$from → $to"
     }
 
+    val contributions = if (contributionIds.isEmpty()) emptyMap() else AssetContributions
+        .join(Assets, JoinType.INNER, AssetContributions.assetId, Assets.id)
+        .select(AssetContributions.id, Assets.name)
+        .where { (AssetContributions.householdId eq householdId) and (AssetContributions.id inList contributionIds) }
+        .associate { it[AssetContributions.id] to it[Assets.name] }
+
     return rows.mapNotNull { row ->
         val label = row[BankRows.expenseId]?.let(expenses::get)
             ?: row[BankRows.incomeId]?.let(incomes::get)
             ?: row[BankRows.transferId]?.let(transfers::get)
             ?: row[BankRows.settlementId]?.let(settlements::get)
+            ?: row[BankRows.contributionId]?.let(contributions::get)
         label?.let { row[BankRows.id] to it }
     }.toMap()
 }
@@ -528,4 +603,39 @@ fun loadFeeds(householdId: Uuid, id: Uuid? = null): List<BankFeed> {
             balance = balances[feedId],
         )
     }
+}
+
+/**
+ * [this] trimmed, checked against [row]: at least one line, each non-zero with the sign of the expense the row makes
+ * (money out positive), known categories and members, and adding up to the row when it's in the household currency.
+ */
+private fun SplitDraft.validated(householdId: Uuid, row: ResultRow, householdCurrency: String): SplitDraft {
+    if (lines.isEmpty()) throw badRequest("no_lines", "A draft needs at least one line", "draft.lines")
+    val expenseMinor = -row[BankRows.amountMinor]
+    if (lines.any { it.amountMinor == 0L || (it.amountMinor > 0) != (expenseMinor > 0) }) {
+        throw badRequest("invalid_line", "Every line needs an amount with the sign of the row's expense", "draft.lines")
+    }
+    val total = lines.sumOf { it.amountMinor }
+    if (row[BankRows.currency] == householdCurrency && total != expenseMinor) {
+        throw badRequest("draft_total", "The lines add up to $total, not the row's $expenseMinor", "draft.lines")
+    }
+    val categoryIds = lines.mapNotNull { parseId(it.categoryId, "draft.lines") }.distinct()
+    if (categoryIds.isNotEmpty()) {
+        val kinds = Categories.select(Categories.kind)
+            .where { (Categories.householdId eq householdId) and (Categories.id inList categoryIds) }
+            .map { it[Categories.kind] }
+        if (kinds.size < categoryIds.size) throw badRequest("invalid_category", "Unknown category", "draft.lines")
+        if (CategoryKind.INCOME.dbValue in kinds) {
+            throw badRequest("invalid_category", "Expenses cannot use an income category", "draft.lines")
+        }
+    }
+    if (lines.mapNotNull { parseId(it.paidByUserId, "draft.lines") }.distinct().any { !isMember(householdId, it) }) {
+        throw badRequest("invalid_member", "Whose must be a member of the household", "draft.lines")
+    }
+    return copy(
+        lines = lines.map { it.copy(notes = it.notes.trim()) },
+        merchant = merchant.trim(),
+        notes = notes.trim(),
+        source = source.trim(),
+    )
 }

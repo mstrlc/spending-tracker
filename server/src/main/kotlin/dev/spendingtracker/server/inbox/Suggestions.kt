@@ -2,11 +2,13 @@ package dev.spendingtracker.server.inbox
 
 import dev.spendingtracker.server.account.DEFAULT_INTEREST_TAX_PERCENT
 import dev.spendingtracker.server.db.Accounts
+import dev.spendingtracker.server.db.AssetContributions
 import dev.spendingtracker.server.db.BankFeeds
 import dev.spendingtracker.server.db.BankRows
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.FxRates
 import dev.spendingtracker.server.db.HouseholdMembers
+import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.db.Merchants
 import dev.spendingtracker.server.db.Settlements
@@ -17,10 +19,12 @@ import dev.spendingtracker.server.debt.toExpenseFacts
 import dev.spendingtracker.server.expense.loadExpenseLines
 import dev.spendingtracker.server.expense.loadRefundedMinor
 import dev.spendingtracker.server.income.dbValue
+import dev.spendingtracker.server.category.dbValue as categoryDbValue
 import dev.spendingtracker.server.income.loadDeductedMinor
 import dev.spendingtracker.shared.api.BankRowSuggestion
 import dev.spendingtracker.shared.api.Debt
 import dev.spendingtracker.shared.api.DuplicateCandidate
+import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.RefundCandidate
 import dev.spendingtracker.shared.api.RuleOutcome
@@ -97,6 +101,19 @@ fun suggestFor(
         .mapNotNull { r -> r[BankFeeds.iban]?.let { it to r[BankFeeds.accountId] } }.toMap() +
         accountRows.mapNotNull { r -> r[Accounts.iban]?.let { it to r[Accounts.id] } }.toMap()
     val merchants = Merchants.selectAll().where { Merchants.householdId eq householdId }.toList()
+    // The top-level income category interest is filed under: one with "interest" in its name.
+    val interestCategory = Categories.select(Categories.id, Categories.name)
+        .where {
+            (Categories.householdId eq householdId) and Categories.parentId.isNull() and
+                (Categories.kind eq CategoryKind.INCOME.categoryDbValue) and (Categories.archived eq false)
+        }
+        .firstOrNull { it[Categories.name].contains("interest", ignoreCase = true) }?.get(Categories.id)
+    // The category of each payer's latest categorised earning, entered by hand or from the bank alike.
+    val categoryBySource = Income.select(Income.sourceName, Income.categoryId)
+        .where { (Income.householdId eq householdId) and Income.categoryId.isNotNull() }
+        .orderBy(Income.earnedMonth to SortOrder.DESC, Income.date to SortOrder.DESC)
+        .groupBy { it[Income.sourceName].trim().lowercase() }
+        .mapValues { it.value.first()[Income.categoryId] }
     val merchantsByName = merchants.associateBy { it[Merchants.name].lowercase() }
     val merchantNames = merchants.associate { it[Merchants.id] to it[Merchants.name] }
     val memberNames = HouseholdMembers.join(Users, JoinType.INNER, HouseholdMembers.userId, Users.id)
@@ -113,13 +130,18 @@ fun suggestFor(
     // The latest decision per descriptor: what its expense or income line said.
     val pastExpenses = BankRows.join(Expenses, JoinType.INNER, BankRows.expenseId, Expenses.id)
         .select(BankRows.merchantKey, Expenses.merchantId, Expenses.categoryId, Expenses.paidByUserId, Expenses.date)
-        .where { (BankRows.householdId eq householdId) and BankRows.expenseId.isNotNull() }
+        .where { (BankRows.householdId eq householdId) and BankRows.expenseId.isNotNull() and BankRows.remember }
         .orderBy(Expenses.date to SortOrder.DESC)
         .groupBy { it[BankRows.merchantKey] }.mapValues { it.value.first() }
     val pastIncome = BankRows.join(Income, JoinType.INNER, BankRows.incomeId, Income.id)
-        .select(BankRows.merchantKey, Income.sourceName, Income.recipientUserId, Income.date)
-        .where { (BankRows.householdId eq householdId) and BankRows.incomeId.isNotNull() }
+        .select(BankRows.merchantKey, Income.sourceName, Income.categoryId, Income.recipientUserId, Income.date)
+        .where { (BankRows.householdId eq householdId) and BankRows.incomeId.isNotNull() and BankRows.remember }
         .orderBy(Income.date to SortOrder.DESC)
+        .groupBy { it[BankRows.merchantKey] }.mapValues { it.value.first() }
+    val pastContributions = BankRows.join(AssetContributions, JoinType.INNER, BankRows.contributionId, AssetContributions.id)
+        .select(BankRows.merchantKey, AssetContributions.assetId, AssetContributions.date)
+        .where { (BankRows.householdId eq householdId) and BankRows.contributionId.isNotNull() and BankRows.remember }
+        .orderBy(AssetContributions.date to SortOrder.DESC)
         .groupBy { it[BankRows.merchantKey] }.mapValues { it.value.first() }
 
     val dates = rows.map { it[BankRows.date] }
@@ -133,7 +155,9 @@ fun suggestFor(
     val evidence = TransferEvidence.load(householdId)
     val otherSides = otherSides(rows, pool, householdCurrency, fx, evidence, owners, owes)
     val (linkedExpenses, linkedIncome) = linkedRecords(householdId)
-    val first = dates.min().minus(DatePeriod(days = INCOME_MONTH_DAYS))
+    // Records from before the household's bank data starts (the old app's ledger) have no bank rows on purpose, so no
+    // bank row is a duplicate of one: income dated the 1st would otherwise catch next month's payments.
+    val first = listOfNotNull(dates.min().minus(DatePeriod(days = INCOME_MONTH_DAYS)), startOfBankData(householdId, null)).max()
     val last = dates.max().plus(DatePeriod(days = INCOME_MONTH_DAYS))
     val expenses = Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id)
         .select(Expenses.id, Expenses.date, Expenses.amountMinor, Expenses.accountId, Merchants.name)
@@ -160,7 +184,7 @@ fun suggestFor(
     val refunded = loadRefundedMinor(householdId, refundPool.map { it[Expenses.id] })
     val expensesByKey = if (refundPool.isEmpty()) emptyMap() else {
         BankRows.select(BankRows.merchantKey, BankRows.expenseId)
-            .where { (BankRows.householdId eq householdId) and BankRows.expenseId.isNotNull() }
+            .where { (BankRows.householdId eq householdId) and BankRows.expenseId.isNotNull() and BankRows.remember }
             .groupBy({ it[BankRows.merchantKey] }, { it[BankRows.expenseId]!! })
             .mapValues { it.value.toSet() }
     }
@@ -202,9 +226,10 @@ fun suggestFor(
             )
         }
         val counterpartyAccountId = row[BankRows.counterpartyIban]?.let(accountByIban::get)?.takeIf { it != accountId }
-        val ownAccount = counterpartyAccountId?.takeIf { candidates.isEmpty() }
+        // With no other side yet, the account the money came from or went to: by IBAN, else by the card that paid.
+        val ownAccount = (counterpartyAccountId ?: evidence.cardAccount(row)?.takeIf { it != accountId })?.takeIf { candidates.isEmpty() }
         val isMovement = row[BankRows.hint].removePrefix("Old app: ") in MOVEMENT_HINTS
-        val isMemberHint = row[BankRows.hint].removePrefix("Old app: ") == "To or from someone in the household" &&
+        val isMemberHint = row[BankRows.hint].removePrefix("Old app: ") == MEMBER_NAME_HINT &&
             row[BankRows.code] != "CARD_PAYMENT"
         val settlementOther = if (owner == null || native == 0L) null else {
             if (candidates.isNotEmpty()) {
@@ -229,9 +254,11 @@ fun suggestFor(
         val ruleMerchant = if (forExpense && rule!!.merchant.isNotBlank()) rule.merchant else null
         val merchant = ruleMerchant ?: guessedMerchant
         val category = when {
-            !forExpense -> guessedCategory
-            rule!!.categoryId != null -> rule.categoryId
-            ruleMerchant != null -> merchantsByName[ruleMerchant.lowercase()]?.get(Merchants.defaultCategoryId)
+            forDeduction -> null
+            forIncome -> rule!!.categoryId ?: pastSource?.get(Income.categoryId)
+            forExpense -> rule!!.categoryId
+                ?: (if (ruleMerchant != null) merchantsByName[ruleMerchant.lowercase()]?.get(Merchants.defaultCategoryId) else guessedCategory)
+            expenseOrIncome == SuggestedRecord.INCOME -> pastSource?.get(Income.categoryId)
             else -> guessedCategory
         }
         // A record entered by hand is the same one only if its merchant or source has a name in common with the row:
@@ -239,6 +266,10 @@ fun suggestFor(
         val rowWords = words(listOf(text, row[BankRows.counterpartyName], row[BankRows.message]).joinToString(" "))
         val incomeSource = (if (forIncome || forDeduction) rule!!.incomeSource.ifBlank { null } else null)
             ?: pastSource?.get(Income.sourceName) ?: (if (interest) "Interest" else null) ?: row[BankRows.counterpartyName].ifEmpty { text }
+        // Else an earning takes the category its payer's last one had, and interest the household's interest category.
+        val incomeCategory = if (forDeduction || (rule != null && !forIncome) || expenseOrIncome != SuggestedRecord.INCOME) null else {
+            categoryBySource[incomeSource.trim().lowercase()] ?: (if (interest) interestCategory else null)
+        }
         // Interest arrives net: the bank kept [rate]% of the gross, so gross = net * 100 / (100 - rate).
         val withheldTax = if (!interest || rule != null || converted == null) null else {
             val rate = interestTax[accountId] ?: 0
@@ -294,11 +325,20 @@ fun suggestFor(
                     )
                 }.toList()
         }
+        // The last row with this descriptor went into an asset, and nothing with it was decided otherwise since.
+        val pastContribution = pastContributions[key]?.takeIf { c ->
+            val since = c[AssetContributions.date]
+            key.isNotEmpty() &&
+                (past?.get(Expenses.date)?.let { it <= since } ?: true) &&
+                (pastSource?.get(Income.date)?.let { it <= since } ?: true)
+        }
         val record = when (rule?.outcome) {
             RuleOutcome.TRANSFER -> SuggestedRecord.TRANSFER
             RuleOutcome.SETTLEMENT -> SuggestedRecord.SETTLEMENT
+            RuleOutcome.CONTRIBUTION -> SuggestedRecord.CONTRIBUTION
             RuleOutcome.EXPENSE, RuleOutcome.INCOME, RuleOutcome.DEDUCTION, RuleOutcome.SKIP -> expenseOrIncome
             else -> when {
+                pastContribution != null -> SuggestedRecord.CONTRIBUTION
                 owner != null && settlementOther != null -> SuggestedRecord.SETTLEMENT
                 candidates.isNotEmpty() || ownAccount != null || isMovement -> SuggestedRecord.TRANSFER
                 else -> expenseOrIncome
@@ -317,6 +357,8 @@ fun suggestFor(
             amountMinor = converted?.let {
                 when {
                     record == SuggestedRecord.SETTLEMENT -> abs(it)
+                    // Money out is put into the asset, money in taken out of it.
+                    record == SuggestedRecord.CONTRIBUTION -> -it
                     expenseOrIncome == SuggestedRecord.EXPENSE || forDeduction -> -it
                     else -> it
                 }
@@ -324,7 +366,7 @@ fun suggestFor(
             originalAmountMinor = if (currency == householdCurrency) null else abs(native),
             originalCurrency = if (currency == householdCurrency) null else currency,
             merchant = merchant,
-            categoryId = category?.toString(),
+            categoryId = (category ?: incomeCategory)?.toString(),
             paidByUserId = (if (forExpense || forIncome || forDeduction) rule!!.personUserId ?: owner else if (past != null) past[Expenses.paidByUserId] else owner)?.toString(),
             incomeSource = incomeSource,
             duplicates = duplicates,
@@ -340,6 +382,11 @@ fun suggestFor(
             earnedMonth = if (forDeduction) date.yearMonth.plus(rule!!.monthOffset, DateTimeUnit.MONTH).toString() else null,
             refundCandidates = refundCandidates,
             withheldTaxMinor = withheldTax,
+            assetId = when {
+                rule?.outcome == RuleOutcome.CONTRIBUTION -> rule.assetId
+                record == SuggestedRecord.CONTRIBUTION -> pastContribution?.get(AssetContributions.assetId)
+                else -> null
+            }?.toString(),
         )
     }
 }

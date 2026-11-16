@@ -3,6 +3,7 @@ package dev.spendingtracker.server.importing
 import dev.spendingtracker.server.account.DEFAULT_INTEREST_TAX_PERCENT
 import dev.spendingtracker.server.account.normalizeIban
 import dev.spendingtracker.server.auth.userId
+import dev.spendingtracker.server.category.dbValue
 import dev.spendingtracker.server.common.ApiException
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.nonZeroAmount
@@ -40,6 +41,7 @@ import dev.spendingtracker.shared.api.AccountStatus
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.HouseholdImport
+import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.ImportCounts
 import dev.spendingtracker.shared.api.ImportResult
 import dev.spendingtracker.shared.api.ImportSummary
@@ -409,6 +411,20 @@ private class Importer(private val householdId: Uuid, private val householdCurre
             val earned = line.earnedMonth?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 runCatching { YearMonth.parse(it) }.getOrElse { throw badRequest("invalid_month", "earnedMonth must be YYYY-MM", "$path.earnedMonth") }
             } ?: line.date.yearMonth
+            val categoryId = line.category?.takeIf { it.isNotBlank() }?.let { parent ->
+                if (line.kind != IncomeKind.EARNING) {
+                    throw badRequest("invalid_category", "Deductions cannot have a category", "$path.category")
+                }
+                val top = category(parent, null, "$path.category")
+                val resolved = line.subcategory?.takeIf { it.isNotBlank() }?.let { category(it, parent, "$path.subcategory") } ?: top
+                val catKind = Categories.select(Categories.kind)
+                    .where { (Categories.householdId eq this@Importer.householdId) and (Categories.id eq resolved) }
+                    .single()[Categories.kind]
+                if (catKind != CategoryKind.INCOME.dbValue) {
+                    throw badRequest("invalid_category", "Income must use an income category", "$path.category")
+                }
+                resolved
+            }
             Income.insert {
                 it[id] = Uuid.random()
                 it[householdId] = this@Importer.householdId
@@ -416,6 +432,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 it[earnedMonth] = earned.firstDay
                 it[amountMinor] = nonZeroAmount(line.amountMinor, "$path.amountMinor")
                 it[sourceName] = optionalText(line.source, "$path.source", max = 200)
+                it[Income.categoryId] = categoryId
                 it[accountId] = account(line.account, "$path.account")
                 it[recipientUserId] = person(line.recipient, "$path.recipient")
                 it[notes] = optionalText(line.notes, "$path.notes")
@@ -575,7 +592,3 @@ private class Importer(private val householdId: Uuid, private val householdCurre
 }
 
 private val AccountKind.dbValue get() = name.lowercase()
-
-
-
-private val CategoryKind.dbValue get() = if (this == CategoryKind.INVESTMENT) "investment" else "consumption"

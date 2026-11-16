@@ -1,22 +1,26 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useAccounts, useCategories, useExpenses, useIncome, useMembers } from "../api/hooks";
-import type { Income } from "../api/types";
+import type { Category, Income } from "../api/types";
 import { expenseTotals } from "../expenses/ExpensesPage";
 import { PlusIcon } from "lucide-react";
-import { AccountLabel, KindIcon, PersonLabel } from "../chips";
+import { AccountLabel, CategoryLabel, KindIcon, PersonLabel, categoryTone, type Tone } from "../chips";
+import { categoryLabel } from "../categories/tree";
 import { currentMonth, formatDay, formatMonth, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { rankSlices, ShareBar, type Slice } from "../shares";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, ErrorText, Money, PageHeader, Sheet, SkeletonRows, Summary, Surface } from "../ui";
 import { usePendingDeleteIds } from "../undo";
+import { EmptyFilterRow, SortableHead, sortRows, useTableSortAndFilter } from "../sorting";
+import type { IncomeRow } from "./net";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { IncomeForm } from "./IncomeForm";
-import { groupIncome, incomeTotals, netAmount } from "./net";
+import { groupIncome, incomeByPerson, incomeTotals, netAmount } from "./net";
 
 /** The month's earnings by source, largest first; clawbacks net against their source, deductions aren't sources. */
 export function incomeBySource(income: Income[]): Slice[] {
@@ -27,6 +31,22 @@ export function incomeBySource(income: Income[]): Slice[] {
     sums.set(name, (sums.get(name) ?? 0) + i.amountMinor);
   }
   return rankSlices(sums);
+}
+
+/** The month's earnings by top-level category (subcategories roll up into their parent), largest first. */
+export function incomeByCategory(income: Income[], categories: Category[]): Slice[] {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const sums = new Map<string, number>();
+  const tones = new Map<string, Tone>();
+  for (const i of income) {
+    if (i.kind === "deduction") continue;
+    const category = i.categoryId ? byId.get(i.categoryId) : undefined;
+    const top = category?.parentId ? byId.get(category.parentId) : category;
+    const name = top?.name ?? "Uncategorized";
+    sums.set(name, (sums.get(name) ?? 0) + i.amountMinor);
+    if (!tones.has(name)) tones.set(name, categoryTone(categories, top?.id));
+  }
+  return rankSlices(sums, tones);
 }
 
 type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; income: Income };
@@ -59,9 +79,40 @@ export function IncomePage() {
     </Money>
   );
   const showRecipient = members.length > 1;
+  // Sorting orders the lines within each person's group; linked deductions stay under their earning.
+  const categoryName = (i: Income) => (i.kind === "deduction" ? "" : categoryLabel(categories, i.categoryId));
+  const accountName = (i: Income) => accounts.find((a) => a.id === i.accountId)?.name ?? "";
+  const { sort, onSort, clearFilters, filtered, filterFor } = useTableSortAndFilter(
+    rows,
+    {
+      day: (i) => i.date,
+      source: (i) => i.source,
+      category: categoryName,
+      account: accountName,
+      amount: (i) => netAmount(i),
+    },
+    {
+      day: (i) => formatDay(i.date),
+      source: (i) => i.source || (i.kind === "deduction" ? "Untitled deduction" : "Untitled income"),
+      category: categoryName,
+      account: accountName,
+      amount: (i) => formatAmount(Math.abs(i.amountMinor), household.currency),
+    },
+  );
+  const sortLines = (lines: IncomeRow[]) =>
+    sortRows(lines, sort, {
+      day: (l) => l.income.date,
+      source: (l) => l.income.source,
+      category: (l) => categoryName(l.income),
+      account: (l) => accountName(l.income),
+      amount: (l) => netAmount(l.income),
+    });
   const defaultDate = month === currentMonth() ? todayIso() : from;
   const openAdd = () => setEditor({ mode: "add" });
   const [flashId, setFlashId] = useState<string | null>(null);
+  // The share bar by kind of money or by who paid; by source until something has a category.
+  const [breakdown, setBreakdown] = useState<"category" | "source">("category");
+  const hasCategories = rows.some((i) => i.kind !== "deduction" && i.categoryId !== null);
 
   useMonthShortcuts(month, goTo, openAdd);
 
@@ -91,7 +142,23 @@ export function IncomePage() {
             },
           ]}
         />
-        <ShareBar label="Income by source" slices={incomeBySource(rows)} />
+        {hasCategories ? (
+          <div className="flex flex-col gap-3">
+            <Tabs value={breakdown} onValueChange={(v) => setBreakdown(v as "category" | "source")}>
+              <TabsList aria-label="Break income down by">
+                <TabsTrigger value="category">By category</TabsTrigger>
+                <TabsTrigger value="source">By source</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {breakdown === "category" ? (
+              <ShareBar label="Income by category" slices={incomeByCategory(rows, categories)} />
+            ) : (
+              <ShareBar label="Income by source" slices={incomeBySource(rows)} />
+            )}
+          </div>
+        ) : (
+          <ShareBar label="Income by source" slices={incomeBySource(rows)} />
+        )}
       </div>
 
       <Surface>
@@ -110,18 +177,48 @@ export function IncomePage() {
           </EmptyState>
         )}
         {rows.length > 0 && (
-          <Table>
+          <Table className="table-fixed md:min-w-[36rem]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="max-md:hidden">Day</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead className="max-md:hidden">Account</TableHead>
-                {showRecipient && <TableHead className="max-md:hidden">Received by</TableHead>}
-                <TableHead className="text-right">Amount ({household.currency})</TableHead>
+                <SortableHead column="day" first="desc" sort={sort} onSort={onSort} filter={filterFor("day")} className="w-28 max-md:hidden">
+                  Day
+                </SortableHead>
+                <SortableHead column="source" sort={sort} onSort={onSort} filter={filterFor("source")}>
+                  Source
+                </SortableHead>
+                <SortableHead column="category" sort={sort} onSort={onSort} filter={filterFor("category")} className="w-[22%] max-md:hidden">
+                  Category
+                </SortableHead>
+                <SortableHead column="account" sort={sort} onSort={onSort} filter={filterFor("account")} className="w-[20%] max-md:hidden">
+                  Account
+                </SortableHead>
+                <SortableHead column="amount" first="desc" sort={sort} onSort={onSort} filter={filterFor("amount")} className="w-36 text-right">
+                  Amount ({household.currency})
+                </SortableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {groupIncome(rows).map(({ income: i, linkedDeductions }) => {
+              {filtered.length === 0 && <EmptyFilterRow colSpan={5} onClear={clearFilters} />}
+              {filtered.length > 0 && (showRecipient
+                ? incomeByPerson(groupIncome(filtered), members.map((m) => m.userId))
+                : [{ userId: null, rows: groupIncome(filtered), net: 0 }]
+              ).map((person) => (
+                <Fragment key={person.userId ?? "shared"}>
+                  {/* With more than one member, each person's lines come under their name and net total. */}
+                  {showRecipient && (
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableCell colSpan={5} className="py-1.5">
+                        <div className="flex items-center justify-between gap-3 text-sm font-medium">
+                          <PersonLabel members={members} userId={person.userId} jointLabel="Shared" />
+                          <span className="amount">
+                            {person.net < 0 ? "−" : ""}
+                            {formatAmount(Math.abs(person.net), household.currency)}
+                          </span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {sortLines(person.rows).map(({ income: i, linkedDeductions }) => {
                 const renderRow = (item: Income, nested: boolean) => (
                   <TableRow
                     key={item.id}
@@ -158,14 +255,12 @@ export function IncomePage() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-md:hidden">
+                    <TableCell className="overflow-hidden max-md:hidden">
+                      {item.kind !== "deduction" && <CategoryLabel categories={categories} id={item.categoryId} />}
+                    </TableCell>
+                    <TableCell className="overflow-hidden text-muted-foreground max-md:hidden">
                       <AccountLabel account={accounts.find((a) => a.id === item.accountId)} />
                     </TableCell>
-                    {showRecipient && (
-                      <TableCell className="text-muted-foreground max-md:hidden">
-                        <PersonLabel members={members} userId={item.recipientUserId} jointLabel="Shared" />
-                      </TableCell>
-                    )}
                     <TableCell className={cn("amount text-right", item.kind === "deduction" && "text-muted-foreground")}>
                       {netAmount(item) < 0 ? "−" : ""}
                       {formatAmount(Math.abs(item.amountMinor), household.currency)}
@@ -173,7 +268,9 @@ export function IncomePage() {
                   </TableRow>
                 );
                 return [renderRow(i, false), ...linkedDeductions.map((d) => renderRow(d, true))];
-              })}
+                  })}
+                </Fragment>
+              ))}
             </TableBody>
           </Table>
         )}

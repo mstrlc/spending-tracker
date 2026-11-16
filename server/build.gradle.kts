@@ -51,6 +51,8 @@ dependencies {
     implementation(libs.postgresql)
     implementation(libs.hikari)
     implementation(libs.logback)
+    implementation(libs.angus.mail)
+    implementation(libs.jsoup)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.ktor.server.test.host)

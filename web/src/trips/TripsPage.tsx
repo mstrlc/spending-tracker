@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { EmptyFilterRow, SortableHead, useTableSortAndFilter } from "../sorting";
 import { useDeleteTrip, useSaveTrip, useTrips } from "../api/hooks";
 import type { Trip, TripInput } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
@@ -23,6 +24,21 @@ export function TripsPage() {
   const [endDate, setEndDate] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const rows = (trips.data ?? []).filter((t) => !pendingDeletes.has(t.id));
+  const { sort, onSort, clearFilters, shown, filterFor } = useTableSortAndFilter(
+    rows,
+    {
+      name: (t) => t.name,
+      from: (t) => t.startDate,
+      to: (t) => t.endDate,
+      spent: (t) => t.spentMinor,
+    },
+    {
+      name: (t) => t.name,
+      from: (t) => t.startDate ?? "",
+      to: (t) => t.endDate ?? "",
+      spent: (t) => formatMoney(t.spentMinor, household.currency),
+    },
+  );
 
   function add(e: FormEvent) {
     e.preventDefault();
@@ -89,17 +105,26 @@ export function TripsPage() {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Trip</TableHead>
-                <TableHead className="max-md:hidden">From</TableHead>
-                <TableHead className="max-md:hidden">To</TableHead>
-                <TableHead className="text-right">Spent</TableHead>
+                <SortableHead column="name" sort={sort} onSort={onSort} filter={filterFor("name")}>
+                  Trip
+                </SortableHead>
+                <SortableHead column="from" first="desc" sort={sort} onSort={onSort} filter={filterFor("from")} className="max-md:hidden">
+                  From
+                </SortableHead>
+                <SortableHead column="to" first="desc" sort={sort} onSort={onSort} filter={filterFor("to")} className="max-md:hidden">
+                  To
+                </SortableHead>
+                <SortableHead column="spent" first="desc" sort={sort} onSort={onSort} filter={filterFor("spent")} className="text-right">
+                  Spent
+                </SortableHead>
                 <TableHead className="w-12">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((t) => (
+              {shown.length === 0 && <EmptyFilterRow colSpan={5} onClear={clearFilters} />}
+              {shown.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="whitespace-normal font-medium">
                     <InlineRename

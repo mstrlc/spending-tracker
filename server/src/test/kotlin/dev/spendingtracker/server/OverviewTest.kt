@@ -1,5 +1,17 @@
 package dev.spendingtracker.server
 
+import dev.spendingtracker.server.bank.BankAccountInfo
+import dev.spendingtracker.server.bank.BankBalance
+import dev.spendingtracker.server.bank.LinkState
+import dev.spendingtracker.shared.api.Account
+import dev.spendingtracker.shared.api.AccountInput
+import dev.spendingtracker.shared.api.AccountKind
+import dev.spendingtracker.shared.api.AssetKind
+import dev.spendingtracker.shared.api.BankConnectionStarted
+import dev.spendingtracker.shared.api.CreateConnectionFeeds
+import dev.spendingtracker.shared.api.FeedFromAccount
+import dev.spendingtracker.shared.api.StartBankConnection
+import dev.spendingtracker.shared.api.ValuationInput
 import dev.spendingtracker.shared.api.Category
 import dev.spendingtracker.shared.api.CategoryInput
 import dev.spendingtracker.shared.api.CategoryKind
@@ -69,5 +81,74 @@ class OverviewTest {
         assertEquals(null, empty.typicalMonth)
         assertEquals("2026-09", empty.anomalyMonth)
         client.get("$household/overview?month=October").assertError(HttpStatusCode.BadRequest, "invalid_month")
+    }
+
+    @Test
+    fun netWorthRunwayAndFreshness() {
+        val bank = FakeBankData().apply {
+            linkState = LinkState.LINKED
+            accountIds = listOf("ext-current", "ext-savings", "ext-card")
+            accounts["ext-current"] = BankAccountInfo("ext-current", null, null, "CZK", "Current", "Alice")
+            accounts["ext-savings"] = BankAccountInfo("ext-savings", null, null, "CZK", "Savings", "Alice")
+            accounts["ext-card"] = BankAccountInfo("ext-card", null, null, "CZK", "Card", "Alice")
+            balanceByAccount["ext-current"] = BankBalance(40_000, "CZK", "closingBooked", LocalDate(2026, 10, 20))
+            balanceByAccount["ext-savings"] = BankBalance(200_000, "CZK", "closingBooked", LocalDate(2026, 10, 20))
+            balanceByAccount["ext-card"] = BankBalance(-5_000, "CZK", "closingBooked", LocalDate(2026, 10, 20))
+        }
+        apiTest(bank = bank) {
+            val client = newClient().also { it.signup() }
+            val household = "/api/households/${client.createHousehold(currency = "CZK").id}"
+            val current = client.post("$household/accounts") { setBody(AccountInput("Current")) }.body<Account>()
+            val savingsAccount = client.post("$household/accounts") { setBody(AccountInput("Savings", kind = AccountKind.SAVINGS)) }.body<Account>()
+            val card = client.post("$household/accounts") { setBody(AccountInput("Card", kind = AccountKind.CREDIT_CARD)) }.body<Account>()
+            // The savings account counts once, through the asset that follows it.
+            client.post("$household/assets") { setBody(AssetInput("Savings", kind = AssetKind.SAVINGS, accountId = savingsAccount.id)) }
+            val cash = client.post("$household/assets") { setBody(AssetInput("Envelope", kind = AssetKind.SAVINGS)) }.body<Asset>()
+            client.post("$household/assets/${cash.id}/valuations") { setBody(ValuationInput(LocalDate(2026, 9, 1), 10_000)) }
+            val car = client.post("$household/assets") { setBody(AssetInput("Car", kind = AssetKind.VEHICLE)) }.body<Asset>()
+            client.post("$household/assets/${car.id}/valuations") { setBody(ValuationInput(LocalDate(2026, 9, 1), 300_000)) }
+            val loan = client.post("$household/assets") { setBody(AssetInput("Car loan", kind = AssetKind.LOAN)) }.body<Asset>()
+            client.post("$household/assets/${loan.id}/valuations") { setBody(ValuationInput(LocalDate(2026, 9, 1), 100_000)) }
+            for (month in 7..9) {
+                client.post("$household/expenses") { setBody(ExpenseInput(LocalDate(2026, month, 3), 25_000, "Albert")) }
+            }
+
+            val started = client.post("$household/bank-connections") { setBody(StartBankConnection("AIRBANK_CZ")) }.body<BankConnectionStarted>()
+            client.post("$household/bank-connections/${started.connectionId}/finish")
+            client.post("$household/bank-connections/${started.connectionId}/feeds") {
+                setBody(
+                    CreateConnectionFeeds(
+                        listOf(
+                            FeedFromAccount("ext-current", current.id),
+                            FeedFromAccount("ext-savings", savingsAccount.id),
+                            FeedFromAccount("ext-card", card.id),
+                        ),
+                    ),
+                )
+            }
+            client.post("$household/bank-connections/${started.connectionId}/sync")
+
+            val worth = client.get("$household/overview?month=2026-10&today=2026-10-31").body<Overview>().netWorth
+            assertEquals(LocalDate(2026, 10, 31), worth.on)
+            assertEquals(40_000L - 5_000, worth.accountsMinor)
+            assertEquals(200_000L + 10_000 + 300_000, worth.assetsMinor)
+            assertEquals(-100_000, worth.liabilitiesMinor)
+            assertEquals(35_000L + 510_000 - 100_000, worth.netMinor)
+            // Money at hand: the current and savings accounts and the envelope, not the car or the card.
+            assertEquals(250_000, worth.liquidMinor)
+            assertEquals(10.0, worth.runwayMonths!!, 0.001)
+            assertEquals(3, worth.accountsRead)
+
+            // Before any balance was read, only what was valued by hand counts.
+            val september = client.get("$household/overview?month=2026-09&today=2026-10-31").body<Overview>().netWorth
+            assertEquals(LocalDate(2026, 9, 30), september.on)
+            assertEquals(0, september.accountsRead)
+            assertEquals(10_000L + 300_000 - 100_000, september.netMinor)
+
+            val freshness = client.get("$household/overview?month=2026-10&today=2026-10-31").body<Overview>().freshness
+            assertEquals(3, freshness.feeds.size)
+            assertEquals(true, freshness.feeds.all { it.live && it.lastSyncedAt != null && it.consentExpiresAt != null })
+            assertEquals(0, freshness.pendingRows)
+        }
     }
 }

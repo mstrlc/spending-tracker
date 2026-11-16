@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { EmptyFilterRow, SortableHead, useTableSortAndFilter } from "../sorting";
 import { PlusIcon } from "lucide-react";
 import { useAccounts, useDeleteTransfer, useTransfers } from "../api/hooks";
 import type { Transfer } from "../api/types";
@@ -29,6 +30,23 @@ export function TransfersPage() {
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
 
   const rows = (transfers.data ?? []).filter((t) => !pendingDeletes.has(t.id));
+  const routeText = (t: Transfer) =>
+    `${accounts.find((a) => a.id === t.fromAccountId)?.name ?? ""} → ${accounts.find((a) => a.id === t.toAccountId)?.name ?? ""}`;
+  const { sort, onSort, clearFilters, shown, filterFor } = useTableSortAndFilter(
+    rows,
+    {
+      day: (t) => t.date,
+      route: routeText,
+      notes: (t) => t.notes,
+      amount: (t) => t.amountMinor,
+    },
+    {
+      day: (t) => formatDay(t.date),
+      route: routeText,
+      notes: (t) => t.notes ?? "",
+      amount: (t) => formatAmount(t.amountMinor, household.currency),
+    },
+  );
   const defaultDate = month === currentMonth() ? todayIso() : from;
   const openAdd = () => setEditor({ mode: "add" });
   const close = () => setEditor({ mode: "closed" });
@@ -78,20 +96,29 @@ export function TransfersPage() {
           </EmptyState>
         )}
         {rows.length > 0 && (
-          <Table>
+          <Table className="table-fixed md:min-w-[40rem]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="max-md:hidden">Day</TableHead>
-                <TableHead>From → To</TableHead>
-                <TableHead className="max-md:hidden">Notes</TableHead>
-                <TableHead className="text-right">Amount ({household.currency})</TableHead>
+                <SortableHead column="day" first="desc" sort={sort} onSort={onSort} filter={filterFor("day")} className="w-28 max-md:hidden">
+                  Day
+                </SortableHead>
+                <SortableHead column="route" sort={sort} onSort={onSort} filter={filterFor("route")}>
+                  From → To
+                </SortableHead>
+                <SortableHead column="notes" sort={sort} onSort={onSort} filter={filterFor("notes")} className="w-[24%] max-md:hidden">
+                  Notes
+                </SortableHead>
+                <SortableHead column="amount" first="desc" sort={sort} onSort={onSort} filter={filterFor("amount")} className="w-36 text-right">
+                  Amount ({household.currency})
+                </SortableHead>
                 <TableHead className="w-12">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((t) => {
+              {shown.length === 0 && <EmptyFilterRow colSpan={5} onClear={clearFilters} />}
+              {shown.map((t) => {
                 const fromAcc = accounts.find((a) => a.id === t.fromAccountId);
                 const toAcc = accounts.find((a) => a.id === t.toAccountId);
                 return (
@@ -113,7 +140,7 @@ export function TransfersPage() {
                         {t.notes ? ` · ${t.notes}` : ""}
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-md:hidden">{t.notes || "–"}</TableCell>
+                    <TableCell className="truncate text-muted-foreground max-md:hidden">{t.notes || "–"}</TableCell>
                     <TableCell className="amount text-right font-medium">{formatAmount(t.amountMinor, household.currency)}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <RowMenu

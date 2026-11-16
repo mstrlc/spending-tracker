@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { EmptyFilterRow, SortableHead, useTableSortAndFilter } from "../sorting";
 import { LightbulbIcon, PlusIcon, ZapIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Chip, KindChip, type RecordKind } from "../chips";
 import {
   useAccounts,
   useApplyInboxRules,
+  useAssets,
   useBankFeeds,
   useCategories,
   useDeleteInboxRule,
@@ -44,6 +46,7 @@ export function RulesPage() {
   const accounts = useAccounts(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
   const categories = useCategories(household.id).data ?? [];
+  const assets = useAssets(household.id).data ?? [];
   const settings = useHouseholdSettings(household.id);
   const saveSettings = useSaveHouseholdSettings(household.id);
   const remove = useDeleteInboxRule(household.id);
@@ -72,13 +75,15 @@ export function RulesPage() {
       case "expense":
         return [rule.merchant, categoryLabel(categories, rule.categoryId), memberName(rule.personUserId)].filter(Boolean).join(" · ");
       case "income":
-        return [rule.incomeSource, memberName(rule.personUserId)].filter(Boolean).join(" · ");
+        return [rule.incomeSource, categoryLabel(categories, rule.categoryId), memberName(rule.personUserId)].filter(Boolean).join(" · ");
       case "deduction":
         return [rule.incomeSource, memberName(rule.personUserId), monthLabel(rule.monthOffset)].filter(Boolean).join(" · ");
       case "transfer":
         return `With ${accountName(rule.otherAccountId) || "another account"}`;
       case "settlement":
         return [memberName(rule.settleFromUserId), memberName(rule.settleToUserId)].filter(Boolean).join(" → ");
+      case "contribution":
+        return `Into ${assets.find((a) => a.id === rule.assetId)?.name ?? "an asset"}`;
       case "skip":
         return rule.skipReason;
     }
@@ -99,6 +104,11 @@ export function RulesPage() {
   }
 
   const list = rules.data ?? [];
+  const { sort, onSort, clearFilters, shown, filterFor } = useTableSortAndFilter(
+    list,
+    { name: (r) => r.name, filed: (r) => r.filedCount },
+    { name: (r) => r.name, filed: (r) => r.filedCount },
+  );
   return (
     <>
       <PageHeader title="Rules">
@@ -163,17 +173,22 @@ export function RulesPage() {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Rule</TableHead>
+                <SortableHead column="name" sort={sort} onSort={onSort} filter={filterFor("name")}>
+                  Rule
+                </SortableHead>
                 <TableHead className="max-md:hidden">When a row</TableHead>
                 <TableHead className="max-md:hidden">It becomes</TableHead>
-                <TableHead className="text-right max-sm:hidden">Filed</TableHead>
+                <SortableHead column="filed" first="desc" sort={sort} onSort={onSort} filter={filterFor("filed")} className="text-right max-sm:hidden">
+                  Filed
+                </SortableHead>
                 <TableHead className="w-12">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {list.map((rule) => {
+              {shown.length === 0 && <EmptyFilterRow colSpan={5} onClear={clearFilters} />}
+              {shown.map((rule) => {
                 const when = ruleConditions(rule, {
                   feed: feeds.find((f) => f.id === rule.feedId)?.name,
                   account: rule.accountId ? accountName(rule.accountId) : null,

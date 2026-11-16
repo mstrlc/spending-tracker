@@ -3,6 +3,7 @@ package dev.spendingtracker.server.inbox
 import dev.spendingtracker.shared.api.BankInstitution
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.json.JsonObject
+import kotlin.uuid.Uuid
 
 /** One bank transaction as read from a statement or the bank's API, before it's stored as a bank row. */
 data class ParsedRow(
@@ -25,9 +26,16 @@ data class ParsedRow(
     val raw: JsonObject,
 )
 
-/** How rows of a feed are read. [isCard] when the feed's account is a credit card. */
-/** How a feed is read: its bank, and whether its account is a credit card or a savings account. */
-data class FeedShape(val institution: BankInstitution, val isCard: Boolean, val isSavings: Boolean = false)
+/**
+ * How a feed is read: its bank, whether its account is a credit card or a savings account, and whose the account is
+ * ([ownerUserId], null for a joint account).
+ */
+data class FeedShape(
+    val institution: BankInstitution,
+    val isCard: Boolean,
+    val isSavings: Boolean = false,
+    val ownerUserId: Uuid? = null,
+)
 
 val BankInstitution.dbValue get() = name.lowercase()
 

@@ -689,9 +689,10 @@ private class Book(
 /**
  * Loads the household's holdings, by name, or only [assetId]. Market data they follow is refreshed first
  * where stale: prices of their securities, and the ČNB fixings back to the first contribution or foreign bank
- * balance when a security or tracked account trades in another currency than the household's.
+ * balance when a security or tracked account trades in another currency than the household's. With [everyAccount],
+ * the bank balances of every account are loaded, not only those of accounts a holding follows.
  */
-private suspend fun RoutingCall.book(assetId: Uuid? = null): Book {
+private suspend fun RoutingCall.book(assetId: Uuid? = null, everyAccount: Boolean = false): Book {
     val householdId = household.id
     val currency = household.currency
     val tz = TimeZone.currentSystemDefault()
@@ -713,11 +714,14 @@ private suspend fun RoutingCall.book(assetId: Uuid? = null): Book {
         val foreignSecurity = securities(symbols).values.any { it.currency != currency }
         val firstContribution = AssetContributions.select(AssetContributions.date.min()).where(contributionFilter)
             .single()[AssetContributions.date.min()]
-        val balanceDates = if (trackedAccountIds.isEmpty()) {
+        val balanceDates = if (trackedAccountIds.isEmpty() && !everyAccount) {
             emptyList()
         } else {
             val feedIds = BankFeeds.select(BankFeeds.id)
-                .where { (BankFeeds.householdId eq householdId) and (BankFeeds.accountId inList trackedAccountIds) }
+                .where {
+                    if (everyAccount) BankFeeds.householdId eq householdId
+                    else (BankFeeds.householdId eq householdId) and (BankFeeds.accountId inList trackedAccountIds)
+                }
                 .map { it[BankFeeds.id] }
             if (feedIds.isEmpty()) emptyList()
             else BankBalances.select(BankBalances.currency, BankBalances.balanceDate, BankBalances.readAt)
@@ -757,11 +761,14 @@ private suspend fun RoutingCall.book(assetId: Uuid? = null): Book {
         val fees = AssetFees.selectAll().where(feeFilter)
             .groupBy({ it[AssetFees.assetId] }) { Dated(it[AssetFees.date], it[AssetFees.amountMinor]) }
         val trackedAccountIds = holdings.mapNotNull { it[Assets.accountId] }.distinct()
-        val feedsByAccount = if (trackedAccountIds.isEmpty()) {
+        val feedsByAccount = if (trackedAccountIds.isEmpty() && !everyAccount) {
             emptyMap()
         } else {
             BankFeeds.select(BankFeeds.id, BankFeeds.accountId)
-                .where { (BankFeeds.householdId eq householdId) and (BankFeeds.accountId inList trackedAccountIds) }
+                .where {
+                    if (everyAccount) BankFeeds.householdId eq householdId
+                    else (BankFeeds.householdId eq householdId) and (BankFeeds.accountId inList trackedAccountIds)
+                }
                 .groupBy({ it[BankFeeds.accountId] }) { it[BankFeeds.id] }
         }
         val allFeedIds = feedsByAccount.values.flatten().distinct()
@@ -783,6 +790,52 @@ private suspend fun RoutingCall.book(assetId: Uuid? = null): Book {
         val balanceCurrencies = readingsByFeed.values.flatten().map { it.currency }.distinct()
         Book(holdings, lots, valuations, fees, feedsByAccount, readingsByFeed, loadPrices(currency, symbols, balanceCurrencies), today)
     }.also { if (assetId != null && it.holdings.isEmpty()) throw notFound("Asset") }
+}
+
+/** What the household had on a day, in minor units of its currency. See [wealthOn]. */
+internal data class Wealth(
+    /** Bank balances of accounts no holding follows: current accounts, cash, credit cards (negative when owed). */
+    val accountsMinor: Long,
+    val assetsMinor: Long,
+    /** Negative: what's owed. */
+    val liabilitiesMinor: Long,
+    /** Balances of current, savings and cash accounts read from the bank, and savings assets not counted through one. */
+    val liquidMinor: Long,
+    /** Accounts whose balance was read from the bank on or before the day. */
+    val accountsRead: Int,
+)
+
+/**
+ * Every holding's standing on [on], and the latest bank balance on or before it of each account with feeds. An
+ * account a holding follows counts once, through the holding. A credit card's "available" balance includes the
+ * unused credit line, so only booked balances count for it, as for liabilities.
+ */
+internal suspend fun RoutingCall.wealthOn(on: LocalDate): Wealth {
+    val book = book(everyAccount = true)
+    val householdId = household.id
+    val accountKinds = dbQuery {
+        Accounts.select(Accounts.id, Accounts.kind).where { Accounts.householdId eq householdId }
+            .associate { it[Accounts.id] to it[Accounts.kind] }
+    }
+    val followed = book.holdings.mapNotNull { it[Assets.accountId] }.toSet()
+    val balances = book.feedsByAccount.keys.mapNotNull { accountId ->
+        val kind = accountKinds[accountId] ?: return@mapNotNull null
+        book.bankValue(accountId, on, liability = kind == "credit_card")?.let { Triple(accountId, kind, it.valueMinor) }
+    }
+    val standings = book.holdings.map { row -> Triple(row, kindFrom(row[Assets.kind]), book.standing(row, on)) }
+    val liquidBalances = balances.filter { (_, kind, _) -> kind == "bank" || kind == "savings" || kind == "cash" }
+    val liquidAccountIds = liquidBalances.map { it.first }.toSet()
+    // Savings counted through their account's balance aren't counted again.
+    val otherSavings = standings
+        .filter { (row, kind, _) -> kind == AssetKind.SAVINGS && row[Assets.accountId] !in liquidAccountIds }
+        .sumOf { it.third.valueMinor }
+    return Wealth(
+        accountsMinor = balances.filter { it.first !in followed }.sumOf { it.third },
+        assetsMinor = standings.filter { !it.second.liability }.sumOf { it.third.valueMinor },
+        liabilitiesMinor = standings.filter { it.second.liability }.sumOf { it.third.valueMinor },
+        liquidMinor = liquidBalances.sumOf { it.third } + otherSavings,
+        accountsRead = balances.size,
+    )
 }
 
 /** The last day of each month from [first]'s through the one before [today]'s, then [today]. */

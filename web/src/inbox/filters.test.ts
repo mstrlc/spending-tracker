@@ -104,4 +104,8 @@ describe("helpers", () => {
     expect(activeFilterCount({ ...NO_FILTERS, sort: "oldest" })).toBe(0);
     expect(activeFilterCount({ ...NO_FILTERS, from: "2026-11-01", kind: "skip" })).toBe(2);
   });
+
+  it("calls a row suggested into an asset an investment", () => {
+    expect(suggestedKind(row("portu", { suggestion: suggestion({ record: "contribution", assetId: "asset-1" }) }))).toBe("contribution");
+  });
 });

@@ -86,6 +86,7 @@ enum class BankRowOutcome {
     @SerialName("income") INCOME,
     @SerialName("transfer") TRANSFER,
     @SerialName("settlement") SETTLEMENT,
+    @SerialName("contribution") CONTRIBUTION,
     @SerialName("skipped") SKIPPED,
 }
 
@@ -117,6 +118,8 @@ data class BankRow(
     val incomeId: String?,
     val transferId: String?,
     val settlementId: String?,
+    /** The asset contribution the row became: money put into (or taken out of) an investment or savings. */
+    val contributionId: String? = null,
     val skipReason: String?,
     val decidedByUserId: String?,
     val decidedAuto: Boolean,
@@ -128,6 +131,13 @@ data class BankRow(
     val suggestion: BankRowSuggestion?,
     /** Name of the linked record for decided rows (e.g. merchant, income source, "From → To"). */
     val outcomeLabel: String? = null,
+    /**
+     * Whether suggestions for later rows with the same descriptor may come from this one. Off for a one-off, such as
+     * paying a friend back for one dinner, so that friend's account doesn't come to mean the restaurant.
+     */
+    val remember: Boolean = true,
+    /** The expense the row will become, prepared ahead while it stays in the inbox; kept once the row is filed. */
+    val draft: SplitDraft? = null,
 )
 
 @Serializable
@@ -136,6 +146,7 @@ enum class SuggestedRecord {
     @SerialName("income") INCOME,
     @SerialName("transfer") TRANSFER,
     @SerialName("settlement") SETTLEMENT,
+    @SerialName("contribution") CONTRIBUTION,
 }
 
 /**
@@ -163,6 +174,9 @@ enum class SuggestedRecord {
  * [incomeKind] [IncomeKind.DEDUCTION]: [amountMinor] is minus the row's amount (money out is a positive deduction) and
  * [earnedMonth] (YYYY-MM) the row's month shifted by the rule's offset. Otherwise [incomeKind] is
  * [IncomeKind.EARNING] and [earnedMonth] null.
+ *
+ * The record is [SuggestedRecord.CONTRIBUTION] when a contribution rule matches, or when the last row with the same
+ * descriptor became a contribution: [assetId] is the asset the money goes into (money out) or comes out of (money in).
  *
  * For money in, [refundCandidates] are the recent expenses the row may refund (same merchant key or merchant, past 120
  * days, at least as large as the row), newest first, at most 5; the first is what "Refund of" is prefilled with.
@@ -193,6 +207,8 @@ data class BankRowSuggestion(
      * rate. The income line is then [amountMinor] plus this, with this as a deduction. Null for anything else.
      */
     val withheldTaxMinor: Long? = null,
+    /** For [SuggestedRecord.CONTRIBUTION]: the asset. */
+    val assetId: String? = null,
 )
 
 /** A recent expense a money-in row may refund; [amountMinor] is the original's, [refundedMinor] what its refunds already returned. */
@@ -235,6 +251,46 @@ data class LinkBankRows(
     val rows: List<BankRowRef>,
     val expenseId: String? = null,
     val incomeId: String? = null,
+)
+
+/**
+ * Files one pending row as a contribution to [assetId]: money out is money put in, money in is money taken out. The
+ * contribution is in the household currency at the day's rate, keeping a foreign row's own amount as the original.
+ */
+@Serializable
+data class ContributeBankRows(
+    val rows: List<BankRowRef>,
+    val assetId: String,
+    val notes: String = "",
+)
+
+/** Sets whether [rows] teach the inbox what later rows with the same descriptor are (see [BankRow.remember]). */
+@Serializable
+data class RememberBankRows(
+    val rows: List<BankRowRef>,
+    val remember: Boolean,
+)
+
+/**
+ * The expense a pending row will become, prepared ahead (from an e-shop order's email, say) while the row stays in
+ * the inbox; filing it still goes through the expense form, which starts from this. [lines] are in the household
+ * currency, positive for money out (negative for a refund); with the row in the household currency they add up to
+ * what it moved. One line is a category and whose without a split. [source] says where it came from, such as
+ * "Alza order 1234567890".
+ */
+@Serializable
+data class SplitDraft(
+    val lines: List<ExpenseLineInput>,
+    val merchant: String = "",
+    val notes: String = "",
+    val source: String = "",
+)
+
+/** Sets or, with a null [draft], clears what a pending [row] will become (see [SplitDraft]). */
+@Serializable
+data class DraftBankRow(
+    val row: BankRowRef,
+    val draft: SplitDraft?,
 )
 
 @Serializable

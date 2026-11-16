@@ -1,6 +1,7 @@
 package dev.spendingtracker.server.expense
 
 import dev.spendingtracker.server.auth.userId
+import dev.spendingtracker.server.category.dbValue
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.checkVersioned
 import dev.spendingtracker.server.common.dateParam
@@ -30,6 +31,7 @@ import dev.spendingtracker.server.inbox.fileBankRows
 import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.server.merchant.resolveMerchant
 import dev.spendingtracker.shared.api.ApiError
+import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.Expense
 import dev.spendingtracker.shared.api.ExpenseInput
 import dev.spendingtracker.shared.api.ExpenseLine
@@ -307,11 +309,15 @@ private fun ValidExpense.checkReferences(householdId: Uuid, selfId: Uuid? = null
     }
     val categoryIds = (listOfNotNull(categoryId) + lines.mapNotNull { it.categoryId }).distinct()
     if (categoryIds.isNotEmpty()) {
-        val found = Categories.select(Categories.id)
+        val kinds = Categories.select(Categories.id, Categories.kind)
             .where { (Categories.householdId eq householdId) and (Categories.id inList categoryIds) }
-            .count()
-        if (found < categoryIds.size) {
-            throw badRequest("invalid_category", "Unknown category", if (categoryId != null) "categoryId" else "lines")
+            .associate { it[Categories.id] to it[Categories.kind] }
+        val field = if (categoryId != null) "categoryId" else "lines"
+        if (kinds.size < categoryIds.size) {
+            throw badRequest("invalid_category", "Unknown category", field)
+        }
+        if (kinds.values.any { it == CategoryKind.INCOME.dbValue }) {
+            throw badRequest("invalid_category", "Expenses cannot use an income category", field)
         }
     }
     if (accountId != null &&

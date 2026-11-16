@@ -27,7 +27,7 @@ export async function loadDecision(householdId: string, row: BankRow): Promise<R
       // A deduction is for a month of its own: the rule keeps how far that is from the row's.
       return i.kind === "deduction"
         ? { outcome: "deduction", source: i.source, recipientUserId: i.recipientUserId, monthOffset: monthOffsetOf(row.date, i.earnedMonth) }
-        : { outcome: "income", source: i.source, recipientUserId: i.recipientUserId };
+        : { outcome: "income", source: i.source, categoryId: i.categoryId, recipientUserId: i.recipientUserId };
     }
     case "transfer": {
       const transfers = unwrap(await api.GET("/api/households/{householdId}/transfers", { params: { path, query } }));
@@ -40,6 +40,12 @@ export async function loadDecision(householdId: string, row: BankRow): Promise<R
       const settlements = unwrap(await api.GET("/api/households/{householdId}/settlements", { params: { path, query } }));
       const s = settlements.find((x) => x.id === row.settlementId);
       return s ? { outcome: "settlement", fromUserId: s.fromUserId, toUserId: s.toUserId } : null;
+    }
+    case "contribution": {
+      // The row's label is the asset's name; contributions are listed per asset.
+      const assets = unwrap(await api.GET("/api/households/{householdId}/assets", { params: { path } }));
+      const a = assets.find((x) => x.name === row.outcomeLabel);
+      return a ? { outcome: "contribution", assetId: a.id } : null;
     }
     case "skipped":
       return { outcome: "skip", reason: row.skipReason ?? "" };

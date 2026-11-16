@@ -283,7 +283,7 @@ export interface paths {
         /** @description Changing a top-level category's kind also changes its subcategories. */
         put: operations["updateCategory"];
         post?: never;
-        /** @description Fails with 409 category_in_use while expenses or subcategories reference it; archive it instead. */
+        /** @description Fails with 409 category_in_use while expenses, income or subcategories reference it; archive it instead. */
         delete: operations["deleteCategory"];
         options?: never;
         head?: never;
@@ -845,6 +845,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/bank-rows/remember": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Sets whether rows teach the inbox: suggestions for later rows with the same descriptor come from the latest row that does. Turn it off for a one-off, so it doesn't become what that payee means. */
+        post: operations["rememberBankRows"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/bank-rows/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Sets or clears the expense a pending row will become (lines with category, amount and whose, merchant, notes, source), prepared ahead from an e-shop order, say. The row stays in the inbox. */
+        post: operations["draftBankRow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/bank-rows/skip": {
         parameters: {
             query?: never;
@@ -907,6 +941,23 @@ export interface paths {
         put?: never;
         /** @description Files pending rows (one or two, as for a transfer) as a settlement: one member paying another back. It shows in the settlements and moves the balance between them. */
         post: operations["settleBankRows"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/bank-rows/contribute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Files one pending row as a contribution to an asset: money out is money put in, money in is money taken out. It counts as invested, not spent. Putting the row back deletes the contribution. */
+        post: operations["contributeBankRows"];
         delete?: never;
         options?: never;
         head?: never;
@@ -997,6 +1048,92 @@ export interface paths {
         post?: never;
         /** @description Deletes the rule. Rows it filed stay filed. */
         delete: operations["deleteInboxRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description E-shop orders, newest first, with their items, the row that paid each and, unmatched, the rows it could be. */
+        get: operations["listOrders"];
+        put?: never;
+        /** @description Adds an order as a parser read it, or replaces the items of the shop's order with that number (keeping what was decided about items of the same name), then matches it to the row that paid it. */
+        post: operations["saveOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/orders/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Reads an order from a shop's email (a whole .eml file, or text pasted from a mail app) with the first parser that recognises it, then saves and matches it as POST /orders does. */
+        post: operations["readOrderEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/orders/{orderId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Sets each item's category and whose (null for joint) and refreshes the draft of the row it matched. */
+        put: operations["assignOrderItems"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/orders/{orderId}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Matches the order to a pending row by hand (filling its draft), or with a null row unmatches it; either way the matcher then leaves it alone. */
+        post: operations["matchOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/orders/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Deletes the order and clears the draft it made on its row, if the row is still pending. */
+        delete: operations["deleteOrder"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1129,7 +1266,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Cash flow, typical month, spending anomalies, subscriptions and top lists for one month. */
+        /** @description Cash flow, typical month, spending anomalies, subscriptions and top lists for one month, net worth and runway at its end (or today), and how current the bank data is. */
         get: operations["getOverview"];
         put?: never;
         post?: never;
@@ -1339,6 +1476,8 @@ export interface components {
              * Format: int32
              */
             interestTaxPercent?: null | number;
+            /** ArrayList<String> */
+            cards?: string[];
         };
         /**
          * AccountStatus
@@ -1370,6 +1509,8 @@ export interface components {
              * Format: int32
              */
             interestTaxPercent?: null | number;
+            /** ArrayList<String> */
+            cards?: string[];
         };
         /** Category */
         Category: {
@@ -1397,7 +1538,7 @@ export interface components {
          * CategoryKind
          * @enum {string}
          */
-        CategoryKind: "consumption" | "investment";
+        CategoryKind: "consumption" | "investment" | "income";
         /** CategoryInput */
         CategoryInput: {
             /** String */
@@ -1589,6 +1730,8 @@ export interface components {
             /** String */
             source: string;
             /** String */
+            categoryId: null | string;
+            /** String */
             accountId: null | string;
             /** String */
             recipientUserId: null | string;
@@ -1658,6 +1801,8 @@ export interface components {
             deductions?: components["schemas"]["PayslipDeduction"][];
             /** ArrayList<BankRowRef> */
             bankRows?: components["schemas"]["BankRowRef"][];
+            /** String */
+            categoryId?: null | string;
         };
         /** Asset */
         Asset: {
@@ -2282,6 +2427,10 @@ export interface components {
             /** String */
             notes?: string;
             kind?: components["schemas"]["IncomeKind"];
+            /** String */
+            category?: null | string;
+            /** String */
+            subcategory?: null | string;
         };
         /** ImportAsset */
         ImportAsset: {
@@ -2670,6 +2819,8 @@ export interface components {
             /** String */
             settlementId: null | string;
             /** String */
+            contributionId?: null | string;
+            /** String */
             skipReason: null | string;
             /** String */
             decidedByUserId: null | string;
@@ -2687,12 +2838,15 @@ export interface components {
             suggestion: null | components["schemas"]["BankRowSuggestion"];
             /** String */
             outcomeLabel?: null | string;
+            /** Boolean */
+            remember?: boolean;
+            draft?: null | components["schemas"]["SplitDraft"];
         };
         /**
          * BankRowOutcome
          * @enum {string}
          */
-        BankRowOutcome: "pending" | "expense" | "income" | "transfer" | "settlement" | "skipped";
+        BankRowOutcome: "pending" | "expense" | "income" | "transfer" | "settlement" | "contribution" | "skipped";
         /** BankRowSuggestion */
         BankRowSuggestion: {
             record: components["schemas"]["SuggestedRecord"];
@@ -2742,12 +2896,14 @@ export interface components {
              * Format: int64
              */
             withheldTaxMinor?: null | number;
+            /** String */
+            assetId?: null | string;
         };
         /**
          * SuggestedRecord
          * @enum {string}
          */
-        SuggestedRecord: "expense" | "income" | "transfer" | "settlement";
+        SuggestedRecord: "expense" | "income" | "transfer" | "settlement" | "contribution";
         /** DuplicateCandidate */
         DuplicateCandidate: {
             record: components["schemas"]["SuggestedRecord"];
@@ -2805,6 +2961,17 @@ export interface components {
             /** String */
             label: string;
         };
+        /** SplitDraft */
+        SplitDraft: {
+            /** ArrayList<ExpenseLineInput> */
+            lines: components["schemas"]["ExpenseLineInput"][];
+            /** String */
+            merchant?: string;
+            /** String */
+            notes?: string;
+            /** String */
+            source?: string;
+        };
         /** LinkBankRows */
         LinkBankRows: {
             /** ArrayList<BankRowRef> */
@@ -2813,6 +2980,18 @@ export interface components {
             expenseId?: null | string;
             /** String */
             incomeId?: null | string;
+        };
+        /** RememberBankRows */
+        RememberBankRows: {
+            /** ArrayList<BankRowRef> */
+            rows: components["schemas"]["BankRowRef"][];
+            /** Boolean */
+            remember: boolean;
+        };
+        /** DraftBankRow */
+        DraftBankRow: {
+            row: components["schemas"]["BankRowRef"];
+            draft: null | components["schemas"]["SplitDraft"];
         };
         /** SkipBankRows */
         SkipBankRows: {
@@ -2843,6 +3022,15 @@ export interface components {
             fromUserId: string;
             /** String */
             toUserId: string;
+            /** String */
+            notes?: string;
+        };
+        /** ContributeBankRows */
+        ContributeBankRows: {
+            /** ArrayList<BankRowRef> */
+            rows: components["schemas"]["BankRowRef"][];
+            /** String */
+            assetId: string;
             /** String */
             notes?: string;
         };
@@ -2955,6 +3143,8 @@ export interface components {
             /** String */
             settleToUserId: null | string;
             /** String */
+            assetId?: null | string;
+            /** String */
             skipReason: string;
             /**
              * Int
@@ -2988,7 +3178,7 @@ export interface components {
          * RuleOutcome
          * @enum {string}
          */
-        RuleOutcome: "expense" | "income" | "deduction" | "transfer" | "settlement" | "skip";
+        RuleOutcome: "expense" | "income" | "deduction" | "transfer" | "settlement" | "contribution" | "skip";
         /** InboxRuleInput */
         InboxRuleInput: {
             /** String */
@@ -3020,6 +3210,8 @@ export interface components {
             /** String */
             settleToUserId?: null | string;
             /** String */
+            assetId?: null | string;
+            /** String */
             skipReason?: string;
             /**
              * Int
@@ -3038,6 +3230,141 @@ export interface components {
              * Format: int32
              */
             version?: null | number;
+        };
+        /** Order */
+        Order: {
+            /** String */
+            id: string;
+            /** String */
+            shop: string;
+            /** String */
+            number: string;
+            /** LocalDate */
+            orderedOn: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            totalMinor: number;
+            /** String */
+            currency: string;
+            /** String */
+            merchant: string;
+            /** ArrayList<OrderItem> */
+            items: components["schemas"]["OrderItem"][];
+            /** String */
+            bankRowId: null | string;
+            /** String */
+            expenseId: null | string;
+            /** Boolean */
+            matchedByHand: boolean;
+            /** ArrayList<BankRowRef> */
+            candidates: components["schemas"]["BankRowRef"][];
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** OrderItem */
+        OrderItem: {
+            /** String */
+            id: string;
+            kind: components["schemas"]["OrderItemKind"];
+            /** String */
+            name: string;
+            /**
+             * Double
+             * Format: double
+             */
+            quantity: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            categoryId: null | string;
+            /** String */
+            paidByUserId: null | string;
+            /** Boolean */
+            assigned: boolean;
+        };
+        /**
+         * OrderItemKind
+         * @enum {string}
+         */
+        OrderItemKind: "item" | "shipping" | "fee" | "discount";
+        /** OrderItemInput */
+        OrderItemInput: {
+            /** String */
+            name: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /**
+             * Double
+             * Format: double
+             */
+            quantity?: number;
+            kind?: components["schemas"]["OrderItemKind"];
+        };
+        /** OrderInput */
+        OrderInput: {
+            /** String */
+            shop: string;
+            /** String */
+            number: string;
+            /** LocalDate */
+            orderedOn: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            totalMinor: number;
+            /** String */
+            currency: string;
+            /** String */
+            merchant?: string;
+            /** ArrayList<OrderItemInput> */
+            items: components["schemas"]["OrderItemInput"][];
+            /** String */
+            raw?: null | string;
+        };
+        /** OrderEmailInput */
+        OrderEmailInput: {
+            /** String */
+            email: string;
+        };
+        /** OrderItemAssignment */
+        OrderItemAssignment: {
+            /** String */
+            itemId: string;
+            /** String */
+            categoryId: null | string;
+            /** String */
+            paidByUserId: null | string;
+        };
+        /** OrderItemsInput */
+        OrderItemsInput: {
+            /** ArrayList<OrderItemAssignment> */
+            items: components["schemas"]["OrderItemAssignment"][];
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
+        };
+        /** MatchOrder */
+        MatchOrder: {
+            row: null | components["schemas"]["BankRowRef"];
+            /**
+             * Int
+             * Format: int32
+             */
+            version: number;
         };
         /** ConnectableBank */
         ConnectableBank: {
@@ -3293,6 +3620,78 @@ export interface components {
              */
             amountMinor: number;
         };
+        /** NetWorth */
+        NetWorth: {
+            /** LocalDate */
+            on: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            netMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            accountsMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            assetsMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            liabilitiesMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            liquidMinor: number;
+            /**
+             * Double
+             * Format: double
+             */
+            runwayMonths: null | number;
+            /**
+             * Int
+             * Format: int32
+             */
+            accountsRead: number;
+        };
+        /** Freshness */
+        Freshness: {
+            /** ArrayList<FeedFreshness> */
+            feeds: components["schemas"]["FeedFreshness"][];
+            /**
+             * Int
+             * Format: int32
+             */
+            pendingRows: number;
+            /**
+             * Int
+             * Format: int32
+             */
+            pendingInMonth: number;
+        };
+        /** FeedFreshness */
+        FeedFreshness: {
+            /** String */
+            feedId: string;
+            /** String */
+            accountId: string;
+            /** String */
+            name: string;
+            /** Boolean */
+            live: boolean;
+            /** LocalDate */
+            lastDate: null | string;
+            /** String */
+            lastSyncedAt: null | string;
+            /** String */
+            consentExpiresAt: null | string;
+        };
         /** Overview */
         Overview: {
             /** String */
@@ -3323,6 +3722,8 @@ export interface components {
             topMerchants: components["schemas"]["NamedTotal"][];
             /** ArrayList<NamedTotal> */
             topSources: components["schemas"]["NamedTotal"][];
+            netWorth: components["schemas"]["NetWorth"];
+            freshness: components["schemas"]["Freshness"];
         };
         /** SecurityMatch */
         SecurityMatch: {
@@ -4513,6 +4914,7 @@ export interface operations {
                 from?: string;
                 /** @description Inclusive end date, YYYY-MM-DD; matched against the month earned */
                 to?: string;
+                categoryId?: string;
                 accountId?: string;
                 recipientUserId?: string;
             };
@@ -6625,6 +7027,104 @@ export interface operations {
             };
         };
     };
+    rememberBankRows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RememberBankRows"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankRow"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    draftBankRow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DraftBankRow"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankRow"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     skipBankRows: {
         parameters: {
             query?: never;
@@ -6784,6 +7284,55 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["SettleBankRows"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankRow"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    contributeBankRows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ContributeBankRows"];
             };
         };
         responses: {
@@ -7147,6 +7696,272 @@ export interface operations {
             path: {
                 householdId: string;
                 ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listOrders: {
+        parameters: {
+            query?: {
+                /** @description Only the order this row paid */
+                bankRowId?: string;
+                /** @description Only orders whose row became this expense */
+                expenseId?: string;
+                /** @description Only orders no row is matched to */
+                unmatched?: boolean;
+            };
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    saveOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrderInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readOrderEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrderEmailInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    assignOrderItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrderItemsInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    matchOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MatchOrder"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteOrder: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                householdId: string;
             };
             cookie?: never;
         };

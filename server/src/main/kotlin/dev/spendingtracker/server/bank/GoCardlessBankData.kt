@@ -124,11 +124,12 @@ class GoCardlessBankData(
             dropToken(response.first)
             response = send(path, method, body, query)
         }
-        val parsed = parse(network { response.second.bodyAsText() })
+        // Most answers are objects, but some (the bank list) are arrays: keep whatever came.
+        val parsed = parseAny(network { response.second.bodyAsText() })
         if (!response.second.status.isSuccess()) {
             val status = response.second.status.value
             // GoCardless explains itself in summary and detail ("EUA … has expired", "Rate limit exceeded").
-            throw BankDataException(status, reason(parsed, status), consentLapsed = accountCall && status in setOf(401, 403, 409))
+            throw BankDataException(status, reason(parsed as? JsonObject ?: JsonObject(emptyMap()), status), consentLapsed = accountCall && status in setOf(401, 403, 409))
         }
         return parsed
     }
@@ -152,8 +153,9 @@ class GoCardlessBankData(
         }
     }
 
-    private fun parse(text: String): JsonObject =
-        runCatching { json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: JsonObject(emptyMap())
+    private fun parse(text: String): JsonObject = parseAny(text) as? JsonObject ?: JsonObject(emptyMap())
+
+    private fun parseAny(text: String): JsonElement = runCatching { json.parseToJsonElement(text) }.getOrNull() ?: JsonObject(emptyMap())
 
     private fun reason(body: JsonObject, status: Int) =
         listOfNotNull(body.str("summary"), body.str("detail")).joinToString(": ").ifEmpty { "HTTP $status" }

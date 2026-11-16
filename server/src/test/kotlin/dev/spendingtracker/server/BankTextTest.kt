@@ -15,6 +15,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
+import kotlin.uuid.Uuid
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -71,6 +72,24 @@ class BankTextTest {
             "To or from someone in the household",
             hintFor(row, FeedShape(BankInstitution.CSOB, false), HintContext(emptySet(), listOf("Jane Doe"))),
         )
+
+        // Whose accounts it moved between: one member's, a member's and a joint one, two members'.
+        val jane = Uuid.random()
+        val john = Uuid.random()
+        val iban = row.counterpartyIban!!
+        val names = mapOf(jane to listOf("Jane Doe"), john to listOf("John Doe"))
+        fun owned(other: Uuid?) = HintContext(setOf(iban), names.values.flatten(), mapOf(iban to other), names)
+        val janes = FeedShape(BankInstitution.CSOB, false, ownerUserId = jane)
+        assertEquals("Between your own accounts", hintFor(row, janes, owned(jane)))
+        assertEquals("Between household accounts", hintFor(row, janes, owned(null)))
+        assertEquals("Between members' accounts", hintFor(row, janes, owned(john)))
+        assertEquals("Between your own accounts", hintFor(row, FeedShape(BankInstitution.CSOB, false), owned(null)))
+
+        // An account in the owner's own name the app doesn't read, or in another member's.
+        val unread = HintContext(emptySet(), names.values.flatten(), emptyMap(), names)
+        assertEquals("To or from your own account", hintFor(row, janes, unread))
+        assertEquals("To or from someone in the household", hintFor(row, FeedShape(BankInstitution.CSOB, false, ownerUserId = john), unread))
+        assertEquals("To or from someone in the household", hintFor(row, FeedShape(BankInstitution.CSOB, false), unread))
 
         val rb = "﻿\"Datum provedení\";\"Datum zaúčtování\";\"Číslo účtu\";\"Název účtu\";\"Kategorie transakce\";\"Číslo protiúčtu\";" +
             "\"Název protiúčtu\";\"Typ transakce\";\"Zpráva\";\"Poznámka\";\"VS\";\"KS\";\"SS\";\"Zaúčtovaná částka\";\"Měna účtu\";" +

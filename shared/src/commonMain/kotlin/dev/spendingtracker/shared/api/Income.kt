@@ -28,6 +28,7 @@ data class Income(
     val date: LocalDate,
     val amountMinor: Long,
     val source: String,
+    val categoryId: String?,
     val accountId: String?,
     val recipientUserId: String?,
     val notes: String,
@@ -65,4 +66,5 @@ data class IncomeInput(
     val deductions: List<PayslipDeduction> = emptyList(),
     /** On create only: bank rows this income line is made from, filed under it in the same transaction. */
     val bankRows: List<BankRowRef> = emptyList(),
+    val categoryId: String? = null,
 )

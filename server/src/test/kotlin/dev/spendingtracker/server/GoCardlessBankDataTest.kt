@@ -79,4 +79,22 @@ class GoCardlessBankDataTest {
         assertEquals(504, e.status)
         assertFalse(e.consentLapsed)
     }
+
+    @Test
+    fun theBankListIsAnArray(): Unit = runBlocking {
+        // GoCardless answers /institutions/ with a bare array, and its day counts as strings.
+        val (bank, calls) = gocardless { _, _ ->
+            respond(
+                """[{"id":"KB_KOMBCZPP","name":"Komerční banka","logo":"https://logo","transaction_total_days":"730","max_access_valid_for_days":"180"},""" +
+                    """{"id":"AIRBANK_AIRACZPP","name":"Air Bank","transaction_total_days":"540","max_access_valid_for_days":"90"}]""",
+                HttpStatusCode.OK,
+                json,
+            )
+        }
+        val banks = bank.institutions("CZ")
+        assertEquals(listOf("Air Bank", "Komerční banka"), banks.map { it.name })
+        assertEquals(730, banks[1].historyDays)
+        assertEquals(180, banks[1].accessDays)
+        assertTrue(calls.single().startsWith("/api/v2/institutions/"))
+    }
 }

@@ -9,7 +9,7 @@ import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 
 const ROW_FIELDS = ["otherAccountId", "notes"];
 const MANUAL_FIELDS = ["amountMinor", "date", "fromAccountId", "toAccountId", "notes"];
@@ -58,8 +58,12 @@ function BankRowTransferForm({
   const accounts = useAccounts(household.id).data ?? [];
   const assets = useAssets(household.id).data ?? [];
   const decide = useDecideBankRows(household.id);
+  // Closed accounts too, in their own group: money still comes from or goes to an account no longer used (emptying it).
   const options = accounts.filter((a) => a.status === "active" && a.id !== row.accountId);
-  const [accountId, setAccountId] = useState(options.some((a) => a.id === otherAccountId) ? (otherAccountId ?? "") : "");
+  const closed = accounts.filter((a) => a.status !== "active" && a.id !== row.accountId);
+  const [accountId, setAccountId] = useState(
+    [...options, ...closed].some((a) => a.id === otherAccountId) ? (otherAccountId ?? "") : "",
+  );
   const [notes, setNotes] = useState("");
   const outgoing = row.amountMinor < 0;
   const own = accounts.find((a) => a.id === row.accountId)?.name ?? "this account";
@@ -110,6 +114,15 @@ function BankRowTransferForm({
                 {a.name}
               </NativeSelectOption>
             ))}
+            {closed.length > 0 && (
+              <NativeSelectOptGroup label="Closed">
+                {closed.map((a) => (
+                  <NativeSelectOption key={a.id} value={a.id}>
+                    {a.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelectOptGroup>
+            )}
           </NativeSelect>
         </Field>
         <Field label="Notes" name="notes" error={decide.error}>

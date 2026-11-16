@@ -12,6 +12,7 @@ enum class RuleOutcome {
     @SerialName("deduction") DEDUCTION,
     @SerialName("transfer") TRANSFER,
     @SerialName("settlement") SETTLEMENT,
+    @SerialName("contribution") CONTRIBUTION,
     @SerialName("skip") SKIP,
 }
 
@@ -33,7 +34,8 @@ enum class RuleDirection {
  * row's account); [RuleOutcome.INCOME] [incomeSource] and [personUserId] (who receives it); [RuleOutcome.TRANSFER]
  * [otherAccountId]; [RuleOutcome.DEDUCTION] [incomeSource] (who took it: ZPMV, OSSZ), [personUserId] (whose it is) and
  * [monthOffset] (the deduction is for the row's month plus this many months, -1 by default: the previous month),
- * and makes an income deduction of minus the row's amount; [RuleOutcome.SKIP] [skipReason]. With [auto] the row is filed without asking, otherwise the rule
+ * and makes an income deduction of minus the row's amount; [RuleOutcome.CONTRIBUTION] [assetId] (money out is put into
+ * the asset, money in taken out of it); [RuleOutcome.SKIP] [skipReason]. With [auto] the row is filed without asking, otherwise the rule
  * only shapes the suggestion. [filedCount] is how many bank rows it has filed.
  */
 @Serializable
@@ -54,6 +56,7 @@ data class InboxRule(
     val otherAccountId: String?,
     val settleFromUserId: String?,
     val settleToUserId: String?,
+    val assetId: String? = null,
     val skipReason: String,
     val monthOffset: Int,
     val auto: Boolean,
@@ -80,6 +83,7 @@ data class InboxRuleInput(
     val otherAccountId: String? = null,
     val settleFromUserId: String? = null,
     val settleToUserId: String? = null,
+    val assetId: String? = null,
     val skipReason: String = "",
     val monthOffset: Int = -1,
     val auto: Boolean = false,

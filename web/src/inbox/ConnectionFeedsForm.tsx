@@ -53,7 +53,8 @@ export function ConnectionFeedsForm({
         include: accounts.length > 0,
         feedId: bankAcc.suggestedFeedId ?? "",
         accountId: matched?.id ?? "",
-        name: bankAcc.name || matched?.name || connection.institutionName,
+        // Blank unless the bank names the account: the server then names it after the ledger account.
+        name: bankAcc.name ?? "",
         importFrom: null,
       };
     }
@@ -65,6 +66,12 @@ export function ConnectionFeedsForm({
   }
 
   const importFromOf = (d: RowDraft) => d.importFrom ?? importFromAfter(allFeeds, d.accountId, household.debtsFrom);
+
+  /** What the server calls an unnamed feed (before numbering any clash). */
+  const defaultFeedName = (accountId: string, currency: string) => {
+    const ledger = accounts.find((a) => a.id === accountId)?.name ?? "Feed name";
+    return currency && currency !== household.currency ? `${ledger} · ${currency}` : ledger;
+  };
 
   const ready = (d: RowDraft | undefined) => !!d?.include && (!!d.feedId || !!d.accountId);
 
@@ -173,7 +180,7 @@ export function ConnectionFeedsForm({
                     aria-label={`Feed name for ${bankAcc.name || identifier}`}
                     value={draft.name}
                     onChange={(e) => update(bankAcc.externalId, { name: e.target.value })}
-                    placeholder="Feed name"
+                    placeholder={defaultFeedName(draft.accountId, bankAcc.currency)}
                   />
                   <Input
                     type="date"

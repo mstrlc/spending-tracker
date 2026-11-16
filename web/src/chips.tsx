@@ -23,6 +23,7 @@ import {
   ReceiptTextIcon,
   ScrollTextIcon,
   ShieldCheckIcon,
+  TrendingUpIcon,
   Undo2Icon,
   UsersIcon,
   WalletIcon,
@@ -98,7 +99,7 @@ export function Dot({ tone, className }: { tone: Tone; className?: string }) {
 
 // ---- What a record is --------------------------------------------------------------------------------------------
 
-export type RecordKind = "expense" | "refund" | "income" | "deduction" | "transfer" | "settlement" | "skip";
+export type RecordKind = "expense" | "refund" | "income" | "deduction" | "transfer" | "settlement" | "contribution" | "skip";
 
 export const RECORD_KINDS: Record<RecordKind, { label: string; icon: LucideIcon; tone: Tone }> = {
   expense: { label: "Expense", icon: ArrowUpRightIcon, tone: "expense" },
@@ -107,6 +108,7 @@ export const RECORD_KINDS: Record<RecordKind, { label: string; icon: LucideIcon;
   deduction: { label: "Deduction", icon: ReceiptTextIcon, tone: "deduction" },
   transfer: { label: "Transfer", icon: ArrowLeftRightIcon, tone: "transfer" },
   settlement: { label: "Settlement", icon: HandshakeIcon, tone: "settlement" },
+  contribution: { label: "Investment", icon: TrendingUpIcon, tone: "transfer" },
   skip: { label: "Skip", icon: BanIcon, tone: "neutral" },
 };
 
@@ -150,13 +152,18 @@ export const signedAmountClass = (minor: number) => (minor > 0 ? "text-(--tone-i
 
 /**
  * A category's hue, taken from its top-level category so a subcategory matches its parent. Top-level categories take
- * the eight hues in the household's order, so neighbours never share one; [categories] must be the whole list.
+ * the eight hues in the household's order, income ones counted apart from the rest since they're never listed
+ * together, so neighbours never share one; [categories] must be the whole list.
  */
-export function categoryTone(categories: Pick<Category, "id" | "parentId">[], id: string | null | undefined): Tone {
+export function categoryTone(
+  categories: (Pick<Category, "id" | "parentId"> & { kind?: Category["kind"] })[],
+  id: string | null | undefined,
+): Tone {
   const category = categories.find((c) => c.id === id);
   if (!category) return "neutral";
   const rootId = category.parentId ?? category.id;
-  const index = categories.filter((c) => !c.parentId).findIndex((c) => c.id === rootId);
+  const income = categories.find((c) => c.id === rootId)?.kind === "income";
+  const index = categories.filter((c) => !c.parentId && (c.kind === "income") === income).findIndex((c) => c.id === rootId);
   return index < 0 ? "neutral" : (`hue-${(index % 8) + 1}` as Hue);
 }
 
@@ -175,7 +182,7 @@ export function CategoryLabel({
   const category = categories.find((c) => c.id === id);
   const parent = category?.parentId ? categories.find((c) => c.id === category.parentId) : undefined;
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
+    <span className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5", className)}>
       <Dot tone={categoryTone(categories, id)} />
       {category ? (
         <span className="truncate">
@@ -247,7 +254,7 @@ export function PersonLabel({
 }) {
   const name = members.find((m) => m.userId === userId)?.displayName ?? jointLabel;
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
+    <span className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5", className)}>
       <Avatar members={members} userId={userId} />
       <span className="truncate">{name}</span>
     </span>
@@ -271,7 +278,7 @@ export function ExpenseWhose({
   if (owners.length < 2) return <PersonLabel members={members} userId={owners[0] ?? expense.paidByUserId} className={className} />;
   const names = owners.map((o) => members.find((m) => m.userId === o)?.displayName ?? "Joint").join(", ");
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)} title={names}>
+    <span className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5", className)} title={names}>
       <span className="flex -space-x-1.5">
         {owners.map((o) => (
           <Avatar key={o ?? "joint"} members={members} userId={o} className="ring-2 ring-background" />
@@ -309,7 +316,7 @@ export function AccountLabel({
 }) {
   if (!account) return null;
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
+    <span className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5", className)}>
       <AccountIcon kind={account.kind} />
       <span className="truncate">{account.name}</span>
     </span>

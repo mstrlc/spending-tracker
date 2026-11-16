@@ -1,5 +1,6 @@
 package dev.spendingtracker.shared.api
 
+import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
 
 /**
@@ -29,6 +30,58 @@ data class Overview(
     val topCategories: List<CategoryTotal>,
     val topMerchants: List<NamedTotal>,
     val topSources: List<NamedTotal>,
+    val netWorth: NetWorth,
+    val freshness: Freshness,
+)
+
+/**
+ * What the household had on [on]: the overview month's last day, or today while the month is in progress.
+ * [netMinor] = [accountsMinor] + [assetsMinor] + [liabilitiesMinor].
+ */
+@Serializable
+data class NetWorth(
+    val on: LocalDate,
+    val netMinor: Long,
+    /**
+     * The latest bank balance on or before [on] of each account no asset follows: current accounts, cash, credit
+     * cards (negative when owed). Accounts without a balance read from the bank count as nothing.
+     */
+    val accountsMinor: Long,
+    /** Owned assets, as on the Assets page. */
+    val assetsMinor: Long,
+    /** Negative: what's owed on loans, cards and other liabilities. */
+    val liabilitiesMinor: Long,
+    /** Money at hand: current, savings and cash accounts' bank balances, and savings assets not counted through one. */
+    val liquidMinor: Long,
+    /** How many months [liquidMinor] would pay for a typical month's spending with no income; null without a typical month. */
+    val runwayMonths: Double?,
+    /** Accounts whose balance has been read from the bank by [on]. */
+    val accountsRead: Int,
+)
+
+/** How far the bank data behind the figures reaches, and what's still waiting in the Inbox (left out of them). */
+@Serializable
+data class Freshness(
+    /** Every bank feed, the one reaching least far first. */
+    val feeds: List<FeedFreshness>,
+    val pendingRows: Int,
+    /** Pending rows dated in the overview's month. */
+    val pendingInMonth: Int,
+)
+
+@Serializable
+data class FeedFreshness(
+    val feedId: String,
+    val accountId: String,
+    val name: String,
+    /** Read through a bank connection rather than uploaded statements. */
+    val live: Boolean,
+    /** The latest row's date. */
+    val lastDate: LocalDate?,
+    /** ISO timestamp of the last sync that reached the bank. */
+    val lastSyncedAt: String?,
+    /** ISO timestamp the bank connection's consent ends; null for statement files. */
+    val consentExpiresAt: String?,
 )
 
 /** [incomeMinor] is net: earnings less deductions, counted in the month they were earned. */

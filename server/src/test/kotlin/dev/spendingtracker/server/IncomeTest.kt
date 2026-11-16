@@ -3,7 +3,15 @@ package dev.spendingtracker.server
 import dev.spendingtracker.shared.api.Account
 import dev.spendingtracker.shared.api.AccountInput
 import dev.spendingtracker.shared.api.ApiError
+import dev.spendingtracker.shared.api.BankFeed
+import dev.spendingtracker.shared.api.BankFeedInput
+import dev.spendingtracker.shared.api.BankInstitution
+import dev.spendingtracker.shared.api.BankRow
+import dev.spendingtracker.shared.api.StatementUpload
+import dev.spendingtracker.shared.api.Category
+import dev.spendingtracker.shared.api.CategoryInput
 import dev.spendingtracker.shared.api.CreateInviteRequest
+import dev.spendingtracker.shared.api.ExpenseInput
 import dev.spendingtracker.shared.api.Income
 import dev.spendingtracker.shared.api.IncomeInput
 import dev.spendingtracker.shared.api.IncomeKind
@@ -308,5 +316,68 @@ class IncomeTest {
             assertEquals(me.id, d.recipientUserId)
             assertEquals(null, d.accountId)
         }
+    }
+
+    @Test
+    fun incomeCategoriesFilterWithSubcategoriesAndRejectWrongKinds() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+        val categories = client.get("$household/categories").body<List<Category>>()
+        val salary = categories.single { it.name == "Salary" }
+        val freelance = categories.single { it.name == "Business" }
+        val groceries = categories.single { it.name == "Groceries" }
+        val bonus = client.post("$household/categories") {
+            setBody(CategoryInput("Bonus", parentId = salary.id))
+        }.body<Category>()
+
+        val basePay = client.add("$household/income", IncomeInput(LocalDate(2026, 10, 5), 50_000_00, "Employer", categoryId = salary.id))
+        val bonusPay = client.add("$household/income", IncomeInput(LocalDate(2026, 10, 10), 10_000_00, "Employer", categoryId = bonus.id))
+        client.add("$household/income", IncomeInput(LocalDate(2026, 10, 12), 8_000_00, "Client", categoryId = freelance.id))
+
+        assertEquals(salary.id, basePay.categoryId)
+        val filtered = client.get("$household/income?categoryId=${salary.id}").body<List<Income>>()
+        assertEquals(setOf(basePay.id, bonusPay.id), filtered.map { it.id }.toSet())
+
+        client.post("$household/income") {
+            setBody(IncomeInput(LocalDate(2026, 10, 1), 1000, "Oops", categoryId = groceries.id))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_category")
+        client.post("$household/income") {
+            setBody(IncomeInput(LocalDate(2026, 10, 1), 1000, "ZPMV", kind = IncomeKind.DEDUCTION, categoryId = salary.id))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_category")
+        client.post("$household/expenses") {
+            setBody(ExpenseInput(LocalDate(2026, 10, 1), 500, categoryId = salary.id))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_category")
+    }
+
+    @Test
+    fun aBankRowFromAPayerIsSuggestedTheCategoryOfTheirLastEarning() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+        val account = client.post("$household/accounts") { setBody(AccountInput("Current")) }.body<Account>()
+        val feed = client.post("$household/bank-feeds") {
+            setBody(BankFeedInput(account.id, "Current", BankInstitution.CSOB, currency = "CZK"))
+        }.body<BankFeed>()
+        val business = client.get("$household/categories").body<List<Category>>().single { it.name == "Business" }
+        // Entered by hand, with no bank row behind it: only the payer links it to the row below. Made up.
+        client.post("$household/income") {
+            setBody(IncomeInput(LocalDate(2026, 9, 1), 50_000_00, source = "Acme Ltd", categoryId = business.id))
+        }
+        val statement = """
+            { "transactions": { "booked": [
+                { "transactionId": "acme-oct", "bookingDate": "2026-10-15",
+                  "transactionAmount": { "amount": "48000.00", "currency": "CZK" },
+                  "debtorName": "Acme Ltd", "remittanceInformationUnstructured": "Invoice 2026-10" },
+                { "transactionId": "someone", "bookingDate": "2026-10-16",
+                  "transactionAmount": { "amount": "100.00", "currency": "CZK" },
+                  "debtorName": "Jane Doe", "remittanceInformationUnstructured": "Thanks" }
+            ] } }
+        """.trimIndent()
+        client.post("$household/bank-feeds/${feed.id}/statements") { setBody(StatementUpload(statement, "current.json")) }
+
+        val rows = client.get("$household/bank-rows").body<List<BankRow>>()
+        val acme = rows.single { it.amountMinor == 48_000_00L }.suggestion!!
+        assertEquals("Acme Ltd", acme.incomeSource)
+        assertEquals(business.id, acme.categoryId)
+        assertEquals(null, rows.single { it.amountMinor == 100_00L }.suggestion!!.categoryId)
     }
 }

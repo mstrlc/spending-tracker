@@ -1,6 +1,7 @@
 package dev.spendingtracker.server.merchant
 
 import dev.spendingtracker.server.auth.userId
+import dev.spendingtracker.server.category.dbValue
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.checkVersioned
 import dev.spendingtracker.server.common.conflict
@@ -19,6 +20,7 @@ import dev.spendingtracker.server.db.isForeignKeyViolation
 import dev.spendingtracker.server.db.isUniqueViolation
 import dev.spendingtracker.server.household.household
 import dev.spendingtracker.shared.api.ApiError
+import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.Merchant
 import dev.spendingtracker.shared.api.MerchantInput
 import dev.spendingtracker.shared.api.MerchantMerge
@@ -238,10 +240,14 @@ private fun MerchantInput.validated() =
     ValidMerchant(requiredText(name, "name", max = 200), parseId(defaultCategoryId, "defaultCategoryId"))
 
 private fun ValidMerchant.checkCategory(householdId: Uuid) {
-    if (defaultCategoryId != null &&
-        Categories.selectAll().where { (Categories.id eq defaultCategoryId) and (Categories.householdId eq householdId) }.empty()
-    ) {
-        throw badRequest("invalid_category", "Unknown category", "defaultCategoryId")
+    if (defaultCategoryId != null) {
+        val cat = Categories.select(Categories.kind)
+            .where { (Categories.id eq defaultCategoryId) and (Categories.householdId eq householdId) }
+            .singleOrNull()
+            ?: throw badRequest("invalid_category", "Unknown category", "defaultCategoryId")
+        if (cat[Categories.kind] == CategoryKind.INCOME.dbValue) {
+            throw badRequest("invalid_category", "Merchants cannot use an income category", "defaultCategoryId")
+        }
     }
 }
 

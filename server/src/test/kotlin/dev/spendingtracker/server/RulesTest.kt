@@ -751,4 +751,34 @@ class RulesTest {
         client.post("$base/bank-rows/undo") { setBody(UndoBankRows(rows.map { it.ref() })) }
         assertEquals(emptyList(), client.get("$base/settlements").body<List<dev.spendingtracker.shared.api.Settlement>>())
     }
+
+    @Test
+    fun incomeRulesSetCategoryAndRejectWrongCategoryKind() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val categories = client.get("$base/categories").body<List<dev.spendingtracker.shared.api.Category>>()
+        val salary = categories.single { it.name == "Salary" }
+        val groceries = categories.single { it.name == "Groceries" }
+        val account = client.account(base, "Checking")
+        val feed = client.feed(base, account.id, "Checking · CZK")
+
+        client.post("$base/inbox-rules") {
+            setBody(InboxRuleInput(name = "Bad income", textContains = "acme", outcome = RuleOutcome.INCOME, categoryId = groceries.id))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_category")
+        client.post("$base/inbox-rules") {
+            setBody(InboxRuleInput(name = "Bad expense", textContains = "shop", outcome = RuleOutcome.EXPENSE, categoryId = salary.id))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_category")
+
+        val rule = client.rule(
+            base,
+            InboxRuleInput(name = "Acme salary", textContains = "acme", outcome = RuleOutcome.INCOME, incomeSource = "Acme", categoryId = salary.id, auto = true),
+        )
+        assertEquals(salary.id, rule.categoryId)
+
+        client.upload(base, feed.id, line("Transfer", 10, "Acme payroll", "45000.00"))
+        assertEquals(emptyList(), client.pending(base))
+        val income = client.get("$base/income").body<List<Income>>().single()
+        assertEquals(salary.id, income.categoryId)
+        assertEquals("Acme", income.source)
+    }
 }

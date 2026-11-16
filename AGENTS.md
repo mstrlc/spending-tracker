@@ -4,6 +4,7 @@ Read `ARCHITECTURE.md` first: stack, conventions, the data-model decisions and t
 
 - `../household-spending-tracker` is the old app: a reference for domain rules only, its code isn't ported.
 - `data/legacy/` (gitignored, real household data) holds the old app's exported D1 database; its README describes the tables. Never commit it or paste its contents anywhere outside this machine.
+- `data/order-emails/<shop>/` (gitignored, real emails) holds e-shop order emails, the order parsers' test fixtures (`orderEmailFixtures()` in the server tests). Never commit them or quote them outside this machine.
 - The old app's automatic pairings (anything decided by `bank-sync`) are hints, not facts.
 
 ## Working notes

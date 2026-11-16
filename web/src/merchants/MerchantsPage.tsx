@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
+import { EmptyFilterRow, SortableHead, useTableSortAndFilter } from "../sorting";
 import { useCategories, useDeleteMerchant, useMergeMerchant, useMerchants, useSaveMerchant } from "../api/hooks";
 import type { Merchant } from "../api/types";
-import { categoryTree } from "../categories/tree";
+import { categoryTree, spendingCategories } from "../categories/tree";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
 import { formatDay } from "../lib/dates";
@@ -28,10 +29,24 @@ export function MerchantsPage() {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [merging, setMerging] = useState<Merchant | null>(null);
 
-  const tree = categoryTree(categories.filter((c) => !c.archived));
+  const tree = categoryTree(spendingCategories(categories).filter((c) => !c.archived));
   const all = (merchants.data ?? []).filter((m) => !pendingDeletes.has(m.id));
   const needle = query.trim().toLowerCase();
   const shown = needle ? all.filter((m) => m.name.toLowerCase().includes(needle)) : all;
+  const categoryName = (m: Merchant) => categories.find((c) => c.id === m.defaultCategoryId)?.name ?? "";
+  const { sort, onSort, clearFilters, shown: sorted, filterFor } = useTableSortAndFilter(
+    shown,
+    {
+      name: (m) => m.name,
+      category: categoryName,
+      spent: (m) => m.spentMinor,
+    },
+    {
+      name: (m) => m.name,
+      category: (m) => categoryName(m) || "None",
+      spent: (m) => formatMoney(m.spentMinor, household.currency),
+    },
+  );
 
   const update = (m: Merchant, changes: { name?: string; defaultCategoryId?: string | null }) =>
     save.mutate({
@@ -77,16 +92,23 @@ export function MerchantsPage() {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Merchant</TableHead>
-                <TableHead className="max-md:hidden">Category</TableHead>
-                <TableHead className="text-right">Spent</TableHead>
+                <SortableHead column="name" sort={sort} onSort={onSort} filter={filterFor("name")}>
+                  Merchant
+                </SortableHead>
+                <SortableHead column="category" sort={sort} onSort={onSort} filter={filterFor("category")} className="max-md:hidden">
+                  Category
+                </SortableHead>
+                <SortableHead column="spent" first="desc" sort={sort} onSort={onSort} filter={filterFor("spent")} className="text-right">
+                  Spent
+                </SortableHead>
                 <TableHead className="w-12">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {shown.map((m) => (
+              {sorted.length === 0 && <EmptyFilterRow colSpan={4} onClear={clearFilters} />}
+              {sorted.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell className="whitespace-normal font-medium">
                     <InlineRename

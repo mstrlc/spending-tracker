@@ -2,6 +2,7 @@ package dev.spendingtracker.server.inbox
 
 import dev.spendingtracker.server.account.normalizeIban
 import dev.spendingtracker.server.auth.userId
+import dev.spendingtracker.server.category.dbValue
 import dev.spendingtracker.server.common.ApiException
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.checkVersioned
@@ -12,6 +13,7 @@ import dev.spendingtracker.server.common.requireVersion
 import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.common.versionParam
 import dev.spendingtracker.server.db.Accounts
+import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.BankFeeds
 import dev.spendingtracker.server.db.BankRows
 import dev.spendingtracker.server.db.Categories
@@ -22,6 +24,7 @@ import dev.spendingtracker.server.household.isMember
 import dev.spendingtracker.server.market.market
 import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.ApplyRulesResult
+import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.InboxRule
 import dev.spendingtracker.shared.api.InboxRuleInput
 import dev.spendingtracker.shared.api.RuleDirection
@@ -182,6 +185,7 @@ private data class ValidRule(
     val otherAccountId: Uuid?,
     val settleFromUserId: Uuid?,
     val settleToUserId: Uuid?,
+    val assetId: Uuid?,
     val skipReason: String,
     val monthOffset: Int,
     val auto: Boolean,
@@ -232,7 +236,7 @@ private fun InboxRuleInput.validated(): ValidRule {
         outcome = outcome,
         // What an outcome doesn't use is left empty, so a changed outcome doesn't keep stale settings.
         merchant = if (outcome == RuleOutcome.EXPENSE) optionalText(merchant, "merchant", max = 200) else "",
-        categoryId = if (outcome == RuleOutcome.EXPENSE) parseId(categoryId, "categoryId") else null,
+        categoryId = if (outcome == RuleOutcome.EXPENSE || outcome == RuleOutcome.INCOME) parseId(categoryId, "categoryId") else null,
         personUserId = if (outcome == RuleOutcome.EXPENSE || outcome == RuleOutcome.INCOME || outcome == RuleOutcome.DEDUCTION) person else null,
         incomeSource = if (outcome == RuleOutcome.INCOME || outcome == RuleOutcome.DEDUCTION) optionalText(incomeSource, "incomeSource", max = 200) else "",
         otherAccountId = if (outcome == RuleOutcome.TRANSFER) {
@@ -242,6 +246,11 @@ private fun InboxRuleInput.validated(): ValidRule {
         },
         settleFromUserId = settleFrom,
         settleToUserId = settleTo,
+        assetId = if (outcome == RuleOutcome.CONTRIBUTION) {
+            parseId(assetId, "assetId") ?: throw badRequest("required", "Choose the asset the money goes into", "assetId")
+        } else {
+            null
+        },
         skipReason = if (outcome == RuleOutcome.SKIP) requiredText(skipReason, "skipReason", max = 200) else "",
         monthOffset = if (outcome == RuleOutcome.DEDUCTION) monthOffset else DEFAULT_MONTH_OFFSET,
         auto = auto,
@@ -259,8 +268,21 @@ private fun ValidRule.checkReferences(householdId: Uuid) {
             throw badRequest("invalid_account", "Unknown account", field)
         }
     }
-    if (categoryId != null && Categories.selectAll().where { (Categories.id eq categoryId) and (Categories.householdId eq householdId) }.empty()) {
-        throw badRequest("invalid_category", "Unknown category", "categoryId")
+    if (assetId != null && Assets.selectAll().where { (Assets.id eq assetId) and (Assets.householdId eq householdId) }.empty()) {
+        throw badRequest("invalid_asset", "Unknown asset", "assetId")
+    }
+    if (categoryId != null) {
+        val cat = Categories.select(Categories.kind)
+            .where { (Categories.id eq categoryId) and (Categories.householdId eq householdId) }
+            .singleOrNull()
+            ?: throw badRequest("invalid_category", "Unknown category", "categoryId")
+        val isIncome = cat[Categories.kind] == CategoryKind.INCOME.dbValue
+        if (outcome == RuleOutcome.INCOME && !isIncome) {
+            throw badRequest("invalid_category", "Income rules must use an income category", "categoryId")
+        }
+        if (outcome == RuleOutcome.EXPENSE && isIncome) {
+            throw badRequest("invalid_category", "Expense rules cannot use an income category", "categoryId")
+        }
     }
     for ((id, field) in listOf(personUserId to "personUserId", settleFromUserId to "settleFromUserId", settleToUserId to "settleToUserId")) {
         if (id != null && !isMember(householdId, id)) {
@@ -285,6 +307,7 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[InboxRules.otherAccountId] = input.otherAccountId
     this[InboxRules.settleFromUserId] = input.settleFromUserId
     this[InboxRules.settleToUserId] = input.settleToUserId
+    this[InboxRules.assetId] = input.assetId
     this[InboxRules.skipReason] = input.skipReason
     this[InboxRules.monthOffset] = input.monthOffset
     this[InboxRules.auto] = input.auto
@@ -320,6 +343,7 @@ private fun loadInboxRules(householdId: Uuid, id: Uuid? = null): List<InboxRule>
             otherAccountId = rule.otherAccountId?.toString(),
             settleFromUserId = rule.settleFromUserId?.toString(),
             settleToUserId = rule.settleToUserId?.toString(),
+            assetId = rule.assetId?.toString(),
             skipReason = rule.skipReason,
             monthOffset = rule.monthOffset,
             auto = rule.auto,

@@ -90,6 +90,8 @@ data class ImportIncome(
     val recipient: String? = null,
     val notes: String = "",
     val kind: IncomeKind = IncomeKind.EARNING,
+    val category: String? = null,
+    val subcategory: String? = null,
 )
 
 /** Matched by name; a new one is created with [kind] and [owner]. Contributions already recorded (same date and amount) are skipped. */

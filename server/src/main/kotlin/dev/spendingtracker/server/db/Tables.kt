@@ -56,6 +56,8 @@ object Accounts : Table("accounts") {
     val status = text("status")
     val kind = text("kind")
     val iban = text("iban").nullable()
+    /** V40: the last four digits of the account's cards, space-separated. */
+    val cards = text("cards").default("")
     val interestTaxPercent = integer("interest_tax_percent").nullable()
     val importId = uuid("import_id").nullable()
     val version = integer("version")
@@ -188,6 +190,7 @@ object Income : Table("income") {
     val amountMinor = long("amount_minor")
     // Not `source`: that name is taken by Table.source.
     val sourceName = text("source")
+    val categoryId = uuid("category_id").nullable()
     val accountId = uuid("account_id").nullable()
     val recipientUserId = uuid("recipient_user_id").nullable()
     val notes = text("notes")
@@ -384,7 +387,7 @@ object BankSyncs : Table("bank_syncs") {
     override val primaryKey = PrimaryKey(id)
 }
 
-/** V19, V20: one bank transaction; pending while none of [expenseId], [incomeId], [transferId], [settlementId] and [skipReason] is set. */
+/** V19, V20, V36: one bank transaction; pending while none of [expenseId], [incomeId], [transferId], [settlementId], [contributionId] and [skipReason] is set. */
 object BankRows : Table("bank_rows") {
     val id = uuid("id")
     val householdId = uuid("household_id")
@@ -408,6 +411,12 @@ object BankRows : Table("bank_rows") {
     val incomeId = uuid("income_id").nullable()
     val transferId = uuid("transfer_id").nullable()
     val settlementId = uuid("settlement_id").nullable()
+    /** V36: the asset contribution the row became. */
+    val contributionId = uuid("contribution_id").nullable()
+    /** V37: whether suggestions for later rows with the same descriptor may come from this one. */
+    val remember = bool("remember").default(true)
+    /** V38: the expense a pending row will become, prepared ahead (SplitDraft as JSON). */
+    val splitDraft = jsonb("split_draft").nullable()
     val skipReason = text("skip_reason").nullable()
     val createdRecord = bool("created_record").default(false)
     val decidedBy = uuid("decided_by").nullable()
@@ -455,6 +464,8 @@ object InboxRules : Table("inbox_rules") {
     val otherAccountId = uuid("other_account_id").nullable()
     val settleFromUserId = uuid("settle_from_user_id").nullable()
     val settleToUserId = uuid("settle_to_user_id").nullable()
+    /** V36: for a contribution rule, the asset the money goes into. */
+    val assetId = uuid("asset_id").nullable()
     val skipReason = text("skip_reason")
     val monthOffset = integer("month_offset").default(-1)
     val auto = bool("auto").default(false)
@@ -475,5 +486,40 @@ object Imports : Table("imports") {
     val counts = jsonb("counts")
     val undoneAt = timestamp("undone_at").nullable()
     val undoneBy = uuid("undone_by").nullable()
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V44: an e-shop order read from the shop's email; [bankRowId] is the row that paid for it. */
+object Orders : Table("orders") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val shop = text("shop")
+    val number = text("number")
+    val orderedOn = date("ordered_on")
+    val totalMinor = long("total_minor")
+    val currency = text("currency")
+    val merchant = text("merchant")
+    val bankRowId = uuid("bank_row_id").nullable()
+    val matchedByHand = bool("matched_by_hand").default(false)
+    val raw = text("raw").nullable()
+    val version = integer("version").default(1)
+    val createdBy = uuid("created_by").nullable()
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** V44: one line of an order. */
+object OrderItems : Table("order_items") {
+    val id = uuid("id")
+    val householdId = uuid("household_id")
+    val orderId = uuid("order_id")
+    val position = integer("position")
+    val kind = text("kind")
+    val name = text("name")
+    val quantity = decimal("quantity", 12, 3)
+    val amountMinor = long("amount_minor")
+    val categoryId = uuid("category_id").nullable()
+    val paidByUserId = uuid("paid_by_user_id").nullable()
+    val assigned = bool("assigned").default(false)
     override val primaryKey = PrimaryKey(id)
 }

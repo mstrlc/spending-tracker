@@ -7,6 +7,8 @@ import dev.spendingtracker.shared.api.BankFeed
 import dev.spendingtracker.shared.api.BankFeedInput
 import dev.spendingtracker.shared.api.BankInstitution
 import dev.spendingtracker.shared.api.BankRow
+import dev.spendingtracker.shared.api.Category
+import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.StatementUpload
 import dev.spendingtracker.shared.api.SuggestedRecord
 import io.ktor.client.call.body
@@ -68,10 +70,14 @@ class SavingsTest {
         assertEquals(656_49L, s.amountMinor)
         // 656.49 is 85% of 772.34: 115.85 was withheld.
         assertEquals(115_85L, s.withheldTaxMinor)
+        // Filed under the household's interest income category.
+        val categories = client.get("$base/categories").body<List<Category>>()
+        assertEquals(categories.single { it.name == "Bank bonuses & interest" && it.kind == CategoryKind.INCOME }.id, s.categoryId)
 
         // Money paid in by someone isn't interest.
         val deposit = rows.first { it.amountMinor == 2000_00L }
         assertEquals("", deposit.hint)
         assertNull(deposit.suggestion!!.withheldTaxMinor)
+        assertNull(deposit.suggestion!!.categoryId)
     }
 }

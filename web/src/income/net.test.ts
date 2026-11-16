@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Income } from "../api/types";
-import { groupIncome, payslipSummary, sortEarningsForPicker } from "./net";
+import { groupIncome, incomeByPerson, payslipSummary, sortEarningsForPicker } from "./net";
 
 function row(overrides: Partial<Income> & { id: string }): Income {
   return {
     date: "2026-10-15",
     amountMinor: 100_00,
     source: "Acme",
+    categoryId: null,
     accountId: null,
     recipientUserId: null,
     notes: "",
@@ -61,5 +62,23 @@ describe("payslipSummary", () => {
       netMinor: 52_000_00,
       mismatch: true,
     });
+  });
+});
+
+describe("incomeByPerson", () => {
+  it("groups lines by who received them, members first and shared last, each with its net", () => {
+    const rows = groupIncome([
+      row({ id: "shared", recipientUserId: null, amountMinor: 50_00 }),
+      row({ id: "sam", recipientUserId: "k", amountMinor: 300_00 }),
+      row({ id: "pay", recipientUserId: "m", amountMinor: 1_000_00 }),
+      row({ id: "tax", recipientUserId: "m", kind: "deduction", deductedFromId: "pay", amountMinor: 150_00 }),
+      row({ id: "gone", recipientUserId: "left", amountMinor: 20_00 }),
+    ]);
+    const people = incomeByPerson(rows, ["m", "k"]);
+    expect(people.map((p) => [p.userId, p.net, p.rows.map((r) => r.income.id)])).toEqual([
+      ["m", 850_00, ["pay"]],
+      ["k", 300_00, ["sam"]],
+      [null, 70_00, ["shared", "gone"]],
+    ]);
   });
 });

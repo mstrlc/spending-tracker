@@ -75,6 +75,7 @@ export function AccountsPage() {
       kind: account.kind,
       iban: account.iban,
       interestTaxPercent: account.interestTaxPercent ?? null,
+      cards: account.cards ?? [],
       version: account.version,
     };
     save.mutate({
@@ -92,6 +93,17 @@ export function AccountsPage() {
       initial: a.iban ? formatIban(a.iban) : "",
     });
     if (next !== null) update(a, { iban: next.trim() || null });
+  }
+
+  async function editCards(a: Account) {
+    const next = await prompt({
+      title: `Cards of ${a.name}`,
+      label: "Last four digits",
+      description:
+        "Separate several with spaces. A Revolut top-up names the card that paid (\"Top-Up by *3656\"), so the Inbox knows which account it came from. Leave it empty to remove them.",
+      initial: (a.cards ?? []).join(" "),
+    });
+    if (next !== null) update(a, { cards: next.split(/[\s,]+/).filter(Boolean) });
   }
 
   async function editInterestTax(a: Account) {
@@ -195,6 +207,11 @@ export function AccountsPage() {
                       {a.status === "closed" && <Chip>Closed</Chip>}
                     </span>
                     {a.iban && <div className="amount pl-6 text-xs font-normal text-muted-foreground">{formatIban(a.iban)}</div>}
+                    {(a.cards ?? []).length > 0 && (
+                      <div className="pl-6 text-xs font-normal text-muted-foreground">
+                        {(a.cards ?? []).length > 1 ? "Cards" : "Card"} <span className="amount">{(a.cards ?? []).map((c) => `*${c}`).join(", ")}</span>
+                      </div>
+                    )}
                     {a.kind === "savings" && (
                       <div className="pl-6 text-xs font-normal text-muted-foreground">
                         Interest taxed {a.interestTaxPercent ?? 15}%
@@ -231,6 +248,7 @@ export function AccountsPage() {
                       actions={[
                         { label: "Rename", onSelect: () => setRenaming(a.id) },
                         { label: a.iban ? "Edit IBAN" : "Add IBAN", onSelect: () => editIban(a) },
+                        { label: (a.cards ?? []).length > 0 ? "Edit cards…" : "Add cards…", onSelect: () => editCards(a) },
                         ...(a.kind === "savings" ? [{ label: "Tax on interest…", onSelect: () => editInterestTax(a) }] : []),
                         {
                           label: a.status === "active" ? "Close account" : "Reopen account",
