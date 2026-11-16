@@ -1,3 +1,6 @@
+# Pinned so every git worktree shares this one Postgres container (scripts/dev.sh gives each its own database).
+name: new-spending-tracker
+
 services:
   postgres:
     image: postgres:17-alpine

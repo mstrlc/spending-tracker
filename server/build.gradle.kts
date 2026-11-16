@@ -58,19 +58,23 @@ dependencies {
     testImplementation(libs.testcontainers.postgresql)
 }
 
-// The root .env (gitignored, local secrets such as the GoCardless keys) is loaded into the server's environment;
-// variables already set win.
+// The root .env (gitignored, local secrets such as the GoCardless keys) and .env.local (gitignored, this checkout's
+// ports and database from scripts/dev.sh setup, winning over .env) are loaded into the server's environment;
+// variables already set win over both.
 tasks.named<JavaExec>("run") {
-    val envFile = rootProject.file(".env")
-    if (envFile.isFile) {
+    val fromFiles = linkedMapOf<String, String>()
+    for (name in listOf(".env", ".env.local")) {
+        val envFile = rootProject.file(name)
+        if (!envFile.isFile) continue
         envFile.readLines().map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
             .forEach { line ->
                 val key = line.substringBefore("=").removePrefix("export ").trim()
                 val value = line.substringAfter("=").trim().removeSurrounding("\"").removeSurrounding("'")
-                if (key.isNotEmpty() && System.getenv(key) == null) environment(key, value)
+                if (key.isNotEmpty()) fromFiles[key] = value
             }
     }
+    fromFiles.forEach { (key, value) -> if (System.getenv(key) == null) environment(key, value) }
 }
 
 tasks.test {

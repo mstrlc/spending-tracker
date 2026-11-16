@@ -18,5 +18,10 @@ web/dist/
 .env
 .env.local
 
+# Per-checkout dev config written by scripts/dev.sh setup, and agents' worktrees
+.claude/launch.json
+.claude/worktrees/
+.pnpm-store/
+
 # Real household data exported from ../household-spending-tracker (never commit)
 /data/legacy/

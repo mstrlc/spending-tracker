@@ -13,11 +13,13 @@ Multi-tenant spending tracker. See [ARCHITECTURE.md](ARCHITECTURE.md) for decisi
 Requires a JDK (21+), Docker, Node and pnpm.
 
 ```bash
-docker compose up -d --wait        # Postgres on localhost:5433
-./gradlew :server:run              # API on http://localhost:8080 (docs at /api/docs)
-pnpm --dir web install
-pnpm --dir web dev                 # web on http://localhost:5173, proxies /api to the server
+scripts/dev.sh setup               # once per checkout: Postgres on localhost:5433, this checkout's ports and database
+scripts/dev.sh api                 # API on http://localhost:8080 (docs at /api/docs)
+scripts/dev.sh web                 # web on http://localhost:5173, proxies /api to the server
 ```
+
+That's for the main checkout. A git worktree gets its own ports and database, so several can run side by side;
+see "Worktrees" in [AGENTS.md](AGENTS.md). `scripts/dev.sh status` lists them.
 
 Local demo account (created by hand during development, lives only in your local database):
 `demo@example.test` / `demo-password-123`. Or sign up with any email at http://localhost:5173/signup.
@@ -36,7 +38,7 @@ Rerun the first command after pulling or changing code to rebuild.
 After changing API endpoints, with the server running:
 
 ```bash
-pnpm --dir web gen:api             # regenerates web/src/api/schema.d.ts
+scripts/dev.sh gen-api             # regenerates web/src/api/schema.d.ts from this checkout's API
 ```
 
 ## Importing the old app
