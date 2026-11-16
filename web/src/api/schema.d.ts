@@ -1685,7 +1685,7 @@ export interface components {
              * Long
              * Format: int64
              */
-            gainMinor: number;
+            gainMinor: null | number;
             /**
              * Double
              * Format: double

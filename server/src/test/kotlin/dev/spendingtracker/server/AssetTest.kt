@@ -79,6 +79,7 @@ class AssetTest {
 
         val listed = client.get("$household/assets").body<List<Asset>>().associateBy { it.id }
         assertEquals(Triple(AssetKind.VEHICLE, false, 250_000L), listed.getValue(car.id).let { Triple(it.kind, it.marketValued, it.valueMinor) })
+        assertEquals(null, listed.getValue(car.id).gainMinor)
         assertEquals(AssetKind.SCHEME to me.id, listed.getValue(savings.id).let { it.kind to it.ownerUserId })
     }
 
@@ -338,7 +339,20 @@ class AssetTest {
             assertEquals(ValueSource.BANK, gotSavings.valueSource)
             assertEquals(savingsAccount.id, gotSavings.accountId)
             assertEquals(350_000, gotSavings.valueMinor)
+            assertEquals(null, gotSavings.gainMinor)
             assertEquals(LocalDate(2026, 3, 20), gotSavings.valuedOn)
+
+            val summaryBeforeFund = client.get("$household/assets/summary").body<AssetSummary>()
+            assertEquals(350_000, summaryBeforeFund.assetsMinor)
+            assertEquals(0, summaryBeforeFund.gainMinor)
+
+            // A fund with contributions adds its gain to the summary, while the bank-fed savings does not.
+            val fund = client.post("$household/assets") { setBody(AssetInput("Fund", kind = AssetKind.FUND)) }.body<Asset>()
+            client.post("$household/assets/${fund.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 1, 1), 100_000)) }
+            client.post("$household/assets/${fund.id}/valuations") { setBody(ValuationInput(LocalDate(2026, 3, 20), 115_000)) }
+            val summaryWithFund = client.get("$household/assets/summary").body<AssetSummary>()
+            assertEquals(465_000, summaryWithFund.assetsMinor)
+            assertEquals(15_000, summaryWithFund.gainMinor)
 
             val gotCard = listed.getValue(cardDebt.id)
             assertEquals(ValueSource.BANK, gotCard.valueSource)

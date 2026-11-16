@@ -26,7 +26,11 @@ data class Standing(
 ) {
     /** Valued at market prices rather than by valuations. */
     val marketValued: Boolean get() = valueSource == ValueSource.MARKET
-    val gainMinor get() = if (liability) 0L else valueMinor - contributedMinor
+    val gainMinor: Long? get() = when {
+        liability -> 0L
+        firstContributedOn == null -> null
+        else -> valueMinor - contributedMinor
+    }
 }
 
 private fun liabilityFlows(amounts: List<Long>, liability: Boolean): Pair<Long?, Long?> {
