@@ -40,8 +40,8 @@ interface OrderParser {
     fun parse(email: OrderEmail): OrderInput?
 }
 
-/** The parsers `POST /orders/email` tries, in order. Empty until the first shop's parser lands. */
-val defaultOrderParsers: List<OrderParser> = emptyList()
+/** The parsers `POST /orders/email` tries, in order. */
+val defaultOrderParsers: List<OrderParser> = listOf(AlzaParser)
 
 /**
  * Decodes [raw]: a MIME message (an `.eml` file, recognised by its headers) or otherwise plain text pasted from a
