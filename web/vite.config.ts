@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => {
       port: env.WEB_PORT ? Number(env.WEB_PORT) : 5173,
       // A checkout with its own slot must not drift onto another checkout's port.
       strictPort: Boolean(env.WEB_PORT),
+      // Listen on the network too, so a phone on the same Wi-Fi can open the app.
+      host: true,
       // Same-origin API calls so session cookies work without CORS. API_URL points at this checkout's API.
       proxy: { "/api": env.API_URL ?? "http://localhost:8080" },
     },
