@@ -361,6 +361,7 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
             key={entryKey(entry)}
             assetId={asset.id}
             security={asset.security}
+            isLiability={isLiability}
             target={entry}
             onDone={() => setEntry(null)}
           />
@@ -372,7 +373,7 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
             {/* Market prices value it; a hand-entered value would be ignored. */}
             {!asset.marketValued && (
               <Button type="button" variant="outline" onClick={() => setEntry({ type: "valuation" })}>
-                Update value
+                {isLiability ? "Update balance" : "Update value"}
               </Button>
             )}
             <Button type="button" variant="outline" onClick={() => setEntry({ type: "fee" })}>
@@ -406,11 +407,14 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
               const amount = h.type === "valuation" ? h.valuation.valueMinor : h.type === "fee" ? h.fee.amountMinor : h.contribution.amountMinor;
               const account = h.type === "contribution" ? accounts.find((a) => a.id === h.contribution.accountId)?.name : undefined;
               // Market prices value the holding now; a value entered by hand earlier stays listed but isn't used.
+              const valuationLabel = isLiability ? "Owed" : "Worth";
               const label = isValuation
-                ? asset.marketValued ? "Worth, by hand · not used" : "Worth"
+                ? asset.marketValued ? `${valuationLabel}, by hand · not used` : valuationLabel
                 : h.type === "fee"
                   ? amount < 0 ? "Fee discount" : "Fee"
-                  : amount < 0 ? "Took out" : "Put in";
+                  : isLiability
+                    ? amount < 0 ? "Borrowed" : "Repaid"
+                    : amount < 0 ? "Took out" : "Put in";
               // Fees are already in the gain: shown muted, as costs rather than money moving.
               const muted = isValuation || h.type === "fee";
               return (

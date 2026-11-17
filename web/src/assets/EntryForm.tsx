@@ -26,32 +26,39 @@ export type EntryTarget =
   | { type: "fee"; fee?: Fee };
 
 // Per kind of entry: its wording, and what an amount may be.
-const KINDS = {
-  contribution: {
-    noun: "contribution",
-    add: "Add contribution",
-    amountLabel: "Amount",
-    amountField: "amountMinor",
-    invalid: (minor: number) => minor === 0,
-    hint: "Enter an amount like 5000. Use a minus sign for money taken out.",
-  },
-  valuation: {
-    noun: "value",
-    add: "Update value",
-    amountLabel: "Worth",
-    amountField: "valueMinor",
-    invalid: (minor: number) => minor < 0,
-    hint: "Enter what it's worth, like 125000.",
-  },
-  fee: {
-    noun: "fee",
-    add: "Add fee",
-    amountLabel: "Fee",
-    amountField: "amountMinor",
-    invalid: (minor: number) => minor === 0,
-    hint: "Enter the fee, like 85.50. Use a minus sign for a discount.",
-  },
-} as const;
+function entryKind(type: EntryTarget["type"], isLiability: boolean) {
+  switch (type) {
+    case "contribution":
+      return {
+        noun: "contribution",
+        add: "Add contribution",
+        amountLabel: "Amount",
+        amountField: "amountMinor" as const,
+        invalid: (minor: number) => minor === 0,
+        hint: isLiability
+          ? "Positive for a repayment, minus for money borrowed."
+          : "Enter an amount like 5000. Use a minus sign for money taken out.",
+      };
+    case "valuation":
+      return {
+        noun: isLiability ? "balance" : "value",
+        add: isLiability ? "Update balance" : "Update value",
+        amountLabel: isLiability ? "Owed" : "Worth",
+        amountField: "valueMinor" as const,
+        invalid: (minor: number) => minor < 0,
+        hint: isLiability ? "Enter what's owed, like 250000." : "Enter what it's worth, like 125000.",
+      };
+    case "fee":
+      return {
+        noun: "fee",
+        add: "Add fee",
+        amountLabel: "Fee",
+        amountField: "amountMinor" as const,
+        invalid: (minor: number) => minor === 0,
+        hint: "Enter the fee, like 85.50. Use a minus sign for a discount.",
+      };
+  }
+}
 
 /**
  * Records money put into (or taken out of) a holding, what it's worth on a day, or a fee charged on it; with an
@@ -60,12 +67,14 @@ const KINDS = {
 export function EntryForm({
   assetId,
   security,
+  isLiability = false,
   target,
   onDone,
 }: {
   assetId: string;
   /** The security the holding follows; contributions then ask for shares. */
   security: SecurityQuote | null;
+  isLiability?: boolean;
   target: EntryTarget;
   onDone: () => void;
 }) {
@@ -77,7 +86,7 @@ export function EntryForm({
   const deleteContribution = useDeleteContribution(household.id, assetId);
   const deleteValuation = useDeleteValuation(household.id, assetId);
   const deleteFee = useDeleteFee(household.id, assetId);
-  const kind = KINDS[target.type];
+  const kind = entryKind(target.type, isLiability);
   const existing = target.type === "valuation" ? target.valuation : target.type === "fee" ? target.fee : target.contribution;
   const save = { contribution: saveContribution, valuation: saveValuation, fee: saveFee }[target.type];
   const remove = { contribution: deleteContribution, valuation: deleteValuation, fee: deleteFee }[target.type];
@@ -262,7 +271,7 @@ export function EntryForm({
           Cancel
         </Button>
         <Button type="submit" disabled={save.isPending}>
-          {existing ? "Save" : target.type === "valuation" ? "Save value" : kind.add}
+          {existing ? "Save" : target.type === "valuation" ? `Save ${kind.noun}` : kind.add}
         </Button>
       </div>
     </form>
