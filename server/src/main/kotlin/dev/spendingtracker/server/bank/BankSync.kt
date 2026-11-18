@@ -185,15 +185,14 @@ class BankSync(private val data: BankData, private val market: Market, private v
             BankFeeds.update({ BankFeeds.id eq feedId }) { it[lastSyncedAt] = clock.now() }
             BankSyncs.update({ BankSyncs.id eq syncId }) { it[added] = counts.added }
             BankConnections.update({ BankConnections.id eq plan.connectionId }) { it[lastError] = "" }
-            counts to addedRows(feedId, counts.addedIds).map { it[BankRows.id] to it[BankRows.date].year }
+            counts to addedRows(feedId, counts.addedIds).map { it[BankRows.id] to it[BankRows.date] }
         }
         val (counts, addedIds) = stored
 
         // The rules file what they can of the new rows, foreign amounts converted at the ČNB fixings.
         var filed = 0
         if (addedIds.isNotEmpty()) {
-            val years = if (plan.currency != householdCurrency) addedIds.map { it.second }.distinct() else emptyList()
-            if (years.isNotEmpty()) market.refresh(emptyList(), years)
+            if (plan.currency != householdCurrency) market.refreshFx(addedIds.map { it.second }.distinct())
             filed = dbQuery {
                 val applied = applyRules(householdId, householdCurrency, userId, addedIds.map { it.first }.toSet())
                 applied.filedByRules + applied.linkedByRules + applied.pairedByMatcher + applied.duplicatesByMatcher

@@ -216,8 +216,8 @@ private fun Route.feedRoutes() = route("/bank-feeds") {
                 addedRows(id, counts.addedIds)
         }
         // The rules file what they can of the new rows, with foreign amounts converted at the ČNB fixings.
-        val years = added.filter { it[BankRows.currency] != household.currency }.map { it[BankRows.date].year }.distinct()
-        if (years.isNotEmpty()) call.application.market.refresh(emptyList(), years)
+        val dates = added.filter { it[BankRows.currency] != household.currency }.map { it[BankRows.date] }.distinct()
+        call.application.market.refreshFx(dates)
         if (added.isNotEmpty()) {
             dbQuery { applyRules(householdId, household.currency, call.userId, added.map { it[BankRows.id] }.toSet()) }
         }
@@ -255,12 +255,12 @@ private fun Route.bankRowRoutes() = route("/bank-rows") {
         if (from != null) filter = filter and (BankRows.date greaterEq from)
         if (to != null) filter = filter and (BankRows.date lessEq to)
 
-        // Foreign rows are converted at ČNB fixings: bring the years in question up to date first.
-        val years = dbQuery {
+        // Foreign rows are converted at ČNB fixings: bring the dates in question up to date first.
+        val dates = dbQuery {
             BankRows.select(BankRows.date, BankRows.currency).where(filter and pending and (BankRows.currency neq household.currency))
-                .map { it[BankRows.date].year }.distinct()
+                .map { it[BankRows.date] }.distinct()
         }
-        if (years.isNotEmpty()) call.application.market.refresh(emptyList(), years)
+        call.application.market.refreshFx(dates)
 
         val rows = dbQuery {
             val found = rowsWithFeed().where(filter)

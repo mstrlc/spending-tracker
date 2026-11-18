@@ -258,17 +258,17 @@ private fun ResultRow.toTransfer(rowIds: List<Uuid>) = Transfer(
     rowIds = rowIds.map { it.toString() },
 )
 
-/** Brings the exchange rates of the foreign rows' years up to date, before they're converted. */
+/** Brings the exchange rates for the foreign rows' dates up to date, before they're converted. */
 private suspend fun RoutingCall.refreshRates(refs: List<BankRowRef>) {
     val household = household
     val ids = refs.mapNotNull { parseId(it.id, "rows") }
     if (ids.isEmpty()) return
-    val years = dbQuery {
+    val dates = dbQuery {
         BankRows.select(BankRows.date).where {
             (BankRows.householdId eq household.id) and (BankRows.id inList ids) and (BankRows.currency neq household.currency)
-        }.map { it[BankRows.date].year }.distinct()
+        }.map { it[BankRows.date] }.distinct()
     }
-    if (years.isNotEmpty()) application.market.refresh(emptyList(), years)
+    application.market.refreshFx(dates)
 }
 
 /** The one or two pending rows a transfer or settlement is made from, told apart by direction. */

@@ -153,13 +153,13 @@ fun Route.ruleRoutes() {
             response { code(HttpStatusCode.OK) { body<ApplyRulesResult>() } }
         }) {
             val household = call.household
-            // Foreign rows are converted at ČNB fixings: bring the years in question up to date first.
-            val years = dbQuery {
+            // Foreign rows are converted at ČNB fixings: bring the dates in question up to date first.
+            val dates = dbQuery {
                 BankRows.select(BankRows.date).where {
                     (BankRows.householdId eq household.id) and pendingRows() and (BankRows.currency neq household.currency)
-                }.map { it[BankRows.date].year }.distinct()
+                }.map { it[BankRows.date] }.distinct()
             }
-            if (years.isNotEmpty()) call.application.market.refresh(emptyList(), years)
+            call.application.market.refreshFx(dates)
             val result = dbQuery { applyRules(household.id, household.currency, call.userId) }
             call.respond(result)
         }

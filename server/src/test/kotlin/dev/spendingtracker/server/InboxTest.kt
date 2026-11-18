@@ -245,6 +245,25 @@ class InboxTest {
     }
 
     @Test
+    fun convertsAJanuaryFirstRowAtThePreviousYearsLastFixing() = apiTest(
+        FakeMarketData(
+            rates = listOf(
+                CzkRate("EUR", LocalDate(2025, 12, 31), "25.000".toBigDecimal()),
+                CzkRate("EUR", LocalDate(2026, 1, 2), "26.000".toBigDecimal()),
+            ),
+        ),
+    ) {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.account(base, "Revolut")
+        val feed = client.feed(base, BankFeedInput(account.id, "Revolut · EUR", BankInstitution.REVOLUT, currency = "EUR"))
+        client.upload(base, feed.id, "Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\n" +
+            "Card Payment,Current,2026-01-01 17:20:16,2026-01-01 18:04:37,Cafe,-2.50,0.00,EUR,COMPLETED,10.00")
+        // No fixing on January 1, and none yet that year: the last one of 2025 applies.
+        assertEquals(62_50, client.pending(base).single().suggestion!!.amountMinor)
+    }
+
+    @Test
     fun importsBankRowsWithTheirDecisions() = apiTest {
         val client = newClient().also { it.signup() }
         val base = "/api/households/${client.createHousehold().id}"
