@@ -394,4 +394,37 @@ class AssetTest {
             assertEquals("EUR", explicit.originalCurrency)
         }
     }
+
+    @Test
+    fun januaryFirstContributionFallsBackToPreviousYearsLastRate() {
+        val market = FakeMarketData(
+            securities = mapOf(security("VWCE.DE", "Vanguard FTSE All-World", "EUR", LocalDate(2026, 1, 2) to "100")),
+            rates = listOf(
+                CzkRate("EUR", LocalDate(2025, 12, 31), BigDecimal("25")),
+                CzkRate("EUR", LocalDate(2026, 1, 2), BigDecimal("26")),
+            ),
+        )
+        apiTest(market = market) {
+            val client = newClient().also { it.signup() }
+            val household = "/api/households/${client.createHousehold(currency = "CZK").id}"
+            val fund = client.post("$household/assets") { setBody(AssetInput("World", symbol = "VWCE.DE")) }.body<Asset>()
+
+            val fx = client.get("/api/securities/fx?from=EUR&to=CZK&date=2026-01-01").body<FxRateQuote>()
+            assertEquals(25.0, fx.rate)
+
+            val contribution = client.post("$household/assets/${fund.id}/contributions") {
+                setBody(
+                    ContributionInput(
+                        date = LocalDate(2026, 1, 1),
+                        quantity = 2.0,
+                        originalAmountMinor = 20_000,
+                        originalCurrency = "EUR",
+                    ),
+                )
+            }.body<Contribution>()
+            assertEquals(500_000, contribution.amountMinor)
+            assertEquals(20_000, contribution.originalAmountMinor)
+            assertEquals("EUR", contribution.originalCurrency)
+        }
+    }
 }
