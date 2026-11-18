@@ -1,5 +1,6 @@
 package dev.spendingtracker.shared.api
 
+import kotlinx.datetime.LocalDate
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -96,6 +97,6 @@ data class ApplyRulesResult(
     val duplicatesByMatcher: Int,
 )
 
-/** Household settings owners can change. [autoMatch]: the inbox matcher files transfer pairs and duplicates without asking. */
+/** Household settings owners can change. [autoMatch]: the inbox matcher files transfer pairs and duplicates without asking. [debtsFrom]: expenses and settlements before this date don't count toward balances. */
 @Serializable
-data class HouseholdSettings(val autoMatch: Boolean)
+data class HouseholdSettings(val autoMatch: Boolean, val debtsFrom: LocalDate?)

@@ -121,7 +121,9 @@ export function RulesPage() {
             className="mt-0.5"
             checked={settings.data?.autoMatch ?? false}
             disabled={!isOwner || !settings.data || saveSettings.isPending}
-            onCheckedChange={(c) => saveSettings.mutate({ autoMatch: c === true })}
+            onCheckedChange={(c) =>
+              saveSettings.mutate({ autoMatch: c === true, debtsFrom: settings.data?.debtsFrom ?? null })
+            }
           />
           <Label htmlFor="auto-match" className="flex-col items-start gap-0.5 font-normal">
             File transfers and duplicates automatically

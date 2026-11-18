@@ -1,7 +1,17 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { AccountLabel, Avatar, KindIcon, PersonLabel } from "../chips";
 import { PlusIcon } from "lucide-react";
-import { useAccounts, useBalances, useCategories, useExpenses, useMembers, useSettlements, useSplitRules } from "../api/hooks";
+import {
+  useAccounts,
+  useBalances,
+  useCategories,
+  useExpenses,
+  useHouseholdSettings,
+  useMembers,
+  useSaveHouseholdSettings,
+  useSettlements,
+  useSplitRules,
+} from "../api/hooks";
 import type { BalanceEntry, Debt, Expense, Settlement, SplitRule } from "../api/types";
 import { categoryLabel } from "../categories/tree";
 import { ExpenseForm } from "../expenses/ExpenseForm";
@@ -11,6 +21,7 @@ import { formatAmount } from "../lib/money";
 import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { EmptyState, ErrorText, Money, PageHeader, PageIntro, Sheet, SkeletonRows, Summary, Surface } from "../ui";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SettlementForm } from "./SettlementForm";
 import { SplitRuleForm } from "./SplitRuleForm";
@@ -42,15 +53,43 @@ export function BalancesPage() {
   const rules = useSplitRules(household.id);
   const accounts = useAccounts(household.id).data ?? [];
   const categories = useCategories(household.id).data ?? [];
+  const settings = useHouseholdSettings(household.id);
+  const saveSettings = useSaveHouseholdSettings(household.id);
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
+  const [editingDate, setEditingDate] = useState(false);
+  const [draftDate, setDraftDate] = useState("");
   const close = () => setEditor({ mode: "closed" });
 
+  const isOwner = household.role === "owner";
+  const debtsFrom = settings.data?.debtsFrom ?? household.debtsFrom ?? null;
   const people = members.data ?? [];
   const owed = balances.data?.balances ?? [];
-  const entries = balances.data?.entries ?? [];
+  const entries = (balances.data?.entries ?? []).filter((entry) => !debtsFrom || entry.date >= debtsFrom);
   const contributions = balances.data?.jointContributions ?? [];
   const settle = () => setEditor({ mode: "settle", owed: owed[0] });
   useMonthShortcuts(month, goTo, settle);
+
+  function startEditingDate() {
+    setDraftDate(debtsFrom ?? todayIso());
+    setEditingDate(true);
+  }
+
+  function saveDebtsFrom(event: FormEvent) {
+    event.preventDefault();
+    if (!settings.data) return;
+    saveSettings.mutate(
+      { ...settings.data, debtsFrom: draftDate || null },
+      { onSuccess: () => setEditingDate(false) },
+    );
+  }
+
+  function clearDebtsFrom() {
+    if (!settings.data) return;
+    saveSettings.mutate(
+      { ...settings.data, debtsFrom: null },
+      { onSuccess: () => setEditingDate(false) },
+    );
+  }
 
   function open(entry: BalanceEntry) {
     if (entry.kind === "settlement") {
@@ -86,6 +125,47 @@ export function BalancesPage() {
         Paying for joint spending from your own account means the others owe you their share; spending your own money from a joint
         account means you owe the others theirs. Settlements pay it back.
       </PageIntro>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+        <span>
+          {debtsFrom ? (
+            <>
+              Balances count from <span className="font-medium text-foreground">{formatDate(debtsFrom)}</span>.
+            </>
+          ) : (
+            "Balances count from all history."
+          )}
+        </span>
+        {isOwner && !editingDate && (
+          <Button variant="outline" size="sm" onClick={startEditingDate} disabled={!settings.data}>
+            {debtsFrom ? "Change" : "Set start date"}
+          </Button>
+        )}
+        {isOwner && editingDate && (
+          <form onSubmit={saveDebtsFrom} className="flex flex-wrap items-center gap-2">
+            <Input
+              type="date"
+              aria-label="Balances count from"
+              value={draftDate}
+              onChange={(e) => setDraftDate(e.target.value)}
+              className="h-8 w-auto"
+              required
+            />
+            <Button type="submit" size="sm" disabled={saveSettings.isPending}>
+              Save
+            </Button>
+            {debtsFrom && (
+              <Button type="button" variant="ghost" size="sm" onClick={clearDebtsFrom} disabled={saveSettings.isPending}>
+                Clear
+              </Button>
+            )}
+            <Button type="button" variant="ghost" size="sm" onClick={() => setEditingDate(false)}>
+              Cancel
+            </Button>
+          </form>
+        )}
+      </div>
+      <ErrorText error={saveSettings.error} />
 
       <ErrorText error={balances.error} />
       {balances.data && (

@@ -5,6 +5,7 @@ import { ApiFailure } from "../api/errors";
 import type { HouseholdImport, ImportCounts, ImportResult, ImportSummary, ImportUndoResult } from "../api/types";
 import { useConfirm } from "../dialogs";
 import { useHousehold } from "../households/HouseholdPages";
+import { formatDate } from "../lib/dates";
 import { EmptyState, ErrorText, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -128,7 +129,7 @@ export function ImportPage() {
   }
 
   const shown = done ?? preview;
-  const nothingNew = preview !== null && ROWS.every((r) => preview.created[r.key] === 0);
+  const nothingNew = preview !== null && ROWS.every((r) => preview.created[r.key] === 0) && preview.debtsFrom === null;
 
   return (
     <>
@@ -190,6 +191,13 @@ export function ImportPage() {
                 ))}
               </TableBody>
             </Table>
+          )}
+          {shown.debtsFrom && (
+            <p className="border-t px-4 py-3 text-sm text-muted-foreground">
+              {done
+                ? `Balances now count from ${formatDate(shown.debtsFrom)}.`
+                : `Balances will count from ${formatDate(shown.debtsFrom)}.`}
+            </p>
           )}
           {!done && !nothingNew && (
             <div className="flex justify-end gap-2 border-t p-3">

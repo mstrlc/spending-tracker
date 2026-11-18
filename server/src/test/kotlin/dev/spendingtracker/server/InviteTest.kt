@@ -51,7 +51,7 @@ class InviteTest {
         val bobMe = bob.signup("bob@example.com", "Bob")
         val joined = bob.post("/api/invites/$token/accept").body<Household>()
 
-        assertEquals(Household(home.id, "Home", "CZK", HouseholdRole.MEMBER), joined)
+        assertEquals(Household(home.id, "Home", "CZK", HouseholdRole.MEMBER, debtsFrom = null), joined)
         assertEquals(listOf(joined), bob.get("/api/households").body<List<Household>>())
         assertEquals(
             listOf(Member(aliceMe.id, "Alice", HouseholdRole.OWNER, hasLogin = true), Member(bobMe.id, "Bob", HouseholdRole.MEMBER, hasLogin = true)),

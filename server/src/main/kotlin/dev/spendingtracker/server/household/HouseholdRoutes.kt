@@ -73,6 +73,7 @@ fun Route.householdRoutes() = route("/households") {
                         name = it[Households.name],
                         currency = it[Households.currency],
                         role = roleFrom(it[HouseholdMembers.role]),
+                        debtsFrom = it[Households.debtsFrom],
                     )
                 }
         }
@@ -108,7 +109,7 @@ fun Route.householdRoutes() = route("/households") {
             }
             seedDefaultCategories(id)
         }
-        call.respond(HttpStatusCode.Created, Household(id.toString(), name, currency, HouseholdRole.OWNER))
+        call.respond(HttpStatusCode.Created, Household(id.toString(), name, currency, HouseholdRole.OWNER, debtsFrom = null))
     }
 
     route("/{householdId}", {
@@ -259,7 +260,10 @@ fun Route.householdRoutes() = route("/households") {
             val householdId = call.household.id
             val input = call.receive<HouseholdSettings>()
             val settings = dbQuery {
-                Households.update({ Households.id eq householdId }) { it[autoMatch] = input.autoMatch }
+                Households.update({ Households.id eq householdId }) {
+                    it[autoMatch] = input.autoMatch
+                    it[debtsFrom] = input.debtsFrom
+                }
                 loadSettings(householdId)
             }
             call.respond(settings)
@@ -283,7 +287,9 @@ fun Route.householdRoutes() = route("/households") {
 }
 
 private fun loadSettings(householdId: Uuid) =
-    HouseholdSettings(Households.selectAll().where { Households.id eq householdId }.single()[Households.autoMatch])
+    Households.selectAll().where { Households.id eq householdId }.single().let {
+        HouseholdSettings(it[Households.autoMatch], it[Households.debtsFrom])
+    }
 
 /** [userId]'s membership of [householdId] joined with the user, or null. Call inside a transaction. */
 private fun memberRow(householdId: Uuid, userId: Uuid): ResultRow? =

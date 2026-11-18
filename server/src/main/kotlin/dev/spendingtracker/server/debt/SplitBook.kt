@@ -3,6 +3,7 @@ package dev.spendingtracker.server.debt
 import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.HouseholdMembers
+import dev.spendingtracker.server.db.Households
 import dev.spendingtracker.server.db.SplitRules
 import dev.spendingtracker.server.db.SplitShares
 import dev.spendingtracker.shared.api.Debt
@@ -55,8 +56,11 @@ class SplitBook internal constructor(
     private val parents: Map<Uuid, Uuid?>,
     /** Every account's owner; null for a joint account. */
     private val accountOwners: Map<Uuid, Uuid?>,
+    /** Expenses before this date produce no debts (null means all history counts). */
+    val debtsFrom: LocalDate? = null,
 ) {
     fun debtsFor(expense: ExpenseFacts): List<Debt> {
+        if (debtsFrom != null && expense.date < debtsFrom) return emptyList()
         val accountId = expense.accountId ?: return emptyList()
         if (!expense.createsDebt || accountId !in accountOwners) return emptyList()
         val payer = accountOwners[accountId]
@@ -177,5 +181,8 @@ fun loadSplitBook(householdId: Uuid, expenseIds: Collection<Uuid>? = null): Spli
     val accountOwners = Accounts.select(Accounts.id, Accounts.ownerUserId)
         .where { Accounts.householdId eq householdId }
         .associate { it[Accounts.id] to it[Accounts.ownerUserId] }
-    return SplitBook(members, rules, overrides, parents, accountOwners)
+    val debtsFrom = Households.select(Households.debtsFrom)
+        .where { Households.id eq householdId }
+        .single()[Households.debtsFrom]
+    return SplitBook(members, rules, overrides, parents, accountOwners, debtsFrom)
 }
