@@ -8,6 +8,7 @@ import dev.spendingtracker.shared.api.AssetKind
 import dev.spendingtracker.shared.api.Category
 import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.Expense
+import dev.spendingtracker.shared.api.Household
 import dev.spendingtracker.shared.api.HouseholdImport
 import dev.spendingtracker.shared.api.ImportAccount
 import dev.spendingtracker.shared.api.ImportAsset
@@ -138,5 +139,25 @@ class ImportTest {
         assertEquals(emptyList(), client.get("$base/trips").body<List<Trip>>())
 
         client.post("$base/import") { setBody(file.copy(currency = "EUR")) }.assertError(HttpStatusCode.BadRequest, "currency_mismatch")
+    }
+
+    @Test
+    fun importSetsDebtsFromOnlyWhenUnset() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val dated = file.copy(debtsFrom = LocalDate(2026, 9, 1))
+
+        val preview = client.post("$base/import?dryRun=true") { setBody(dated) }.body<ImportResult>()
+        assertEquals(LocalDate(2026, 9, 1), preview.debtsFrom)
+        assertEquals(null, client.get("/api/households").body<List<Household>>().single().debtsFrom)
+
+        val applied = client.post("$base/import") { setBody(dated) }.body<ImportResult>()
+        assertEquals(LocalDate(2026, 9, 1), applied.debtsFrom)
+        assertEquals(LocalDate(2026, 9, 1), client.get("/api/households").body<List<Household>>().single().debtsFrom)
+
+        // Already set: a later import does not overwrite it.
+        val second = client.post("$base/import") { setBody(file.copy(debtsFrom = LocalDate(2026, 10, 1))) }.body<ImportResult>()
+        assertEquals(null, second.debtsFrom)
+        assertEquals(LocalDate(2026, 9, 1), client.get("/api/households").body<List<Household>>().single().debtsFrom)
     }
 }

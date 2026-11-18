@@ -9,10 +9,14 @@ import dev.spendingtracker.shared.api.BalanceEntryKind
 import dev.spendingtracker.shared.api.Balances
 import dev.spendingtracker.shared.api.Category
 import dev.spendingtracker.shared.api.CategoryInput
+import dev.spendingtracker.shared.api.CreateInviteRequest
 import dev.spendingtracker.shared.api.Debt
 import dev.spendingtracker.shared.api.Expense
 import dev.spendingtracker.shared.api.ExpenseInput
 import dev.spendingtracker.shared.api.ExpenseLineInput
+import dev.spendingtracker.shared.api.Household
+import dev.spendingtracker.shared.api.HouseholdSettings
+import dev.spendingtracker.shared.api.Invite
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.MemberInput
 import dev.spendingtracker.shared.api.Settlement
@@ -144,6 +148,59 @@ class DebtTest {
             ),
         )
         assertEquals(owes(bob, alice, 440), splitReceipt.debts)
+    }
+
+    @Test
+    fun debtsFromCutsOffEarlierExpensesAndSettlements() = apiTest {
+        val aliceClient = newClient()
+        val alice = aliceClient.signup("alice@example.com", "Alice").id
+        val bobClient = newClient()
+        bobClient.signup("bob@example.com", "Bob")
+        val householdId = aliceClient.createHousehold().id
+        val base = "/api/households/$householdId"
+        val invite = aliceClient.post("$base/invites") { setBody(CreateInviteRequest("bob@example.com")) }.body<Invite>().token!!
+        bobClient.post("/api/invites/$invite/accept")
+        val bob = bobClient.get("$base/members").body<List<Member>>().single { it.displayName == "Bob" }.userId
+        val aliceCard = aliceClient.account(base, "Alice's card", alice)
+
+        fun owes(from: String, to: String, amount: Long) = listOf(Debt(from, to, amount))
+        suspend fun expense(date: LocalDate, amount: Long) =
+            aliceClient.post("$base/expenses") { setBody(ExpenseInput(date, amount, accountId = aliceCard)) }.body<Expense>()
+
+        val before = expense(LocalDate(2026, 7, 10), 1000)
+        val on = expense(LocalDate(2026, 7, 15), 2000)
+        val after = expense(LocalDate(2026, 7, 20), 3000)
+        aliceClient.post("$base/settlements") { setBody(SettlementInput(LocalDate(2026, 7, 11), bob, alice, 200)) }
+        aliceClient.post("$base/settlements") { setBody(SettlementInput(LocalDate(2026, 7, 15), bob, alice, 300)) }
+
+        suspend fun expenseDebts(id: String) =
+            aliceClient.get("$base/expenses").body<List<Expense>>().single { it.id == id }.debts
+
+        assertEquals(owes(bob, alice, 2500), aliceClient.balances(base).balances)
+        assertEquals(owes(bob, alice, 500), expenseDebts(before.id))
+
+        bobClient.put("$base/settings") { setBody(HouseholdSettings(false, LocalDate(2026, 7, 15))) }
+            .assertError(HttpStatusCode.Forbidden, "owner_only")
+
+        val updated = aliceClient.put("$base/settings") { setBody(HouseholdSettings(false, LocalDate(2026, 7, 15))) }
+            .body<HouseholdSettings>()
+        assertEquals(LocalDate(2026, 7, 15), updated.debtsFrom)
+        assertEquals(
+            LocalDate(2026, 7, 15),
+            aliceClient.get("/api/households").body<List<Household>>().single().debtsFrom,
+        )
+
+        val cut = aliceClient.balances(base)
+        assertEquals(owes(bob, alice, 2200), cut.balances)
+        assertEquals(3, cut.entries.size)
+        assertEquals(emptyList(), expenseDebts(before.id))
+        assertEquals(owes(bob, alice, 1000), expenseDebts(on.id))
+        assertEquals(owes(bob, alice, 1500), expenseDebts(after.id))
+
+        // Clearing debtsFrom brings all history back.
+        aliceClient.put("$base/settings") { setBody(HouseholdSettings(false, null)) }
+        assertEquals(owes(bob, alice, 2500), aliceClient.balances(base).balances)
+        assertEquals(5, aliceClient.balances(base).entries.size)
     }
 
     private suspend fun HttpClient.account(base: String, name: String, owner: String?) =

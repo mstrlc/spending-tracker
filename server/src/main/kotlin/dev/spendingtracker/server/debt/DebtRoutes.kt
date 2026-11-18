@@ -85,9 +85,12 @@ fun Route.debtRoutes() {
         val to = call.dateParam("to")
         val balances = dbQuery {
             val book = loadSplitBook(householdId)
+            val debtsFrom = book.debtsFrom
+            var expenseFilter: Op<Boolean> = (Expenses.householdId eq householdId) and Expenses.accountId.isNotNull() and (Expenses.createsDebt eq true)
+            if (debtsFrom != null) expenseFilter = expenseFilter and (Expenses.date greaterEq debtsFrom)
             val expenseRows = Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id)
                 .selectAll()
-                .where { (Expenses.householdId eq householdId) and Expenses.accountId.isNotNull() and (Expenses.createsDebt eq true) }
+                .where(expenseFilter)
                 .toList()
             val lines = loadExpenseLines(householdId, expenseRows.map { it[Expenses.id] })
             val expenseEntries = expenseRows.mapNotNull { row ->
@@ -102,7 +105,9 @@ fun Route.debtRoutes() {
                     debts = debts,
                 )
             }
-            val settlementEntries = Settlements.selectAll().where { Settlements.householdId eq householdId }.map { row ->
+            var settlementFilter: Op<Boolean> = Settlements.householdId eq householdId
+            if (debtsFrom != null) settlementFilter = settlementFilter and (Settlements.date greaterEq debtsFrom)
+            val settlementEntries = Settlements.selectAll().where(settlementFilter).map { row ->
                 val settlement = row.toSettlement()
                 BalanceEntry(
                     kind = BalanceEntryKind.SETTLEMENT,

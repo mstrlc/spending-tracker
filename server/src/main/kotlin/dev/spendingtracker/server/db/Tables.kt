@@ -31,6 +31,8 @@ object Households : Table("households") {
     val currency = text("currency")
     /** V21: whether the inbox matcher files transfer pairs and duplicates without asking. */
     val autoMatch = bool("auto_match").default(false)
+    /** V30: expenses and settlements before this date don't count toward balances. */
+    val debtsFrom = date("debts_from").nullable()
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
 }

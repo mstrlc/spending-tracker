@@ -24,6 +24,7 @@ data class HouseholdImport(
     val assets: List<ImportAsset> = emptyList(),
     val bankFeeds: List<ImportBankFeed> = emptyList(),
     val bankRows: List<ImportBankRow> = emptyList(),
+    val debtsFrom: LocalDate? = null,
 )
 
 /**
@@ -144,6 +145,7 @@ data class ImportResult(
     val dryRun: Boolean,
     val created: ImportCounts,
     val existing: ImportCounts,
+    val debtsFrom: LocalDate?,
 )
 
 @Serializable

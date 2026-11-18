@@ -897,6 +897,7 @@ export function useOverview(householdId: string, month: string, today: string) {
 
 /** Imports a file; with dryRun, only reports what it would create. A real import refreshes everything. */
 export function useImport(householdId: string) {
+  const qc = useQueryClient();
   const invalidate = useInvalidateHousehold(householdId);
   return useMutation({
     mutationFn: async ({ file, dryRun }: { file: HouseholdImport; dryRun: boolean }) =>
@@ -907,7 +908,10 @@ export function useImport(householdId: string) {
         }),
       ),
     onSuccess: (result) => {
-      if (!result.dryRun) invalidate();
+      if (!result.dryRun) {
+        invalidate();
+        qc.invalidateQueries({ queryKey: keys.households });
+      }
     },
   });
 }
@@ -1237,9 +1241,14 @@ export function useHouseholdSettings(householdId: string) {
 
 export function useSaveHouseholdSettings(householdId: string) {
   const qc = useQueryClient();
+  const invalidate = useInvalidateHousehold(householdId);
   return useMutation({
     mutationFn: async (settings: HouseholdSettings) =>
       unwrap(await api.PUT("/api/households/{householdId}/settings", { params: { path: { householdId } }, body: settings })),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.settings(householdId) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.settings(householdId) });
+      qc.invalidateQueries({ queryKey: keys.households });
+      invalidate();
+    },
   });
 }

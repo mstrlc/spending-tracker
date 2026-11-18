@@ -1244,6 +1244,8 @@ export interface components {
             /** String */
             currency: string;
             role: components["schemas"]["HouseholdRole"];
+            /** LocalDate */
+            debtsFrom: null | string;
         };
         /** CreateHouseholdRequest */
         CreateHouseholdRequest: {
@@ -1275,6 +1277,8 @@ export interface components {
         HouseholdSettings: {
             /** Boolean */
             autoMatch: boolean;
+            /** LocalDate */
+            debtsFrom: null | string;
         };
         /** Invite */
         Invite: {
@@ -2338,6 +2342,8 @@ export interface components {
             bankFeeds?: components["schemas"]["ImportBankFeed"][];
             /** ArrayList<ImportBankRow> */
             bankRows?: components["schemas"]["ImportBankRow"][];
+            /** LocalDate */
+            debtsFrom?: null | string;
         };
         /** ImportCounts */
         ImportCounts: {
@@ -2403,6 +2409,8 @@ export interface components {
             dryRun: boolean;
             created: components["schemas"]["ImportCounts"];
             existing: components["schemas"]["ImportCounts"];
+            /** LocalDate */
+            debtsFrom: null | string;
         };
         /** ImportSummary */
         ImportSummary: {

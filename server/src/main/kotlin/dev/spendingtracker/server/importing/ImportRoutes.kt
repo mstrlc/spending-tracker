@@ -24,6 +24,7 @@ import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.HouseholdMembers
+import dev.spendingtracker.server.db.Households
 import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.income.dbValue
 import dev.spendingtracker.server.db.Merchants
@@ -89,8 +90,13 @@ fun Route.importRoutes() {
         }
         val result = dbQuery {
             val counts = Importer(household.id, household.currency, call.userId).run(input)
+            val debtsFrom = input.debtsFrom?.takeIf {
+                Households.select(Households.debtsFrom).where { Households.id eq household.id }.single()[Households.debtsFrom] == null
+            }?.also { date ->
+                Households.update({ Households.id eq household.id }) { it[Households.debtsFrom] = date }
+            }
             if (dryRun) rollback()
-            ImportResult(dryRun, created = counts.first, existing = counts.second)
+            ImportResult(dryRun, created = counts.first, existing = counts.second, debtsFrom = debtsFrom)
         }
         call.respond(result)
     }
