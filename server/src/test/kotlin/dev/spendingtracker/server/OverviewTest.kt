@@ -18,6 +18,9 @@ import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.ContributionInput
 import dev.spendingtracker.shared.api.ExpenseInput
 import dev.spendingtracker.shared.api.IncomeInput
+import dev.spendingtracker.shared.api.ExpenseLineInput
+import dev.spendingtracker.shared.api.Member
+import dev.spendingtracker.shared.api.MemberInput
 import dev.spendingtracker.shared.api.Asset
 import dev.spendingtracker.shared.api.AssetInput
 import dev.spendingtracker.shared.api.MonthFlow
@@ -55,6 +58,9 @@ class OverviewTest {
         val loan = client.post("$household/assets") { setBody(AssetInput("Mortgage", kind = dev.spendingtracker.shared.api.AssetKind.LOAN)) }.body<Asset>()
         client.post("$household/assets/${loan.id}/contributions") { setBody(ContributionInput(LocalDate(2020, 3, 1), -3_000_000)) }
         client.post("$household/assets/${loan.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 10, 10), 12_000)) }
+        // Nor is an asset's history entered from before the ledger: it counts toward the asset, not as empty months.
+        val savings = client.post("$household/assets") { setBody(AssetInput("Building savings", kind = AssetKind.SCHEME)) }.body<Asset>()
+        client.post("$household/assets/${savings.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 2, 10), 1_550)) }
 
         val overview = client.get("$household/overview?month=2026-10&today=2026-10-31").body<Overview>()
 
@@ -70,6 +76,43 @@ class OverviewTest {
         assertEquals(listOf("Albert", "Netflix"), overview.topMerchants.map { it.name })
         assertEquals(listOf(NamedTotal("Acme", 50_000)), overview.topSources)
         assertEquals(listOf("Netflix"), overview.subscriptions.map { it.merchant })
+    }
+
+    @Test
+    fun filtersToJointOrOneMember() = apiTest {
+        val client = newClient()
+        val alice = client.signup().id
+        val household = "/api/households/${client.createHousehold().id}"
+        val bob = client.post("$household/members") { setBody(MemberInput("Bob")) }.body<Member>().userId
+        val bobsFund = client.post("$household/assets") { setBody(AssetInput("Bob's ETF", ownerUserId = bob)) }.body<Asset>()
+        val day = LocalDate(2026, 10, 5)
+        client.post("$household/expenses") { setBody(ExpenseInput(day, 1_000, "Albert")) }
+        client.post("$household/expenses") { setBody(ExpenseInput(day, 300, "Zara", paidByUserId = alice)) }
+        // A split expense counts each line as whose it is.
+        client.post("$household/expenses") {
+            setBody(
+                ExpenseInput(
+                    day, 700, "Tesco",
+                    lines = listOf(ExpenseLineInput(amountMinor = 500), ExpenseLineInput(amountMinor = 200, paidByUserId = bob)),
+                )
+            )
+        }
+        client.post("$household/income") { setBody(IncomeInput(day, 40_000, "Acme", recipientUserId = alice)) }
+        client.post("$household/income") { setBody(IncomeInput(day, 30_000, "Initech", recipientUserId = bob)) }
+        client.post("$household/assets/${bobsFund.id}/contributions") { setBody(ContributionInput(day, 2_000)) }
+
+        suspend fun month(whose: String? = null) =
+            client.get("$household/overview?month=2026-10&today=2026-10-31" + (whose?.let { "&whose=$it" } ?: "")).body<Overview>().thisMonth
+
+        assertEquals(MonthFlow("2026-10", 70_000, 2_000, 2_000), month())
+        assertEquals(MonthFlow("2026-10", 0, 1_500, 0), month("joint"))
+        assertEquals(MonthFlow("2026-10", 40_000, 300, 0), month(alice))
+        assertEquals(MonthFlow("2026-10", 30_000, 200, 2_000), month(bob))
+        val bobs = client.get("$household/overview?month=2026-10&today=2026-10-31&whose=$bob").body<Overview>()
+        assertEquals(listOf("Tesco"), bobs.topMerchants.map { it.name })
+
+        client.get("$household/overview?whose=someone").assertError(HttpStatusCode.BadRequest, "invalid_whose")
+        client.get("$household/overview?whose=${kotlin.uuid.Uuid.random()}").assertError(HttpStatusCode.BadRequest, "unknown_member")
     }
 
     @Test

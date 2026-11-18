@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router";
-import { useCategories, useOverview } from "../api/hooks";
+import { Link, useSearchParams } from "react-router";
+import { useCategories, useMembers, useOverview } from "../api/hooks";
 import type { Category, FeedFreshness, Freshness, MonthFlow, NetWorth, Overview } from "../api/types";
 import { categoryTone, Chip } from "../chips";
 import { useHousehold } from "../households/HouseholdPages";
@@ -11,6 +11,7 @@ import { rankSlices, ShareBar } from "../shares";
 import { ErrorText, Money, PageHeader, SkeletonRows, Summary, Surface } from "../ui";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 /** "Mar" for "2026-03", in the user's locale. */
@@ -30,13 +31,39 @@ const saved = (flow: Pick<MonthFlow, "incomeMinor" | "spendingMinor">) => flow.i
 export function OverviewPage() {
   const household = useHousehold();
   const { month, goTo } = useMonthParam();
-  const overview = useOverview(household.id, month, todayIso());
+  const members = useMembers(household.id).data ?? [];
+  const [params, setParams] = useSearchParams();
+  // ?whose=joint or a member's id; anything else (a member who left) shows everyone.
+  const whoseParam = params.get("whose");
+  const whose = whoseParam === "joint" || members.some((m) => m.userId === whoseParam) ? whoseParam! : undefined;
+  const setWhose = (value: string) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value === "all") next.delete("whose");
+      else next.set("whose", value);
+      return next;
+    });
+  const overview = useOverview(household.id, month, todayIso(), whose);
   const categories = useCategories(household.id).data ?? [];
   useMonthShortcuts(month, goTo, () => {});
 
   return (
     <>
-      <PageHeader title={<MonthTitle month={month} goTo={goTo} />} />
+      <PageHeader title={<MonthTitle month={month} goTo={goTo} />}>
+        {members.length > 1 && (
+          <Tabs value={whose ?? "all"} onValueChange={setWhose}>
+            <TabsList aria-label="Whose">
+              <TabsTrigger value="all">Everyone</TabsTrigger>
+              <TabsTrigger value="joint">Joint</TabsTrigger>
+              {members.map((m) => (
+                <TabsTrigger key={m.userId} value={m.userId}>
+                  {m.displayName}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        )}
+      </PageHeader>
       <ErrorText error={overview.error} />
       {overview.isPending && (
         <Surface>
@@ -44,7 +71,13 @@ export function OverviewPage() {
         </Surface>
       )}
       {overview.data && (
-        <OverviewBody data={overview.data} categories={categories} currency={household.currency} inboxPath={`/h/${household.id}/inbox`} />
+        <OverviewBody
+          data={overview.data}
+          categories={categories}
+          currency={household.currency}
+          inboxPath={`/h/${household.id}/inbox`}
+          filtered={whose !== undefined}
+        />
       )}
     </>
   );
@@ -109,11 +142,14 @@ function OverviewBody({
   categories,
   currency,
   inboxPath,
+  filtered,
 }: {
   data: Overview;
   categories: Category[];
   currency: string;
   inboxPath: string;
+  /** Showing joint or one member's figures: net worth and bank data stay the household's. */
+  filtered: boolean;
 }) {
   const { thisMonth, typicalMonth } = data;
   const inProgress = data.daysElapsed > 0 && data.daysElapsed < data.daysInMonth;
@@ -169,7 +205,7 @@ function OverviewBody({
           <FlowChart history={data.history} currency={currency} />
         </OverviewCard>
 
-        <NetWorthCard netWorth={data.netWorth} currency={currency} />
+        <NetWorthCard netWorth={data.netWorth} currency={currency} household={filtered} />
         <FreshnessCard feeds={data.freshness.feeds} />
 
         <OverviewCard
@@ -324,11 +360,12 @@ function runwayLabel(months: number): string {
   return `${whole} ${whole === 1 ? "month" : "months"}`;
 }
 
-function NetWorthCard({ netWorth, currency }: { netWorth: NetWorth; currency: string }) {
+function NetWorthCard({ netWorth, currency, household }: { netWorth: NetWorth; currency: string; household: boolean }) {
   const nothing = netWorth.assetsMinor === 0 && netWorth.liabilitiesMinor === 0 && netWorth.accountsRead === 0;
   const isToday = netWorth.on === todayIso();
+  const when = isToday ? "Today" : `On ${formatDate(netWorth.on)}`;
   return (
-    <OverviewCard title="Net worth" subtitle={isToday ? "Today" : `On ${formatDate(netWorth.on)}`}>
+    <OverviewCard title="Net worth" subtitle={household ? `${when}, the whole household's` : when}>
       {nothing ? (
         <Empty>No assets, debts or bank balances yet.</Empty>
       ) : (
@@ -354,7 +391,7 @@ function NetWorthCard({ netWorth, currency }: { netWorth: NetWorth; currency: st
                 name: "Money at hand",
                 detail:
                   netWorth.runwayMonths !== null
-                    ? `Lasts ${runwayLabel(netWorth.runwayMonths)} at a typical month's spending, with no income`
+                    ? `Lasts ${runwayLabel(netWorth.runwayMonths)} at a typical month's ${household ? "household " : ""}spending, with no income`
                     : "Current, savings and cash accounts, and savings",
                 figure: <Signed minor={netWorth.liquidMinor} currency={currency} />,
               },

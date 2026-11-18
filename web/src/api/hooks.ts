@@ -57,7 +57,7 @@ export const keys = {
   assetSummary: (id: string) => ["households", id, "assets", "summary"] as const,
   securitySearch: (query: string) => ["securities", query] as const,
   activity: (id: string, entity?: ActivityEntity) => ["households", id, "activity", entity ?? "all"] as const,
-  overview: (id: string, month: string) => ["households", id, "overview", month] as const,
+  overview: (id: string, month: string, whose?: string) => ["households", id, "overview", month, whose ?? "all"] as const,
   splitRules: (id: string) => ["households", id, "split-rules"] as const,
   inboxRules: (id: string) => ["households", id, "inbox-rules"] as const,
   orders: (id: string) => ["households", id, "orders"] as const,
@@ -947,13 +947,14 @@ export function useActivity(householdId: string, entity?: ActivityEntity) {
   });
 }
 
-export function useOverview(householdId: string, month: string, today: string) {
+/** [whose]: "joint" or a member's user id; undefined for the whole household. */
+export function useOverview(householdId: string, month: string, today: string, whose?: string) {
   return useQuery({
-    queryKey: keys.overview(householdId, month),
+    queryKey: keys.overview(householdId, month, whose),
     queryFn: async () =>
       unwrap(
         await api.GET("/api/households/{householdId}/overview", {
-          params: { path: { householdId }, query: { month, today } },
+          params: { path: { householdId }, query: { month, today, whose } },
         }),
       ),
   });

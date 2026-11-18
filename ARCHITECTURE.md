@@ -52,7 +52,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 - ~~**Members don't need a login.**~~ (done 2026-11-14) A household member can exist without a user account and claim it later through an invite.
 - **No person means joint**, everywhere a row can belong to someone: expenses, income, accounts, assets. There is no "unknown".
 - **Who paid and whose it is are separate.** The account says whose money left; the expense says whose spending it is. A joint 10k IKEA purchase on one person's credit card is one joint 10k expense, never two halves.
-- **Joint or personal is filled in** from the account (joint account → joint, personal account → that person), overridden by category or merchant rules (groceries always joint), and editable per expense. The web form follows the account until someone picks; the category and merchant rules aren't built yet.
+- ~~**Joint or personal is filled in**~~ (done 2026-11-18) from the account (joint account → joint, personal account → that person), the merchant's past rows in the Inbox, and editable per expense (and per line). The web form follows the account until someone picks. Category or merchant rules for it were dropped: the defaults are right often enough.
 - ~~**Debts between members come from mismatches:**~~ (done 2026-11-14)
   - a joint expense paid from a personal account makes the others owe their share to the payer (can be switched off per expense);
   - a personal expense paid from a joint account makes that person owe the others their share of the pot.
@@ -75,7 +75,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 
 - ~~**Merchants are records**~~ (done 2026-11-14) with a name and a default category, so top merchants and subscriptions don't split on spelling. The bank texts that map to them come with the rules table.
 - ~~**Split lines**~~ (done 2026-11-14; whose per line 2026-11-15): an expense can have lines with their own category, amount and whose that add up to its total, so one payment can hold one person's items, the other's and joint ones. E-shop orders can fill them in later.
-- **Refunds attach to the original expense**, so it shows net in its own category and month.
+- ~~**Refunds attach to the original expense**~~ (done 2026-11-14, `expenses.refund_of`), so it shows net in its own category and month.
 - ~~**Foreign currency**~~ (done 2026-11-14): an expense can store the original amount and currency next to the household-currency amount everything adds up in.
 - ~~**Trips**~~ (done 2026-11-14): a trips table, and an expense can belong to a trip (including a single lump sum booked for the whole trip).
 - **Business**: business money counts in the household, but business items are tagged so they can be shown or hidden.
@@ -95,7 +95,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 ### Reporting and planning
 
 - **Saved = income − spending.** Money put into assets is part of saved; Invested shows how much of it went there.
-- **The Overview** covers the whole household by default, filterable to joint or one person.
+- ~~**The Overview**~~ (filter done 2026-11-18) covers the whole household by default, filterable to joint or one person: `/overview?whose=joint|<userId>` counts spending by whose each expense or line is (`SpendingPart.ownerUserId`), income by recipient and investing by the asset's owner; net worth, money at hand and the bank data stay the household's, and runway measures them against the household's typical month. The Overview page has Everyone / Joint / each member tabs (`?whose=`, kept when paging months; `useMonthParam` now keeps other query parameters).
 - **Budgets** are per category per month, separately for each person and for joint.
 - **The forecast** projects coming months from confirmed recurring items and declared expected income.
 - **Goals and the wishlist** are out for now.
@@ -116,7 +116,7 @@ Settled after reviewing the old app's live data (exported to the gitignored `dat
 2. ~~**MVP slice**~~ (done 2026-10-31): sign up / log in, create household, accounts, expenses with categories.
    ~~Not yet: undo after save/delete.~~ (done 2026-11-15: `web/src/undo.tsx`)
    - ~~**Audit log**~~ (done 2026-10-31): trigger-written log of every create, edit and delete across households, members, invites, accounts, categories, expenses and income; the Activity page lists it by day with field-level before → after.
-   - ~~**Overview**~~ (done 2026-10-31): the new landing page. The month's spending, income, saved and invested with month-end pace; a typical month (last 6 complete months, expensive outliers trimmed); 12 months of income vs. spending; unusual spending by category against the prior year; subscription radar; top merchants and income sources. Computed server-side (`/overview`) so mobile apps get the same numbers.
+   - ~~**Overview**~~ (done 2026-10-31): the new landing page. The month's spending, income, saved and invested with month-end pace; a typical month (last 6 complete months, expensive outliers trimmed); 12 months of income vs. spending; unusual spending by category against the prior year; subscription radar; top merchants and income sources. Computed server-side (`/overview`) so mobile apps get the same numbers. Months before the ledger starts are unknown, not empty: the ledger starts at the first expense or income (since 2026-11-21 an asset's contributions only set it when nothing else is recorded, so an asset's history entered back from statements counts toward its cost and return without adding empty months to the baseline).
      ~~Not yet: import freshness, net worth and runway~~ (done 2026-11-16): `Overview.netWorth` is net worth on the month's last day (or today while it runs): the latest bank balance on or before it of every account no asset follows (credit cards count booked balances only, negative when owed), plus owned assets and liabilities valued that day as on the Assets page. Money at hand is the bank balances of current, savings and cash accounts plus savings assets not counted through one; runway is money at hand over the typical month's spending. `Overview.freshness` lists every feed's latest row, last sync and consent end, and the pending bank rows (all, and those in the month). The Overview shows a Net worth card (in accounts, assets, owed, money at hand and how long it lasts), a Bank data card listing only feeds that are behind (a live feed not synced in two days or with expired access, statements older than a week), and a note when the month has rows still in the Inbox.
    - ~~**Household invites**~~ (done 2026-10-31): owners create an email-bound, single-use invite link (7 days); there's no outgoing email yet, so the owner shares the link. Members can leave, owners can remove members, the last owner can't be removed.
    - ~~**Income**~~ (done 2026-10-31): dated income lines with a source (payer), account, recipient member (or shared) and notes; negative amounts are clawbacks. The Income page shows the month's total, spending and what was saved, plus a by-source breakdown.

@@ -4,6 +4,7 @@ import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.dateParam
 import dev.spendingtracker.server.db.Categories
 import dev.spendingtracker.server.db.Expenses
+import dev.spendingtracker.server.db.HouseholdMembers
 import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.income.dbValue
 import dev.spendingtracker.server.income.netIncomeMinor
@@ -59,6 +60,11 @@ fun Route.overviewRoutes() = route("/overview") {
                 description = "The caller's date, YYYY-MM-DD, so a month in progress is measured in their time zone; " +
                     "defaults to the server's"
             }
+            queryParameter<String>("whose") {
+                description = "Only what's joint (`joint`) or one member's (their user id): spending by whose each " +
+                    "expense or line is, income by recipient, investing by the asset's owner. Net worth, money at hand " +
+                    "and the bank data stay the whole household's. Omitted: everything."
+            }
         }
         response {
             code(HttpStatusCode.OK) { body<Overview>() }
@@ -70,6 +76,23 @@ fun Route.overviewRoutes() = route("/overview") {
             runCatching { YearMonth.parse(it) }.getOrElse { throw badRequest("invalid_month", "month must be YYYY-MM", "month") }
         } ?: today.yearMonth
         val householdId = call.household.id
+        val whose = call.request.queryParameters["whose"]?.takeIf { it.isNotBlank() }
+        val member = whose?.takeIf { it != "joint" }?.let {
+            runCatching { Uuid.parse(it) }.getOrNull() ?: throw badRequest("invalid_whose", "whose must be joint or a member's id", "whose")
+        }
+        if (member != null) {
+            val isMember = dbQuery {
+                HouseholdMembers.selectAll()
+                    .where { (HouseholdMembers.householdId eq householdId) and (HouseholdMembers.userId eq member) }
+                    .any()
+            }
+            if (!isMember) throw badRequest("unknown_member", "No such member in this household", "whose")
+        }
+        val keep: (Uuid?) -> Boolean = when {
+            whose == null -> { _ -> true }
+            member == null -> { owner -> owner == null }
+            else -> { owner -> owner == member }
+        }
         // The longest look back: anomalies of the month before, against the 12 months before that.
         val windowStart = month.shift(-BASELINE_MONTHS - 1)
 
@@ -86,6 +109,7 @@ fun Route.overviewRoutes() = route("/overview") {
                     merchant = part.merchantId?.let(merchants::get).orEmpty(),
                     topCategoryId = top?.get(Categories.id),
                     investment = top?.get(Categories.kind) == "investment",
+                    ownerUserId = part.ownerUserId,
                 )
             }
             val earnings = Income.selectAll()
@@ -94,34 +118,48 @@ fun Route.overviewRoutes() = route("/overview") {
                 // Counted in the month it was earned, whenever it arrived.
                 .map {
                     val deduction = it[Income.kind] == IncomeKind.DEDUCTION.dbValue
-                    Earning(it[Income.earnedMonth], it.netIncomeMinor(), it[Income.sourceName], deduction)
+                    Earning(it[Income.earnedMonth], it.netIncomeMinor(), it[Income.sourceName], deduction, it[Income.recipientUserId])
                 }
             // Money borrowed on or repaid to a liability (a loan, card debt) isn't invested.
             val liabilityKinds = AssetKind.entries.filter { it.liability }.map { it.name.lowercase() }
             val contributions = AssetContributions.join(Assets, JoinType.INNER, AssetContributions.assetId, Assets.id)
-                .select(AssetContributions.date, AssetContributions.amountMinor)
+                .select(AssetContributions.date, AssetContributions.amountMinor, Assets.ownerUserId)
                 .where {
                     (AssetContributions.householdId eq householdId) and
                         (AssetContributions.date.between(windowStart.firstDay, month.lastDay)) and
                         (Assets.kind notInList liabilityKinds)
                 }
-                .map { Dated(it[AssetContributions.date], it[AssetContributions.amountMinor]) }
-            // Where the ledger starts: months before it are unknown, not empty.
+                .map { Dated(it[AssetContributions.date], it[AssetContributions.amountMinor]) to it[Assets.ownerUserId] }
+            // Where the ledger starts: months before it are unknown, not empty. Spending and income mark it; an asset's
+            // history can reach back years before (statements entered for its cost and return), so its contributions
+            // set the start only when nothing else has been recorded.
             val firstExpense = Expenses.select(Expenses.date.min()).where { Expenses.householdId eq householdId }.single()[Expenses.date.min()]
             val firstIncome = Income.select(Income.earnedMonth.min()).where { Income.householdId eq householdId }.single()[Income.earnedMonth.min()]
-            val firstContribution = AssetContributions.join(Assets, JoinType.INNER, AssetContributions.assetId, Assets.id)
-                .select(AssetContributions.date.min())
-                .where { (AssetContributions.householdId eq householdId) and (Assets.kind notInList liabilityKinds) }
-                .single()[AssetContributions.date.min()]
-            Flows(spends, earnings, contributions) to listOfNotNull(firstExpense, firstIncome, firstContribution).minOrNull()?.yearMonth
+            val firstContribution by lazy {
+                AssetContributions.join(Assets, JoinType.INNER, AssetContributions.assetId, Assets.id)
+                    .select(AssetContributions.date.min())
+                    .where { (AssetContributions.householdId eq householdId) and (Assets.kind notInList liabilityKinds) }
+                    .single()[AssetContributions.date.min()]
+            }
+            val ledgerStart = listOfNotNull(firstExpense, firstIncome).minOrNull() ?: firstContribution
+            Flows(spends, earnings, contributions) to ledgerStart?.yearMonth
         }
-        val (spends, earnings, contributions) = flows
+        val (allSpends, allEarnings, allContributions) = flows
+        val spends = allSpends.filter { keep(it.ownerUserId) }
+        val earnings = allEarnings.filter { keep(it.ownerUserId) }
+        val contributions = allContributions.filter { keep(it.second) }.map { it.first }
 
         val start = maxOf(firstMonth ?: month, month.shift(-(BASELINE_MONTHS - 1)))
-        val history = monthsBetween(minOf(start, month), month).map { monthFlow(it, spends, earnings, contributions) }
-        val complete = history.dropLast(1).takeLast(TYPICAL_WINDOW)
+        val months = monthsBetween(minOf(start, month), month)
+        val history = months.map { monthFlow(it, spends, earnings, contributions) }
         val anomalyMonth = anomalyMonth(month, today)
-        val typical = typicalMonth(complete)
+        val typical = typicalMonth(history.dropLast(1))
+        // Runway measures the household's money at hand against the household's spending, whoever is filtered on.
+        val householdTypical = if (whose == null) {
+            typical
+        } else {
+            typicalMonth(months.dropLast(1).map { monthFlow(it, allSpends, allEarnings, allContributions.map { c -> c.first }) })
+        }
         val on = minOf(month.lastDay, today)
         val wealth = call.wealthOn(on)
         val freshness = dbQuery { freshness(householdId, month) }
@@ -145,7 +183,7 @@ fun Route.overviewRoutes() = route("/overview") {
                 assetsMinor = wealth.assetsMinor,
                 liabilitiesMinor = wealth.liabilitiesMinor,
                 liquidMinor = wealth.liquidMinor,
-                runwayMonths = typical?.spendingMinor?.takeIf { it > 0 }?.let { wealth.liquidMinor.coerceAtLeast(0).toDouble() / it },
+                runwayMonths = householdTypical?.spendingMinor?.takeIf { it > 0 }?.let { wealth.liquidMinor.coerceAtLeast(0).toDouble() / it },
                 accountsRead = wealth.accountsRead,
             ),
             freshness = freshness,
@@ -181,4 +219,5 @@ private fun freshness(householdId: Uuid, month: YearMonth): Freshness {
     )
 }
 
-private data class Flows(val spends: List<Spend>, val earnings: List<Earning>, val contributions: List<Dated>)
+/** Contributions come with their asset's owner (null for joint). */
+private data class Flows(val spends: List<Spend>, val earnings: List<Earning>, val contributions: List<Pair<Dated, Uuid?>>)

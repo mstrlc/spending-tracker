@@ -23,10 +23,18 @@ import kotlin.uuid.Uuid
  * An expense reduced to what the overview needs: its top-level category and whether that is an investment category.
  * Those are transfers into investments, not spending; what was invested is read from asset contributions instead.
  */
-data class Spend(val date: LocalDate, val amountMinor: Long, val merchant: String, val topCategoryId: Uuid?, val investment: Boolean)
+data class Spend(
+    val date: LocalDate,
+    val amountMinor: Long,
+    val merchant: String,
+    val topCategoryId: Uuid?,
+    val investment: Boolean,
+    /** Whose it is; null for joint. */
+    val ownerUserId: Uuid? = null,
+)
 
 /** An income line counted in its month: [amountMinor] is negative for a [deduction], so the month sums to net income. */
-data class Earning(val date: LocalDate, val amountMinor: Long, val source: String, val deduction: Boolean = false)
+data class Earning(val date: LocalDate, val amountMinor: Long, val source: String, val deduction: Boolean = false, val ownerUserId: Uuid? = null)
 
 const val TYPICAL_WINDOW = 6
 const val BASELINE_MONTHS = 12

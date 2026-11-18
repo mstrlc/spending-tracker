@@ -10,7 +10,14 @@ export function useMonthParam() {
   const [params, setParams] = useSearchParams();
   const monthParam = params.get("month");
   const month = isMonth(monthParam) ? monthParam : currentMonth();
-  const goTo = (m: Month) => setParams(m === currentMonth() ? {} : { month: m });
+  // Other parameters (a page's filters) stay as they are.
+  const goTo = (m: Month) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (m === currentMonth()) next.delete("month");
+      else next.set("month", m);
+      return next;
+    });
   return { month, ...monthRange(month), goTo };
 }
 
