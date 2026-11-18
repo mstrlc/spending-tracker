@@ -270,6 +270,7 @@ internal fun undoImport(householdId: Uuid, importId: Uuid, userId: Uuid, dryRun:
                 anyExists(Income.select(Income.id).where { (Income.householdId eq householdId) and (Income.accountId eq id) }) -> "Used by other income"
                 anyExists(AssetContributions.select(AssetContributions.id).where { (AssetContributions.householdId eq householdId) and (AssetContributions.accountId eq id) }) -> "Used by asset contributions"
                 anyExists(BankFeeds.select(BankFeeds.id).where { (BankFeeds.householdId eq householdId) and (BankFeeds.accountId eq id) }) -> "Has a bank feed"
+                anyExists(Assets.select(Assets.id).where { (Assets.householdId eq householdId) and (Assets.accountId eq id) }) -> "Tracked by an asset"
                 anyExists(Transfers.select(Transfers.id).where { (Transfers.householdId eq householdId) and ((Transfers.fromAccountId eq id) or (Transfers.toAccountId eq id)) }) -> "Used by transfers"
                 anyExists(InboxRules.select(InboxRules.id).where { (InboxRules.householdId eq householdId) and ((InboxRules.accountId eq id) or (InboxRules.otherAccountId eq id)) }) -> "Used by an inbox rule"
                 else -> null

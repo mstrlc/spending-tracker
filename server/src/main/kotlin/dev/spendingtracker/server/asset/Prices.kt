@@ -38,8 +38,17 @@ class Prices(
         return Priced(minor.toLong(), date)
     }
 
+    /** [amountMinor] in [currency] converted to the household currency at the fixing on or before [on]; null if none. */
+    fun convertMinor(amountMinor: Long, currency: String, on: LocalDate): Long? {
+        if (currency == householdCurrency) return amountMinor
+        val rate = rate(currency, on) ?: return null
+        val fromUnits = BigDecimal.TEN.pow(Currency.getInstance(currency).defaultFractionDigits)
+        val major = BigDecimal.valueOf(amountMinor).divide(fromUnits, MathContext.DECIMAL64)
+        return (major * rate * minorUnits).setScale(0, RoundingMode.HALF_UP).toLong()
+    }
+
     /** Household currency for one unit of [currency], crossing through CZK as the ČNB quotes everything in it. */
-    private fun rate(currency: String, on: LocalDate): BigDecimal? {
+    fun rate(currency: String, on: LocalDate): BigDecimal? {
         if (currency == householdCurrency) return BigDecimal.ONE
         val from = czkFor(currency, on) ?: return null
         val to = czkFor(householdCurrency, on) ?: return null
@@ -50,8 +59,12 @@ class Prices(
         if (currency == "CZK") BigDecimal.ONE else czk[currency]?.floorEntry(on)?.value
 }
 
-/** Loads what [Prices] needs for [symbols]. Must run in a transaction. */
-fun loadPrices(householdCurrency: String, symbols: Collection<String>): Prices {
+/** Loads what [Prices] needs for [symbols] and any [extraCurrencies]. Must run in a transaction. */
+fun loadPrices(
+    householdCurrency: String,
+    symbols: Collection<String>,
+    extraCurrencies: Collection<String> = emptyList(),
+): Prices {
     val securities = securities(symbols)
     val closes = HashMap<String, TreeMap<LocalDate, BigDecimal>>()
     if (securities.isNotEmpty()) {
@@ -59,9 +72,10 @@ fun loadPrices(householdCurrency: String, symbols: Collection<String>): Prices {
             closes.getOrPut(it[SecurityPrices.symbol]) { TreeMap() }[it[SecurityPrices.date]] = it[SecurityPrices.close]
         }
     }
-    val currencies = (securities.values.map { it.currency } + householdCurrency).filter { it != "CZK" }.distinct()
+    val foreign = (securities.values.map { it.currency } + extraCurrencies).filter { it != householdCurrency }.distinct()
+    val currencies = (foreign + householdCurrency).filter { it != "CZK" }.distinct()
     val czk = HashMap<String, TreeMap<LocalDate, BigDecimal>>()
-    if (currencies.isNotEmpty() && securities.values.any { it.currency != householdCurrency }) {
+    if (currencies.isNotEmpty() && foreign.isNotEmpty()) {
         FxRates.selectAll().where { FxRates.currency inList currencies }.forEach {
             czk.getOrPut(it[FxRates.currency]) { TreeMap() }[it[FxRates.date]] = it[FxRates.czk]
         }

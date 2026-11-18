@@ -1,37 +1,46 @@
 import type { Contribution, Fee, HistoryPoint, Asset, AssetKind, Valuation } from "../api/types";
 import { formatAmount } from "../lib/money";
 
-/** Asset kinds; [market] ones can follow a listed security, the rest are valued by hand. */
-export const KINDS: { value: AssetKind; label: string; market: boolean }[] = [
-  { value: "fund", label: "Fund", market: true },
-  { value: "stock", label: "Stock", market: true },
-  { value: "bond", label: "Bond", market: true },
-  { value: "crypto", label: "Crypto", market: true },
-  { value: "savings", label: "Savings", market: false },
-  { value: "scheme", label: "Savings scheme", market: false },
-  { value: "receivable", label: "Owed to us", market: false },
-  { value: "vehicle", label: "Vehicle", market: false },
-  { value: "property", label: "Property", market: false },
-  { value: "other", label: "Other", market: false },
+/** Asset kinds; [market] ones can follow a listed security, [liability] ones are what's owed, [trackable] ones can follow an account's bank feed balances. */
+export const KINDS: { value: AssetKind; label: string; market: boolean; liability: boolean; trackable: boolean }[] = [
+  { value: "fund", label: "Fund", market: true, liability: false, trackable: false },
+  { value: "stock", label: "Stock", market: true, liability: false, trackable: false },
+  { value: "bond", label: "Bond", market: true, liability: false, trackable: false },
+  { value: "crypto", label: "Crypto", market: true, liability: false, trackable: false },
+  { value: "savings", label: "Savings", market: false, liability: false, trackable: true },
+  { value: "scheme", label: "Savings scheme", market: false, liability: false, trackable: true },
+  { value: "receivable", label: "Owed to us", market: false, liability: false, trackable: false },
+  { value: "vehicle", label: "Vehicle", market: false, liability: false, trackable: false },
+  { value: "property", label: "Property", market: false, liability: false, trackable: false },
+  { value: "other", label: "Other", market: false, liability: false, trackable: true },
+  { value: "loan", label: "Loan", market: false, liability: true, trackable: true },
+  { value: "card_debt", label: "Credit card debt", market: false, liability: true, trackable: true },
+  { value: "payable", label: "Owed by us", market: false, liability: true, trackable: true },
 ];
 
 export const isMarketKind = (kind: AssetKind) => KINDS.find((k) => k.value === kind)?.market ?? false;
+
+export const isLiabilityKind = (kind: AssetKind) => KINDS.find((k) => k.value === kind)?.liability ?? false;
+
+export const isTrackableKind = (kind: AssetKind) => KINDS.find((k) => k.value === kind)?.trackable ?? false;
 
 export const kindLabel = (kind: AssetKind) => KINDS.find((k) => k.value === kind)?.label ?? kind;
 
 export type Totals = { contributedMinor: number; valueMinor: number; gainMinor: number; feesMinor: number };
 
-/** The holdings added up: what went in, what it's worth and the gain. */
+/** Owned holdings added up: what went in, what they're worth and the gain. */
 export function portfolioTotals(assets: Asset[]): Totals {
-  return assets.reduce(
-    (sum, i) => ({
-      contributedMinor: sum.contributedMinor + i.contributedMinor,
-      valueMinor: sum.valueMinor + i.valueMinor,
-      gainMinor: sum.gainMinor + i.gainMinor,
-      feesMinor: sum.feesMinor + i.feesMinor,
-    }),
-    { contributedMinor: 0, valueMinor: 0, gainMinor: 0, feesMinor: 0 },
-  );
+  return assets
+    .filter((i) => !isLiabilityKind(i.kind))
+    .reduce(
+      (sum, i) => ({
+        contributedMinor: sum.contributedMinor + i.contributedMinor,
+        valueMinor: sum.valueMinor + i.valueMinor,
+        gainMinor: sum.gainMinor + i.gainMinor,
+        feesMinor: sum.feesMinor + i.feesMinor,
+      }),
+      { contributedMinor: 0, valueMinor: 0, gainMinor: 0, feesMinor: 0 },
+    );
 }
 
 /** Gain as a share of what went in, or null when nothing (or less than nothing) is in. */

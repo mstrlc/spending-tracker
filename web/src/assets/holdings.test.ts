@@ -12,10 +12,13 @@ const holding = (contributedMinor: number, valueMinor: number): Asset => ({
   security: null,
   shares: null,
   marketValued: false,
+  accountId: null,
+  valueSource: "cost",
   contributedMinor,
   valueMinor,
   valuedOn: null,
   gainMinor: valueMinor - contributedMinor,
+  annualReturn: null,
   firstContributedOn: null,
   feesMinor: 0,
 });
@@ -37,7 +40,7 @@ describe("portfolioTotals", () => {
 describe("historyEntries", () => {
   it("is newest first, with a day's valuation above that day's contribution", () => {
     const contribution = (id: string, date: string): Contribution =>
-      ({ id, assetId: "f", date, amountMinor: 100, quantity: null, accountId: null, notes: "", version: 1 });
+      ({ id, assetId: "f", date, amountMinor: 100, originalAmountMinor: null, originalCurrency: null, quantity: null, accountId: null, notes: "", version: 1 });
     const valuation = (id: string, date: string): Valuation => ({ id, assetId: "f", date, valueMinor: 100, notes: "", version: 1 });
 
     const order = historyEntries(

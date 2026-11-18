@@ -390,6 +390,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/assets/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Totals across owned assets and liabilities, and net worth as of today. */
+        get: operations["getAssetSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/assets/{assetId}": {
         parameters: {
             query?: never;
@@ -1120,6 +1137,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/securities/fx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ČNB exchange rate for 1 unit of [from] in [to] on or before [date]. */
+        get: operations["getFxRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/securities/search": {
         parameters: {
             query?: never;
@@ -1622,6 +1656,9 @@ export interface components {
             shares: null | number;
             /** Boolean */
             marketValued: boolean;
+            /** String */
+            accountId: null | string;
+            valueSource: components["schemas"]["ValueSource"];
             /**
              * Long
              * Format: int64
@@ -1639,6 +1676,11 @@ export interface components {
              * Format: int64
              */
             gainMinor: number;
+            /**
+             * Double
+             * Format: double
+             */
+            annualReturn: null | number;
             /** LocalDate */
             firstContributedOn: null | string;
             /**
@@ -1651,7 +1693,50 @@ export interface components {
          * AssetKind
          * @enum {string}
          */
-        AssetKind: "fund" | "stock" | "bond" | "crypto" | "savings" | "scheme" | "receivable" | "vehicle" | "property" | "other";
+        AssetKind: "fund" | "stock" | "bond" | "crypto" | "savings" | "scheme" | "receivable" | "vehicle" | "property" | "other" | "loan" | "card_debt" | "payable";
+        /**
+         * ValueSource
+         * @enum {string}
+         */
+        ValueSource: "market" | "bank" | "valuation" | "cost";
+        /** AssetSummary */
+        AssetSummary: {
+            /**
+             * Long
+             * Format: int64
+             */
+            assetsMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            liabilitiesMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            netMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            contributedMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            gainMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            feesMinor: number;
+            /**
+             * Double
+             * Format: double
+             */
+            annualReturn: null | number;
+        };
         /** SecurityQuote */
         SecurityQuote: {
             /** String */
@@ -1701,6 +1786,8 @@ export interface components {
             notes?: string;
             /** String */
             symbol?: null | string;
+            /** String */
+            accountId?: null | string;
             /**
              * Int
              * Format: int32
@@ -1720,6 +1807,13 @@ export interface components {
              * Format: int64
              */
             amountMinor: number;
+            /**
+             * Long
+             * Format: int64
+             */
+            originalAmountMinor: null | number;
+            /** String */
+            originalCurrency: null | string;
             /**
              * Double
              * Format: double
@@ -1743,7 +1837,14 @@ export interface components {
              * Long
              * Format: int64
              */
-            amountMinor: number;
+            amountMinor?: null | number;
+            /**
+             * Long
+             * Format: int64
+             */
+            originalAmountMinor?: null | number;
+            /** String */
+            originalCurrency?: null | string;
             /**
              * Double
              * Format: double
@@ -1758,6 +1859,20 @@ export interface components {
              * Format: int32
              */
             version?: null | number;
+        };
+        /** FxRateQuote */
+        FxRateQuote: {
+            /** String */
+            from: string;
+            /** String */
+            to: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Double
+             * Format: double
+             */
+            rate: null | number;
         };
         /** Valuation */
         Valuation: {
@@ -4540,6 +4655,65 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getAssetSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetSummary"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getFxRate: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                date: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FxRateQuote"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
             };
         };
     };

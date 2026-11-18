@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useDeleteAsset, useMembers, useSaveAsset } from "../api/hooks";
+import { useAccounts, useAssets, useDeleteAsset, useMembers, useSaveAsset } from "../api/hooks";
 import type { Asset, AssetKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
-import { isMarketKind, KINDS } from "./holdings";
+import { isMarketKind, isTrackableKind, KINDS } from "./holdings";
 import { SecurityPicker, type PickedSecurity } from "./SecurityPicker";
 
 // symbol errors show under the form: the picker is no single control a Field could label.
-const FIELDS = ["name", "kind", "ownerUserId", "notes"];
+const FIELDS = ["name", "kind", "ownerUserId", "accountId", "notes"];
 
 /** The kind a security's type suggests ("ETF", "Equity", …), when it suggests one. */
 function kindFor(type: string | undefined): AssetKind | null {
@@ -37,6 +37,8 @@ export function HoldingForm({
 }) {
   const household = useHousehold();
   const members = useMembers(household.id).data ?? [];
+  const accounts = useAccounts(household.id).data ?? [];
+  const existingAssets = useAssets(household.id).data ?? [];
   const save = useSaveAsset(household.id);
   const remove = useDeleteAsset(household.id);
   const confirm = useConfirm();
@@ -44,15 +46,24 @@ export function HoldingForm({
   const [name, setName] = useState(asset?.name ?? "");
   const [kind, setKind] = useState<AssetKind>(asset?.kind ?? "fund");
   const [ownerUserId, setOwnerUserId] = useState(asset?.ownerUserId ?? "");
+  const [accountId, setAccountId] = useState(asset?.accountId ?? "");
   const [notes, setNotes] = useState(asset?.notes ?? "");
   const [security, setSecurity] = useState<PickedSecurity | null>(asset?.security ?? null);
 
   const market = isMarketKind(kind);
+  const trackable = isTrackableKind(kind);
+  const trackedByOther = new Set(
+    existingAssets.filter((a) => a.id !== asset?.id && a.accountId !== null).map((a) => a.accountId as string),
+  );
+  const accountOptions = accounts.filter(
+    (a) => (a.status === "active" || a.id === accountId) && !trackedByOther.has(a.id),
+  );
 
-  /** Only market kinds follow a security: switching away drops it. */
+  /** Only market kinds follow a security and only trackable kinds link to an account: switching away drops them. */
   function changeKind(next: AssetKind) {
     setKind(next);
     if (!isMarketKind(next)) setSecurity(null);
+    if (!isTrackableKind(next)) setAccountId("");
   }
 
   function pick(picked: PickedSecurity | null) {
@@ -67,7 +78,15 @@ export function HoldingForm({
     save.mutate(
       {
         id: asset?.id,
-        input: { name, kind, ownerUserId: ownerUserId || null, notes, symbol: security?.symbol ?? null, version: asset?.version },
+        input: {
+          name,
+          kind,
+          ownerUserId: ownerUserId || null,
+          notes,
+          symbol: security?.symbol ?? null,
+          accountId: trackable ? accountId || null : null,
+          version: asset?.version,
+        },
       },
       { onSuccess: onSaved },
     );
@@ -102,15 +121,15 @@ export function HoldingForm({
       >
         <Field label="Kind" name="kind" error={save.error}>
           <NativeSelect className="w-full" value={kind} onChange={(e) => changeKind(e.target.value as AssetKind)}>
-            <NativeSelectOptGroup label="Market">
-              {KINDS.filter((k) => k.market).map((k) => (
+            <NativeSelectOptGroup label="Owned">
+              {KINDS.filter((k) => !k.liability).map((k) => (
                 <NativeSelectOption key={k.value} value={k.value}>
                   {k.label}
                 </NativeSelectOption>
               ))}
             </NativeSelectOptGroup>
-            <NativeSelectOptGroup label="Valued by hand">
-              {KINDS.filter((k) => !k.market).map((k) => (
+            <NativeSelectOptGroup label="Owed">
+              {KINDS.filter((k) => k.liability).map((k) => (
                 <NativeSelectOption key={k.value} value={k.value}>
                   {k.label}
                 </NativeSelectOption>
@@ -125,6 +144,23 @@ export function HoldingForm({
             <FieldDescription>
               Pick the fund or stock and record the shares you buy: it's then valued at the latest market close. Leave it
               empty to enter values by hand.
+            </FieldDescription>
+          </div>
+        )}
+        {trackable && accountOptions.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <Field label="Tracked by account" name="accountId" error={save.error}>
+              <NativeSelect className="w-full" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                <NativeSelectOption value="">None (enter values by hand)</NativeSelectOption>
+                {accountOptions.map((a) => (
+                  <NativeSelectOption key={a.id} value={a.id}>
+                    {a.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            <FieldDescription>
+              Reads the balance from this account's bank feeds instead of hand valuations.
             </FieldDescription>
           </div>
         )}

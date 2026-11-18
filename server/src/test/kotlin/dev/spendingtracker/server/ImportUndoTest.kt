@@ -148,6 +148,25 @@ class ImportUndoTest {
     }
 
     @Test
+    fun undoKeepsAnAccountAHandMadeAssetTracks() = apiTest {
+        val alice = newClient().also { it.signup() }
+        val base = "/api/households/${alice.createHousehold().id}"
+        alice.post("$base/import") {
+            setBody(HouseholdImport(currency = "CZK", accounts = listOf(ImportAccount("Card", AccountKind.CREDIT_CARD))))
+        }.body<ImportResult>()
+        val card = alice.get("$base/accounts").body<List<Account>>().single()
+        val debt = alice.post("$base/assets") {
+            setBody(dev.spendingtracker.shared.api.AssetInput("Card debt", AssetKind.CARD_DEBT, accountId = card.id))
+        }.body<Asset>()
+
+        val imp = alice.get("$base/imports").body<List<ImportSummary>>().single()
+        val undo = alice.post("$base/imports/${imp.id}/undo").body<ImportUndoResult>()
+        assertEquals(1, undo.kept.accounts)
+        assertTrue(undo.keptItems.any { it.kind == "account" && it.name == "Card" && it.reason == "Tracked by an asset" })
+        assertEquals(card.id, alice.get("$base/assets").body<List<Asset>>().single { it.id == debt.id }.accountId)
+    }
+
+    @Test
     fun undoKeepsUsedContainersCountsEditedAndUnlinksExternalRows() = apiTest {
         val alice = newClient().also { it.signup() }
         val bob = newClient().also { it.signup("bob@example.com", "Bob") }
