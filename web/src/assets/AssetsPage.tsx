@@ -1,10 +1,11 @@
 import { useState } from "react";
 import {
   useAccounts,
-  useContributions,
-  useFees,
   useAssetHistory,
   useAssets,
+  useAssetSummary,
+  useContributions,
+  useFees,
   useMembers,
   useValuations,
 } from "../api/hooks";
@@ -28,6 +29,7 @@ import {
   formatSigned,
   gainRatio,
   historyEntries,
+  isLiabilityKind,
   kindLabel,
   portfolioTotals,
 } from "./holdings";
@@ -47,9 +49,10 @@ const formatShares = (shares: number) => `${Number(shares.toFixed(6)).toLocaleSt
 
 /** What a holding's figures rest on, for the line under its name. */
 function valuedBy(i: Asset): string {
-  if (i.marketValued && i.security && i.valuedOn) return `${i.security.symbol} · ${formatClose(i.security)} on ${formatDay(i.valuedOn)}`;
+  if (i.valueSource === "market" && i.security && i.valuedOn) return `${i.security.symbol} · ${formatClose(i.security)} on ${formatDay(i.valuedOn)}`;
   if (i.security) return `${i.security.symbol} · no shares recorded`;
-  return i.valuedOn ? `valued ${formatDay(i.valuedOn)}` : "not valued yet";
+  if (i.valueSource === "bank" && i.valuedOn) return `bank balance on ${formatDay(i.valuedOn)}`;
+  return i.valuedOn ? `valued ${formatDay(i.valuedOn)}` : i.accountId ? "waiting for bank balance" : "not valued yet";
 }
 
 type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; asset: Asset } | { mode: "view"; id: string };
@@ -57,14 +60,26 @@ type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; asset: Asse
 export function AssetsPage() {
   const household = useHousehold();
   const assets = useAssets(household.id);
+  const summaryQuery = useAssetSummary(household.id);
   const history = useAssetHistory(household.id);
   const members = useMembers(household.id).data ?? [];
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
   const [flashId, setFlashId] = useState<string | null>(null);
 
   const rows = assets.data ?? [];
+  const owned = rows.filter((i) => !isLiabilityKind(i.kind));
+  const owed = rows.filter((i) => isLiabilityKind(i.kind));
   const totals = portfolioTotals(rows);
-  const ratio = gainRatio(totals);
+  const summary = summaryQuery.data ?? {
+    assetsMinor: totals.valueMinor,
+    liabilitiesMinor: owed.reduce((s, i) => s + i.valueMinor, 0),
+    netMinor: totals.valueMinor + owed.reduce((s, i) => s + i.valueMinor, 0),
+    contributedMinor: totals.contributedMinor,
+    gainMinor: totals.gainMinor,
+    feesMinor: rows.reduce((s, i) => s + i.feesMinor, 0),
+    annualReturn: null,
+  };
+  const ratio = gainRatio(summary);
   const showOwner = members.length > 1;
   const viewing = editor.mode === "view" ? rows.find((i) => i.id === editor.id) : undefined;
   const openAdd = () => setEditor({ mode: "add" });
@@ -83,15 +98,20 @@ export function AssetsPage() {
         <div className="flex flex-col gap-5">
           <Summary
             items={[
-              { label: "Worth", value: <Money currency={currency}>{formatAsset(totals.valueMinor, currency)}</Money> },
-              { label: "Put in", value: <Money currency={currency}>{formatAsset(totals.contributedMinor, currency)}</Money> },
-              {
+              { label: "Owned", value: <Money currency={currency}>{formatAsset(summary.assetsMinor, currency)}</Money> },
+              { label: "Owed", value: <Money currency={currency}>{formatAsset(Math.abs(summary.liabilitiesMinor), currency)}</Money> },
+              { label: "Net", value: <Money currency={currency}>{formatAsset(summary.netMinor, currency)}</Money> },
+              (summary.contributedMinor > 0 || summary.gainMinor !== 0) && {
                 label: `Gain${ratio !== null ? ` · ${formatPercent(ratio)}` : ""}`,
-                value: <Money currency={currency}>{formatSigned(totals.gainMinor, currency)}</Money>,
+                value: <Money currency={currency}>{formatSigned(summary.gainMinor, currency)}</Money>,
               },
-              totals.feesMinor !== 0 && {
-                label: `Fees paid${totals.contributedMinor > 0 ? ` · ${((totals.feesMinor / totals.contributedMinor) * 100).toFixed(1)}% of put in` : ""}`,
-                value: <Money currency={currency}>{formatAsset(totals.feesMinor, currency)}</Money>,
+              summary.annualReturn !== null && {
+                label: "Yearly return (money-weighted)",
+                value: <span className="amount">{formatPercent(summary.annualReturn)}</span>,
+              },
+              summary.feesMinor !== 0 && {
+                label: `Fees paid${summary.contributedMinor > 0 ? ` · ${((summary.feesMinor / summary.contributedMinor) * 100).toFixed(1)}% of put in` : ""}`,
+                value: <Money currency={currency}>{formatAsset(summary.feesMinor, currency)}</Money>,
               },
             ]}
           />
@@ -99,37 +119,98 @@ export function AssetsPage() {
         </div>
       )}
 
-      <Surface>
-        <ErrorText error={assets.error} className="p-4" />
-        {assets.isPending && <SkeletonRows />}
-        {assets.data && rows.length === 0 && (
-          <EmptyState
-            title="No assets yet"
-            action={
-              <Button onClick={openAdd}>
-                <PlusIcon /> Add asset
-              </Button>
-            }
-          >
-            Add a fund, savings, a car or anything else you own, then record what you put in and what it's worth now and then.
-          </EmptyState>
-        )}
-        {rows.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Asset</TableHead>
-                {showOwner && <TableHead className="max-md:hidden">Held by</TableHead>}
-                <TableHead className="text-right max-md:hidden">Put in</TableHead>
-                <TableHead className="text-right">Worth ({currency})</TableHead>
-                <TableHead className="text-right max-md:hidden">Gain</TableHead>
-                <TableHead className="text-right">%</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((i) => {
-                const r = gainRatio(i);
-                return (
+      {(assets.isPending || assets.error || rows.length === 0 || owned.length > 0) && (
+        <Surface>
+          <ErrorText error={assets.error} className="p-4" />
+          {assets.isPending && <SkeletonRows />}
+          {assets.data && rows.length === 0 && (
+            <EmptyState
+              title="No assets yet"
+              action={
+                <Button onClick={openAdd}>
+                  <PlusIcon /> Add asset
+                </Button>
+              }
+            >
+              Add a fund, savings, a car or a loan, then record what you put in and what it's worth now and then.
+            </EmptyState>
+          )}
+          {owned.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Asset</TableHead>
+                  {showOwner && <TableHead className="max-md:hidden">Held by</TableHead>}
+                  <TableHead className="text-right max-md:hidden">Put in</TableHead>
+                  <TableHead className="text-right">Worth ({currency})</TableHead>
+                  <TableHead className="text-right max-md:hidden">Gain</TableHead>
+                  <TableHead className="text-right">%</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {owned.map((i) => {
+                  const r = gainRatio(i);
+                  return (
+                    <TableRow
+                      key={i.id}
+                      className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
+                      onClick={() => setEditor({ mode: "view", id: i.id })}
+                      onAnimationEnd={() => setFlashId(null)}
+                    >
+                      <TableCell className="whitespace-normal">
+                        <button
+                          className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditor({ mode: "view", id: i.id });
+                          }}
+                        >
+                          {i.name}
+                        </button>
+                        <div className="text-xs text-muted-foreground">
+                          {kindLabel(i.kind)} · {valuedBy(i)}
+                        </div>
+                      </TableCell>
+                      {showOwner && (
+                        <TableCell className="text-muted-foreground max-md:hidden">
+                          {members.find((m) => m.userId === i.ownerUserId)?.displayName ?? "Shared"}
+                        </TableCell>
+                      )}
+                      <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>
+                      <TableCell className="amount text-right">{formatAsset(i.valueMinor, currency)}</TableCell>
+                      <TableCell className="amount text-right max-md:hidden">{formatSigned(i.gainMinor, currency)}</TableCell>
+                      <TableCell className="amount text-right">
+                        <div>{r === null ? "–" : formatPercent(r)}</div>
+                        {i.annualReturn !== null && (
+                          <div className="text-xs text-muted-foreground" title="Yearly return (money-weighted)">
+                            {formatPercent(i.annualReturn)}/yr
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </Surface>
+      )}
+
+      {owed.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">Liabilities</h2>
+          <Surface>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Liability</TableHead>
+                  {showOwner && <TableHead className="max-md:hidden">Held by</TableHead>}
+                  <TableHead className="text-right max-md:hidden">Repaid</TableHead>
+                  <TableHead className="text-right">Owed ({currency})</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {owed.map((i) => (
                   <TableRow
                     key={i.id}
                     className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
@@ -156,16 +237,14 @@ export function AssetsPage() {
                       </TableCell>
                     )}
                     <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>
-                    <TableCell className="amount text-right">{formatAsset(i.valueMinor, currency)}</TableCell>
-                    <TableCell className="amount text-right max-md:hidden">{formatSigned(i.gainMinor, currency)}</TableCell>
-                    <TableCell className="amount text-right">{r === null ? "–" : formatPercent(r)}</TableCell>
+                    <TableCell className="amount text-right">{formatAsset(-i.valueMinor, currency)}</TableCell>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </Surface>
+                ))}
+              </TableBody>
+            </Table>
+          </Surface>
+        </div>
+      )}
 
       <Sheet
         open={editor.mode === "add" || editor.mode === "edit"}
@@ -206,7 +285,8 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
   const [panel, setPanel] = useState<"history" | "fees">("history");
   const hasFees = (fees.data?.length ?? 0) > 0;
   const showingFees = hasFees && panel === "fees";
-  const ratio = gainRatio(asset);
+  const isLiability = isLiabilityKind(asset.kind);
+  const ratio = isLiability ? null : gainRatio(asset);
   const history = historyEntries(contributions.data ?? [], valuations.data ?? [], fees.data ?? []);
 
   return (
@@ -221,19 +301,27 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
         {/* The figures, then the history in full; while an entry is open, the figures and the form. */}
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
           <div className="col-span-2 flex flex-col gap-1">
-            <dt className="text-sm text-muted-foreground">Worth</dt>
+            <dt className="text-sm text-muted-foreground">{isLiability ? "Owed" : "Worth"}</dt>
             <dd className="text-2xl font-medium">
-              <Money currency={currency}>{formatAsset(asset.valueMinor, currency)}</Money>
+              <Money currency={currency}>{formatAsset(isLiability ? -asset.valueMinor : asset.valueMinor, currency)}</Money>
             </dd>
           </div>
           <div className="flex flex-col gap-1">
-            <dt className="text-sm text-muted-foreground">Put in</dt>
+            <dt className="text-sm text-muted-foreground">{isLiability ? "Repaid" : "Put in"}</dt>
             <dd className="amount">{formatAsset(asset.contributedMinor, currency)}</dd>
           </div>
-          <div className="flex flex-col gap-1">
-            <dt className="text-sm text-muted-foreground">Gain{ratio !== null && ` · ${formatPercent(ratio)}`}</dt>
-            <dd className="amount">{formatSigned(asset.gainMinor, currency)}</dd>
-          </div>
+          {!isLiability && (
+            <div className="flex flex-col gap-1">
+              <dt className="text-sm text-muted-foreground">Gain{ratio !== null && ` · ${formatPercent(ratio)}`}</dt>
+              <dd className="amount">{formatSigned(asset.gainMinor, currency)}</dd>
+            </div>
+          )}
+          {!isLiability && asset.annualReturn !== null && (
+            <div className="flex flex-col gap-1">
+              <dt className="text-sm text-muted-foreground">Yearly return (money-weighted)</dt>
+              <dd className="amount">{formatPercent(asset.annualReturn)}</dd>
+            </div>
+          )}
           {asset.feesMinor !== 0 && (
             <div className="flex flex-col gap-1">
               <dt className="text-sm text-muted-foreground">Fees paid</dt>
@@ -321,6 +409,8 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
                       <span className={cn("block", muted && "text-muted-foreground")}>{label}</span>
                       <span className="block text-xs text-muted-foreground">
                         {formatDay(h.date)}
+                        {h.type === "contribution" && h.contribution.originalAmountMinor !== null && h.contribution.originalCurrency !== null &&
+                          ` · ${formatAsset(h.contribution.originalAmountMinor, h.contribution.originalCurrency)} ${h.contribution.originalCurrency}`}
                         {h.type === "contribution" && h.contribution.quantity !== null && ` · ${formatShares(Math.abs(h.contribution.quantity))}`}
                         {account && ` · ${account}`}
                         {item.notes && ` · ${item.notes}`}
@@ -411,10 +501,14 @@ function FeeBreakdown({
 }
 
 function valuationNote(i: Asset): string {
-  if (i.marketValued && i.security && i.shares !== null && i.valuedOn) {
+  if (i.valueSource === "market" && i.security && i.shares !== null && i.valuedOn) {
     return `${formatShares(i.shares)} of ${i.security.name} at ${formatClose(i.security)}, the close on ${formatDay(i.valuedOn)}, converted at the ČNB rate. Anything put in without shares counts at cost.`;
   }
   if (i.security) return `Follows ${i.security.symbol}. Add the shares to its contributions to value it at the market.`;
+  if (i.valueSource === "bank" && i.valuedOn) {
+    return `Valued from the linked account's bank feed balances as of ${formatDay(i.valuedOn)}, converted at the ČNB rate.`;
+  }
+  if (i.accountId) return "Linked to an account, waiting for a bank balance reading. Hand valuations fill in until one arrives.";
   if (i.valuedOn) return `Last valued ${formatDay(i.valuedOn)}; anything put in since counts at cost.`;
   return "Not valued yet, so it's worth what went in. Update the value to see growth.";
 }

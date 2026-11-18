@@ -4,6 +4,7 @@ import {
   useDeleteContribution,
   useDeleteFee,
   useDeleteValuation,
+  useFxRate,
   useSaveContribution,
   useSaveFee,
   useSaveValuation,
@@ -11,7 +12,8 @@ import {
 import type { Contribution, Fee, SecurityQuote, Valuation } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { todayIso } from "../lib/dates";
-import { parseMoney, toInputValue } from "../lib/money";
+import { fractionDigits, parseMoney, toInputValue } from "../lib/money";
+import { formatAsset } from "./holdings";
 import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError } from "../ui";
 import { Button } from "@/components/ui/button";
@@ -83,9 +85,24 @@ export function EntryForm({
   const amountRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
 
+  const foreignCurrency =
+    isContribution && security?.currency && security.currency !== household.currency ? security.currency : null;
+  const existingContribution = target.type === "contribution" ? target.contribution : undefined;
+  const initialCurrency = existingContribution
+    ? (existingContribution.originalCurrency ?? household.currency)
+    : (foreignCurrency ?? household.currency);
+  const [entryCurrency, setEntryCurrency] = useState(initialCurrency);
+  const isForeign = isContribution && entryCurrency !== household.currency;
+
   const initialAmount =
-    target.type === "valuation" ? target.valuation?.valueMinor : target.type === "fee" ? target.fee?.amountMinor : target.contribution?.amountMinor;
-  const [amount, setAmount] = useState(initialAmount === undefined ? "" : toInputValue(initialAmount, household.currency));
+    target.type === "valuation"
+      ? target.valuation?.valueMinor
+      : target.type === "fee"
+        ? target.fee?.amountMinor
+        : isForeign
+          ? existingContribution?.originalAmountMinor ?? undefined
+          : existingContribution?.amountMinor;
+  const [amount, setAmount] = useState(initialAmount === undefined ? "" : toInputValue(initialAmount, entryCurrency));
   const [date, setDate] = useState(existing?.date ?? todayIso());
   const [accountId, setAccountId] = useState(target.type === "contribution" ? (target.contribution?.accountId ?? "") : "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
@@ -94,10 +111,20 @@ export function EntryForm({
   const [sharesError, setSharesError] = useState<string | null>(null);
   const [amountError, setAmountError] = useState<string | null>(null);
   const accountOptions = accounts.filter((a) => a.status === "active" || a.id === accountId);
+  const fx = useFxRate(isForeign ? entryCurrency : undefined, household.currency, date);
+  const parsedOriginal = isForeign ? parseMoney(amount, entryCurrency) : null;
+  const liveConvertedMinor =
+    parsedOriginal !== null && fx.data?.rate != null
+      ? Math.round(
+          (parsedOriginal / 10 ** fractionDigits(entryCurrency)) *
+            fx.data.rate *
+            10 ** fractionDigits(household.currency),
+        )
+      : null;
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    const minor = parseMoney(amount, household.currency);
+    const minor = parseMoney(amount, entryCurrency);
     if (minor === null || kind.invalid(minor)) {
       setAmountError(kind.hint);
       amountRef.current?.focus();
@@ -121,6 +148,23 @@ export function EntryForm({
       saveValuation.mutate({ id, input: { date, valueMinor: minor, notes, version } }, { onSuccess: onDone });
     } else if (target.type === "fee") {
       saveFee.mutate({ id, input: { date, amountMinor: minor, notes, version } }, { onSuccess: onDone });
+    } else if (isForeign) {
+      saveContribution.mutate(
+        {
+          id,
+          input: {
+            date,
+            amountMinor: null,
+            originalAmountMinor: minor,
+            originalCurrency: entryCurrency,
+            quantity,
+            accountId: accountId || null,
+            notes,
+            version,
+          },
+        },
+        { onSuccess: onDone },
+      );
     } else {
       saveContribution.mutate(
         { id, input: { date, amountMinor: minor, quantity, accountId: accountId || null, notes, version } },
@@ -141,7 +185,7 @@ export function EntryForm({
     <form onSubmit={submit} className="flex flex-col gap-4 rounded-lg border p-4" aria-label={title}>
       <h3 className="font-medium">{title}</h3>
       <div className="grid grid-cols-2 gap-3">
-        <Field label={`${kind.amountLabel} (${household.currency})`} name={kind.amountField} error={save.error} hint={amountError}>
+        <Field label={`${kind.amountLabel} (${entryCurrency})`} name={kind.amountField} error={save.error} hint={amountError}>
           <Input
             ref={amountRef}
             autoFocus
@@ -158,6 +202,26 @@ export function EntryForm({
           <Input type="date" required className="h-11" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
       </div>
+      {foreignCurrency && (
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+          <NativeSelect
+            size="sm"
+            aria-label="Currency"
+            value={entryCurrency}
+            onChange={(e) => setEntryCurrency(e.target.value)}
+          >
+            <NativeSelectOption value={foreignCurrency}>{foreignCurrency}</NativeSelectOption>
+            <NativeSelectOption value={household.currency}>{household.currency}</NativeSelectOption>
+          </NativeSelect>
+          {isForeign && (
+            <span className="amount">
+              {liveConvertedMinor !== null
+                ? `≈ ${formatAsset(liveConvertedMinor, household.currency)} ${household.currency} (ČNB ${fx.data?.rate?.toFixed(2)})`
+                : "Converted at ČNB fixing on save"}
+            </span>
+          )}
+        </div>
+      )}
       {isContribution && security && (
         <Field label={`Shares of ${security.symbol}`} name="quantity" error={save.error} hint={sharesError}>
           <Input

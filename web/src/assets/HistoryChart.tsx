@@ -44,10 +44,15 @@ export function HistoryChart({ points, currency, height = 160 }: { points: Histo
   if (points.length < 2) return null;
   const first = day(points[0].date);
   const span = Math.max(1, day(points[points.length - 1].date) - first);
-  const max = niceMax(Math.max(...points.flatMap((p) => [p.valueMinor, p.contributedMinor])));
+  const allValues = points.flatMap((p) => [p.valueMinor, p.contributedMinor]);
+  const rawMax = Math.max(0, ...allValues);
+  const rawMin = Math.min(0, ...allValues);
+  const max = niceMax(rawMax);
+  const min = rawMin < 0 ? -niceMax(-rawMin) : 0;
+  const valueSpan = Math.max(1, max - min);
   const plotWidth = Math.max(0, width - PAD.left - PAD.right);
   const x = (p: HistoryPoint) => PAD.left + ((day(p.date) - first) / span) * plotWidth;
-  const y = (minor: number) => PAD.top + (1 - Math.max(0, minor) / max) * (HEIGHT - PAD.top - PAD.bottom);
+  const y = (minor: number) => PAD.top + (1 - (minor - min) / valueSpan) * (HEIGHT - PAD.top - PAD.bottom);
   const path = (pick: (p: HistoryPoint) => number) =>
     points.map((p, i) => `${i === 0 ? "M" : "L"}${x(p).toFixed(1)},${y(pick(p)).toFixed(1)}`).join("");
   // About one tick per 120px, always including the first and last point.

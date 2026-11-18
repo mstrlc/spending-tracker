@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useAccounts, useDeleteAccount, useMembers, useSaveAccount } from "../api/hooks";
+import { useAccounts, useAssets, useDeleteAccount, useMembers, useSaveAccount } from "../api/hooks";
 import type { Account, AccountInput, AccountKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
@@ -27,6 +27,7 @@ const formatIban = (iban: string) => iban.replace(/(.{4})/g, "$1 ").trim();
 export function AccountsPage() {
   const household = useHousehold();
   const accounts = useAccounts(household.id);
+  const assets = useAssets(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
   const save = useSaveAccount(household.id);
   const remove = useDeleteAccount(household.id);
@@ -160,6 +161,10 @@ export function AccountsPage() {
                       {a.status === "closed" && <Badge variant="secondary">Closed</Badge>}
                     </span>
                     {a.iban && <div className="amount text-xs font-normal text-muted-foreground">{formatIban(a.iban)}</div>}
+                    {(() => {
+                      const fed = assets.find((asset) => asset.accountId === a.id);
+                      return fed ? <div className="text-xs font-normal text-muted-foreground">Feeds {fed.name}</div> : null;
+                    })()}
                     <div className="text-xs font-normal text-muted-foreground md:hidden">
                       {kindLabel(a.kind)} · {ownerName(a)}
                     </div>

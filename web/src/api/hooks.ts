@@ -47,6 +47,7 @@ export const keys = {
   valuations: (id: string, assetId: string) => ["households", id, "assets", assetId, "valuations"] as const,
   fees: (id: string, assetId: string) => ["households", id, "assets", assetId, "fees"] as const,
   assetHistory: (id: string, assetId?: string) => ["households", id, "assets", "history", assetId ?? "all"] as const,
+  assetSummary: (id: string) => ["households", id, "assets", "summary"] as const,
   securitySearch: (query: string) => ["securities", query] as const,
   activity: (id: string, entity?: ActivityEntity) => ["households", id, "activity", entity ?? "all"] as const,
   overview: (id: string, month: string) => ["households", id, "overview", month] as const,
@@ -681,6 +682,14 @@ export function useDeleteAsset(householdId: string) {
   });
 }
 
+export function useAssetSummary(householdId: string) {
+  return useQuery({
+    queryKey: keys.assetSummary(householdId),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/households/{householdId}/assets/summary", { params: { path: { householdId } } })),
+  });
+}
+
 /** Put in and worth at each month end, then today: all holdings, or only [assetId]. */
 export function useAssetHistory(householdId: string, assetId?: string) {
   return useQuery({
@@ -701,6 +710,17 @@ export function useSecuritySearch(query: string) {
     queryFn: async () => unwrap(await api.GET("/api/securities/search", { params: { query: { q: query } } })),
     enabled: query.length >= 2,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** ČNB exchange rate for 1 unit of [from] in [to] on or before [date]. */
+export function useFxRate(from: string | undefined, to: string, date: string) {
+  return useQuery({
+    queryKey: ["fx", from, to, date] as const,
+    queryFn: async () =>
+      unwrap(await api.GET("/api/securities/fx", { params: { query: { from: from ?? to, to, date } } })),
+    enabled: Boolean(from && from !== to && date),
+    staleTime: 60 * 60_000,
   });
 }
 

@@ -49,7 +49,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 
-private class FakeBankData : BankData {
+internal class FakeBankData : BankData {
     var listings = listOf(BankListing("AIRBANK_CZ", "Air Bank", null, 730, 90))
     var linkState = LinkState.PENDING
     var accountIds = listOf("ext-acc-1")
