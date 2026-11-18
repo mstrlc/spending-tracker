@@ -39,6 +39,7 @@ import dev.spendingtracker.shared.api.AssetSummary
 import dev.spendingtracker.shared.api.SecurityQuote
 import dev.spendingtracker.shared.api.Valuation
 import dev.spendingtracker.shared.api.ValuationInput
+import dev.spendingtracker.shared.api.ValueSource
 import io.github.smiley4.ktoropenapi.delete
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
