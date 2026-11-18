@@ -23,6 +23,8 @@ import { useBankFeeds, useCreateHousehold, useHouseholds, useLogout, useMe } fro
 import type { Household } from "../api/types";
 import { AuthShell } from "../auth/AuthShell";
 import { ErrorText, Field, FormError, Loading, SheetSlot } from "../ui";
+import { UndoFlusher } from "../undo";
+import { Toaster } from "@/components/ui/sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -156,6 +158,8 @@ export function HouseholdLayout() {
           </div>
         </SidebarInset>
       </SidebarProvider>
+      <UndoFlusher />
+      <Toaster />
     </HouseholdContext.Provider>
   );
 }

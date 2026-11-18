@@ -5,8 +5,8 @@ import { useCategories, useDeleteCategory, useSaveCategory } from "../api/hooks"
 import type { Category, CategoryInput, CategoryKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
-import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
+import { usePendingDeleteIds, useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -16,39 +16,41 @@ import { categoryTree } from "./tree";
 export function CategoriesPage() {
   const household = useHousehold();
   const categories = useCategories(household.id);
-  const save = useSaveCategory(household.id);
-  const remove = useDeleteCategory(household.id);
+  const saveCategory = useSaveCategory(household.id);
+  const deleteCategory = useDeleteCategory(household.id);
+  const save = useUndoableSave("Category", saveCategory, deleteCategory);
+  const remove = useUndoableDelete("Category", deleteCategory);
+  const pendingDeletes = usePendingDeleteIds();
   const [name, setName] = useState("");
   const [parentId, setParentId] = useState("");
   const [kind, setKind] = useState<CategoryKind>("consumption");
   const [renaming, setRenaming] = useState<string | null>(null);
-  const confirm = useConfirm();
 
-  const tree = categoryTree(categories.data ?? []);
+  const tree = categoryTree((categories.data ?? []).filter((c) => !pendingDeletes.has(c.id)));
 
   function add(e: FormEvent) {
     e.preventDefault();
     save.mutate({ input: { name, parentId: parentId || null, kind } }, { onSuccess: () => setName("") });
   }
 
-  const update = (category: Category, changes: Partial<CategoryInput>) =>
+  const update = (category: Category, changes: Partial<CategoryInput>) => {
+    const previous: CategoryInput = {
+      name: category.name,
+      parentId: category.parentId,
+      kind: category.kind,
+      archived: category.archived,
+      sortOrder: category.sortOrder,
+      version: category.version,
+    };
     save.mutate({
       id: category.id,
-      input: {
-        name: category.name,
-        parentId: category.parentId,
-        kind: category.kind,
-        archived: category.archived,
-        sortOrder: category.sortOrder,
-        version: category.version,
-        ...changes,
-      },
+      input: { ...previous, ...changes },
+      previous,
     });
+  };
 
-  async function confirmDelete(category: Category) {
-    if (await confirm({ title: `Delete ${category.name}?`, description: "Only a category nothing uses can be deleted; archive it to keep its history." })) {
-      remove.mutate({ id: category.id, version: category.version });
-    }
+  function deleteRow(category: Category) {
+    remove.schedule({ id: category.id, version: category.version });
   }
 
   const row = (category: Category, isChild: boolean) => (
@@ -76,7 +78,7 @@ export function CategoriesPage() {
         actions={[
           { label: "Rename", onSelect: () => setRenaming(category.id) },
           { label: category.archived ? "Unarchive" : "Archive", onSelect: () => update(category, { archived: !category.archived }) },
-          { label: "Delete", destructive: true, onSelect: () => confirmDelete(category) },
+          { label: "Delete", destructive: true, onSelect: () => deleteRow(category) },
         ]}
       />
     </li>

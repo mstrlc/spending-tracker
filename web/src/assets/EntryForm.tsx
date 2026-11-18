@@ -9,13 +9,13 @@ import {
   useSaveFee,
   useSaveValuation,
 } from "../api/hooks";
-import type { Contribution, Fee, SecurityQuote, Valuation } from "../api/types";
+import type { Contribution, ContributionInput, Fee, FeeInput, SecurityQuote, Valuation, ValuationInput } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { todayIso } from "../lib/dates";
 import { fractionDigits, parseMoney, toInputValue } from "../lib/money";
 import { formatAsset } from "./holdings";
-import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError } from "../ui";
+import { useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -80,19 +80,25 @@ export function EntryForm({
 }) {
   const household = useHousehold();
   const accounts = useAccounts(household.id).data ?? [];
-  const saveContribution = useSaveContribution(household.id, assetId);
-  const saveValuation = useSaveValuation(household.id, assetId);
-  const saveFee = useSaveFee(household.id, assetId);
-  const deleteContribution = useDeleteContribution(household.id, assetId);
-  const deleteValuation = useDeleteValuation(household.id, assetId);
-  const deleteFee = useDeleteFee(household.id, assetId);
+  const saveContributionMut = useSaveContribution(household.id, assetId);
+  const saveValuationMut = useSaveValuation(household.id, assetId);
+  const saveFeeMut = useSaveFee(household.id, assetId);
+  const deleteContributionMut = useDeleteContribution(household.id, assetId);
+  const deleteValuationMut = useDeleteValuation(household.id, assetId);
+  const deleteFeeMut = useDeleteFee(household.id, assetId);
   const kind = entryKind(target.type, isLiability);
+  const label = kind.noun.charAt(0).toUpperCase() + kind.noun.slice(1);
+  const saveContribution = useUndoableSave(label, saveContributionMut, deleteContributionMut);
+  const saveValuation = useUndoableSave(label, saveValuationMut, deleteValuationMut);
+  const saveFee = useUndoableSave(label, saveFeeMut, deleteFeeMut);
+  const deleteContribution = useUndoableDelete(label, deleteContributionMut);
+  const deleteValuation = useUndoableDelete(label, deleteValuationMut);
+  const deleteFee = useUndoableDelete(label, deleteFeeMut);
   const existing = target.type === "valuation" ? target.valuation : target.type === "fee" ? target.fee : target.contribution;
   const save = { contribution: saveContribution, valuation: saveValuation, fee: saveFee }[target.type];
   const remove = { contribution: deleteContribution, valuation: deleteValuation, fee: deleteFee }[target.type];
   const isContribution = target.type === "contribution";
   const amountRef = useRef<HTMLInputElement>(null);
-  const confirm = useConfirm();
 
   const foreignCurrency =
     isContribution && security?.currency && security.currency !== household.currency ? security.currency : null;
@@ -154,39 +160,60 @@ export function EntryForm({
     const id = existing?.id;
     const version = existing?.version;
     if (target.type === "valuation") {
-      saveValuation.mutate({ id, input: { date, valueMinor: minor, notes, version } }, { onSuccess: onDone });
+      const previous: ValuationInput | undefined = target.valuation
+        ? { date: target.valuation.date, valueMinor: target.valuation.valueMinor, notes: target.valuation.notes, version: target.valuation.version }
+        : undefined;
+      saveValuation.mutate({ id, input: { date, valueMinor: minor, notes, version }, previous }, { onSuccess: onDone });
     } else if (target.type === "fee") {
-      saveFee.mutate({ id, input: { date, amountMinor: minor, notes, version } }, { onSuccess: onDone });
-    } else if (isForeign) {
-      saveContribution.mutate(
-        {
-          id,
-          input: {
-            date,
-            amountMinor: null,
-            originalAmountMinor: minor,
-            originalCurrency: entryCurrency,
-            quantity,
-            accountId: accountId || null,
-            notes,
-            version,
-          },
-        },
-        { onSuccess: onDone },
-      );
+      const previous: FeeInput | undefined = target.fee
+        ? { date: target.fee.date, amountMinor: target.fee.amountMinor, notes: target.fee.notes, version: target.fee.version }
+        : undefined;
+      saveFee.mutate({ id, input: { date, amountMinor: minor, notes, version }, previous }, { onSuccess: onDone });
     } else {
-      saveContribution.mutate(
-        { id, input: { date, amountMinor: minor, quantity, accountId: accountId || null, notes, version } },
-        { onSuccess: onDone },
-      );
+      const prevC = target.contribution;
+      const previous: ContributionInput | undefined = prevC
+        ? {
+            date: prevC.date,
+            amountMinor: prevC.originalCurrency ? null : prevC.amountMinor,
+            originalAmountMinor: prevC.originalAmountMinor,
+            originalCurrency: prevC.originalCurrency,
+            quantity: prevC.quantity,
+            accountId: prevC.accountId,
+            notes: prevC.notes,
+            version: prevC.version,
+          }
+        : undefined;
+      if (isForeign) {
+        saveContribution.mutate(
+          {
+            id,
+            input: {
+              date,
+              amountMinor: null,
+              originalAmountMinor: minor,
+              originalCurrency: entryCurrency,
+              quantity,
+              accountId: accountId || null,
+              notes,
+              version,
+            },
+            previous,
+          },
+          { onSuccess: onDone },
+        );
+      } else {
+        saveContribution.mutate(
+          { id, input: { date, amountMinor: minor, quantity, accountId: accountId || null, notes, version }, previous },
+          { onSuccess: onDone },
+        );
+      }
     }
   }
 
-  async function confirmDelete() {
+  function handleDelete() {
     if (!existing) return;
-    if (await confirm({ title: `Delete this ${kind.noun}?`, description: "This can't be undone." })) {
-      remove.mutate({ id: existing.id, version: existing.version }, { onSuccess: onDone });
-    }
+    remove.schedule({ id: existing.id, version: existing.version });
+    onDone();
   }
 
   const title = existing ? `Edit ${kind.noun}` : kind.add;
@@ -262,7 +289,7 @@ export function EntryForm({
       <ErrorText error={remove.error} />
       <div className="flex items-center gap-2">
         {existing && (
-          <Button type="button" variant="ghost" className="text-destructive" onClick={confirmDelete} disabled={remove.isPending}>
+          <Button type="button" variant="ghost" className="text-destructive" onClick={handleDelete} disabled={remove.isPending}>
             Delete
           </Button>
         )}

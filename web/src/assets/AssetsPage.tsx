@@ -15,6 +15,7 @@ import { useHousehold } from "../households/HouseholdPages";
 import { PlusIcon } from "lucide-react";
 import { formatDay } from "../lib/dates";
 import { EmptyState, ErrorText, Money, PageHeader, Sheet, SheetBody, SkeletonRows, Summary, Surface } from "../ui";
+import { usePendingDeleteIds } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -73,7 +74,8 @@ export function AssetsPage() {
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
   const [flashId, setFlashId] = useState<string | null>(null);
 
-  const rows = assets.data ?? [];
+  const pendingDeletes = usePendingDeleteIds();
+  const rows = (assets.data ?? []).filter((a) => !pendingDeletes.has(a.id));
   const owned = rows.filter((i) => !isLiabilityKind(i.kind));
   const owed = rows.filter((i) => isLiabilityKind(i.kind));
   const totals = portfolioTotals(rows);
@@ -302,11 +304,15 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
   // A holding with nothing in it yet starts on its first contribution.
   const [entry, setEntry] = useState<EntryTarget | null>(asset.contributedMinor === 0 ? { type: "contribution" } : null);
   const [panel, setPanel] = useState<"history" | "fees">("history");
-  const hasFees = (fees.data?.length ?? 0) > 0;
+  const pendingDeletes = usePendingDeleteIds();
+  const visibleContributions = (contributions.data ?? []).filter((c) => !pendingDeletes.has(c.id));
+  const visibleValuations = (valuations.data ?? []).filter((v) => !pendingDeletes.has(v.id));
+  const visibleFees = (fees.data ?? []).filter((f) => !pendingDeletes.has(f.id));
+  const hasFees = visibleFees.length > 0;
   const showingFees = hasFees && panel === "fees";
   const isLiability = isLiabilityKind(asset.kind);
   const ratio = isLiability ? null : gainRatio(asset);
-  const history = historyEntries(contributions.data ?? [], valuations.data ?? [], fees.data ?? []);
+  const history = historyEntries(visibleContributions, visibleValuations, visibleFees);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -397,7 +403,7 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
           )}
           <ErrorText error={contributions.error ?? valuations.error ?? fees.error} />
           {showingFees && (
-            <FeeBreakdown fees={fees.data ?? []} points={timeline.data?.points ?? []} asset={asset} currency={currency} />
+            <FeeBreakdown fees={visibleFees} points={timeline.data?.points ?? []} asset={asset} currency={currency} />
           )}
           {!showingFees && history.length === 0 && !contributions.isPending && (
             <p className="text-sm text-muted-foreground">Nothing recorded yet.</p>

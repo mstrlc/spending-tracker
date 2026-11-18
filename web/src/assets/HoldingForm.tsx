@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { useAccounts, useAssets, useDeleteAsset, useMembers, useSaveAsset } from "../api/hooks";
-import type { Asset, AssetKind } from "../api/types";
+import type { Asset, AssetInput, AssetKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
+import { useUndoableDelete, useUndoableSave } from "../undo";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
 import { FieldDescription } from "@/components/ui/field";
@@ -23,6 +24,18 @@ function kindFor(type: string | undefined): AssetKind | null {
   return null;
 }
 
+function assetToInput(a: Asset): AssetInput {
+  return {
+    name: a.name,
+    kind: a.kind,
+    ownerUserId: a.ownerUserId,
+    notes: a.notes,
+    symbol: a.security?.symbol ?? null,
+    accountId: a.accountId,
+    version: a.version,
+  };
+}
+
 /** Adds an asset or edits [asset]. [onSaved] gets the saved asset; [onDeleted] runs after a delete. */
 export function HoldingForm({
   asset,
@@ -39,8 +52,10 @@ export function HoldingForm({
   const members = useMembers(household.id).data ?? [];
   const accounts = useAccounts(household.id).data ?? [];
   const existingAssets = useAssets(household.id).data ?? [];
-  const save = useSaveAsset(household.id);
-  const remove = useDeleteAsset(household.id);
+  const saveAsset = useSaveAsset(household.id);
+  const deleteAsset = useDeleteAsset(household.id);
+  const save = useUndoableSave("Asset", saveAsset, deleteAsset);
+  const remove = useUndoableDelete("Asset", deleteAsset);
   const confirm = useConfirm();
 
   const [name, setName] = useState(asset?.name ?? "");
@@ -87,6 +102,7 @@ export function HoldingForm({
           accountId: trackable ? accountId || null : null,
           version: asset?.version,
         },
+        previous: asset ? assetToInput(asset) : undefined,
       },
       { onSuccess: onSaved },
     );
@@ -95,7 +111,8 @@ export function HoldingForm({
   async function confirmDelete() {
     if (!asset) return;
     if (await confirm({ title: `Delete ${asset.name}?`, description: "All its contributions, values and fees go with it." })) {
-      remove.mutate({ id: asset.id, version: asset.version }, { onSuccess: onDeleted });
+      remove.schedule({ id: asset.id, version: asset.version });
+      onDeleted?.();
     }
   }
 

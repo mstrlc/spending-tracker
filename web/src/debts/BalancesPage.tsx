@@ -10,6 +10,7 @@ import { currentMonth, formatDate, formatDay, formatMonth, todayIso } from "../l
 import { formatAmount } from "../lib/money";
 import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { EmptyState, ErrorText, Money, PageHeader, PageIntro, Sheet, SkeletonRows, Summary, Surface } from "../ui";
+import { usePendingDeleteIds } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SettlementForm } from "./SettlementForm";
@@ -45,9 +46,10 @@ export function BalancesPage() {
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
   const close = () => setEditor({ mode: "closed" });
 
+  const pendingDeletes = usePendingDeleteIds();
   const people = members.data ?? [];
   const owed = balances.data?.balances ?? [];
-  const entries = balances.data?.entries ?? [];
+  const entries = (balances.data?.entries ?? []).filter((e) => !pendingDeletes.has(e.id));
   const contributions = balances.data?.jointContributions ?? [];
   const settle = () => setEditor({ mode: "settle", owed: owed[0] });
   useMonthShortcuts(month, goTo, settle);

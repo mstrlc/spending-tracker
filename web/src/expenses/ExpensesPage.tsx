@@ -9,6 +9,7 @@ import { useHousehold } from "../households/HouseholdPages";
 import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { rankSlices, ShareBar, type Slice } from "../shares";
 import { EmptyState, ErrorText, Money, PageHeader, Sheet, SkeletonRows, Summary, Surface } from "../ui";
+import { usePendingDeleteIds } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -64,7 +65,8 @@ export function ExpensesPage() {
   const members = useMembers(household.id).data ?? [];
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
 
-  const rows = expenses.data ?? [];
+  const pendingDeletes = usePendingDeleteIds();
+  const rows = (expenses.data ?? []).filter((e) => !pendingDeletes.has(e.id));
   const { spent, invested } = expenseTotals(rows, categories);
   const showPaidBy = members.length > 1;
   // New expenses default to today in the current month, otherwise to the first of the month being viewed.

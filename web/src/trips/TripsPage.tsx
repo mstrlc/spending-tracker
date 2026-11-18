@@ -4,8 +4,8 @@ import type { Trip, TripInput } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
 import { formatMoney } from "../lib/money";
-import { useConfirm } from "../dialogs";
 import { EmptyState, ErrorText, Field, FormError, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
+import { usePendingDeleteIds, useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -13,13 +13,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export function TripsPage() {
   const household = useHousehold();
   const trips = useTrips(household.id);
-  const save = useSaveTrip(household.id);
-  const remove = useDeleteTrip(household.id);
+  const saveTrip = useSaveTrip(household.id);
+  const deleteTrip = useDeleteTrip(household.id);
+  const save = useUndoableSave("Trip", saveTrip, deleteTrip);
+  const remove = useUndoableDelete("Trip", deleteTrip);
+  const pendingDeletes = usePendingDeleteIds();
   const [name, setName] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
-  const confirm = useConfirm();
+  const rows = (trips.data ?? []).filter((t) => !pendingDeletes.has(t.id));
 
   function add(e: FormEvent) {
     e.preventDefault();
@@ -35,16 +38,23 @@ export function TripsPage() {
     );
   }
 
-  const update = (trip: Trip, changes: Partial<TripInput>) =>
+  const update = (trip: Trip, changes: Partial<TripInput>) => {
+    const previous: TripInput = {
+      name: trip.name,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      notes: trip.notes,
+      version: trip.version,
+    };
     save.mutate({
       id: trip.id,
-      input: { name: trip.name, startDate: trip.startDate, endDate: trip.endDate, notes: trip.notes, version: trip.version, ...changes },
+      input: { ...previous, ...changes },
+      previous,
     });
+  };
 
-  async function confirmDelete(trip: Trip) {
-    if (await confirm({ title: `Delete ${trip.name}?`, description: "This can't be undone." })) {
-      remove.mutate({ id: trip.id, version: trip.version });
-    }
+  function deleteRow(trip: Trip) {
+    remove.schedule({ id: trip.id, version: trip.version });
   }
 
   return (
@@ -74,8 +84,8 @@ export function TripsPage() {
         <ErrorText error={remove.error} className="p-4" />
         <ErrorText error={trips.error} className="p-4" />
         {trips.isPending && <SkeletonRows rows={3} />}
-        {trips.data?.length === 0 && <EmptyState title="No trips yet">Add a trip, then pick it on the expenses from it.</EmptyState>}
-        {trips.data && trips.data.length > 0 && (
+        {trips.data && rows.length === 0 && <EmptyState title="No trips yet">Add a trip, then pick it on the expenses from it.</EmptyState>}
+        {rows.length > 0 && (
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -89,7 +99,7 @@ export function TripsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {trips.data.map((t) => (
+              {rows.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="whitespace-normal font-medium">
                     <InlineRename
@@ -127,7 +137,7 @@ export function TripsPage() {
                       label={t.name}
                       actions={[
                         { label: "Rename", onSelect: () => setRenaming(t.id) },
-                        { label: "Delete", destructive: true, onSelect: () => confirmDelete(t) },
+                        { label: "Delete", destructive: true, onSelect: () => deleteRow(t) },
                       ]}
                     />
                   </TableCell>

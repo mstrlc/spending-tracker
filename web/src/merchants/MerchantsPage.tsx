@@ -6,8 +6,8 @@ import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
 import { formatDay } from "../lib/dates";
 import { formatMoney } from "../lib/money";
-import { useConfirm } from "../dialogs";
 import { EmptyState, ErrorText, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
+import { usePendingDeleteIds, useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -19,15 +19,17 @@ export function MerchantsPage() {
   const household = useHousehold();
   const merchants = useMerchants(household.id);
   const categories = useCategories(household.id).data ?? [];
-  const save = useSaveMerchant(household.id);
-  const remove = useDeleteMerchant(household.id);
+  const saveMerchant = useSaveMerchant(household.id);
+  const deleteMerchant = useDeleteMerchant(household.id);
+  const save = useUndoableSave("Merchant", saveMerchant, deleteMerchant);
+  const remove = useUndoableDelete("Merchant", deleteMerchant);
+  const pendingDeletes = usePendingDeleteIds();
   const [query, setQuery] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [merging, setMerging] = useState<Merchant | null>(null);
-  const confirm = useConfirm();
 
   const tree = categoryTree(categories.filter((c) => !c.archived));
-  const all = merchants.data ?? [];
+  const all = (merchants.data ?? []).filter((m) => !pendingDeletes.has(m.id));
   const needle = query.trim().toLowerCase();
   const shown = needle ? all.filter((m) => m.name.toLowerCase().includes(needle)) : all;
 
@@ -35,12 +37,11 @@ export function MerchantsPage() {
     save.mutate({
       id: m.id,
       input: { name: m.name, defaultCategoryId: m.defaultCategoryId, version: m.version, ...changes },
+      previous: { name: m.name, defaultCategoryId: m.defaultCategoryId, version: m.version },
     });
 
-  async function confirmDelete(m: Merchant) {
-    if (await confirm({ title: `Delete ${m.name}?`, description: "This can't be undone." })) {
-      remove.mutate({ id: m.id, version: m.version });
-    }
+  function deleteRow(m: Merchant) {
+    remove.schedule({ id: m.id, version: m.version });
   }
 
   return (
@@ -133,7 +134,7 @@ export function MerchantsPage() {
                       actions={[
                         { label: "Rename", onSelect: () => setRenaming(m.id) },
                         ...(all.length > 1 ? [{ label: "Merge into…", onSelect: () => setMerging(m) }] : []),
-                        ...(m.expenseCount === 0 ? [{ label: "Delete", destructive: true, onSelect: () => confirmDelete(m) }] : []),
+                        ...(m.expenseCount === 0 ? [{ label: "Delete", destructive: true, onSelect: () => deleteRow(m) }] : []),
                       ]}
                     />
                   </TableCell>

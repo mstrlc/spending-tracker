@@ -585,12 +585,13 @@ export function useDeleteExpense(householdId: string) {
           params: { path: { householdId, expenseId: id }, query: { version } },
         }),
       ),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: keys.expenses(householdId) });
-      qc.invalidateQueries({ queryKey: keys.balances(householdId) });
-      // Its bank rows go back to the inbox.
-      invalidateInbox(qc, householdId);
-    },
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: keys.expenses(householdId) }),
+        qc.invalidateQueries({ queryKey: keys.balances(householdId) }),
+        // Its bank rows go back to the inbox.
+        invalidateInbox(qc, householdId),
+      ]),
   });
 }
 
@@ -620,10 +621,11 @@ export function useSaveIncome(householdId: string) {
               body: input,
             }),
           ),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: keys.income(householdId) });
-      invalidateInbox(qc, householdId);
-    },
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: keys.income(householdId) }),
+        invalidateInbox(qc, householdId),
+      ]),
   });
 }
 
@@ -636,10 +638,11 @@ export function useDeleteIncome(householdId: string) {
           params: { path: { householdId, incomeId: id }, query: { version } },
         }),
       ),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: keys.income(householdId) });
-      invalidateInbox(qc, householdId);
-    },
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: keys.income(householdId) }),
+        invalidateInbox(qc, householdId),
+      ]),
   });
 }
 

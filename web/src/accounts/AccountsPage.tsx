@@ -4,8 +4,9 @@ import { useAccounts, useAssets, useDeleteAccount, useMembers, useSaveAccount } 
 import type { Account, AccountInput, AccountKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
-import { useConfirm, usePrompt } from "../dialogs";
+import { usePrompt } from "../dialogs";
 import { EmptyState, ErrorText, Field, FormError, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
+import { usePendingDeleteIds, useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -29,15 +30,18 @@ export function AccountsPage() {
   const accounts = useAccounts(household.id);
   const assets = useAssets(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
-  const save = useSaveAccount(household.id);
-  const remove = useDeleteAccount(household.id);
+  const saveAccount = useSaveAccount(household.id);
+  const deleteAccount = useDeleteAccount(household.id);
+  const save = useUndoableSave("Account", saveAccount, deleteAccount);
+  const remove = useUndoableDelete("Account", deleteAccount);
+  const pendingDeletes = usePendingDeleteIds();
   const [name, setName] = useState("");
   const [ownerUserId, setOwnerUserId] = useState("");
   const [kind, setKind] = useState<AccountKind>("bank");
   const [iban, setIban] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
-  const confirm = useConfirm();
   const prompt = usePrompt();
+  const rows = (accounts.data ?? []).filter((a) => !pendingDeletes.has(a.id));
 
   function add(e: FormEvent) {
     e.preventDefault();
@@ -52,19 +56,21 @@ export function AccountsPage() {
     );
   }
 
-  const update = (account: Account, changes: Partial<AccountInput>) =>
+  const update = (account: Account, changes: Partial<AccountInput>) => {
+    const previous: AccountInput = {
+      name: account.name,
+      ownerUserId: account.ownerUserId,
+      status: account.status,
+      kind: account.kind,
+      iban: account.iban,
+      version: account.version,
+    };
     save.mutate({
       id: account.id,
-      input: {
-        name: account.name,
-        ownerUserId: account.ownerUserId,
-        status: account.status,
-        kind: account.kind,
-        iban: account.iban,
-        version: account.version,
-        ...changes,
-      },
+      input: { ...previous, ...changes },
+      previous,
     });
+  };
 
   async function editIban(a: Account) {
     const next = await prompt({
@@ -76,10 +82,8 @@ export function AccountsPage() {
     if (next !== null) update(a, { iban: next.trim() || null });
   }
 
-  async function confirmDelete(a: Account) {
-    if (await confirm({ title: `Delete ${a.name}?`, description: "Only an account nothing uses can be deleted; close it to keep its history." })) {
-      remove.mutate({ id: a.id, version: a.version });
-    }
+  function deleteRow(a: Account) {
+    remove.schedule({ id: a.id, version: a.version });
   }
 
   const ownerName = (a: Account) => members.find((m) => m.userId === a.ownerUserId)?.displayName ?? "Shared";
@@ -132,10 +136,10 @@ export function AccountsPage() {
         <ErrorText error={remove.error} className="p-4" />
         <ErrorText error={accounts.error} className="p-4" />
         {accounts.isPending && <SkeletonRows rows={3} />}
-        {accounts.data?.length === 0 && (
+        {accounts.data && rows.length === 0 && (
           <EmptyState title="No accounts yet">Add the accounts and cards you pay from to see where money goes.</EmptyState>
         )}
-        {accounts.data && accounts.data.length > 0 && (
+        {rows.length > 0 && (
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -148,7 +152,7 @@ export function AccountsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.data.map((a) => (
+              {rows.map((a) => (
                 <TableRow key={a.id} className={cn(a.status === "closed" && "text-muted-foreground")}>
                   <TableCell className="whitespace-normal font-medium">
                     <span className="flex items-center gap-2">
@@ -197,7 +201,7 @@ export function AccountsPage() {
                           label: a.status === "active" ? "Close account" : "Reopen account",
                           onSelect: () => update(a, { status: a.status === "active" ? "closed" : "active" }),
                         },
-                        { label: "Delete", destructive: true, onSelect: () => confirmDelete(a) },
+                        { label: "Delete", destructive: true, onSelect: () => deleteRow(a) },
                       ]}
                     />
                   </TableCell>

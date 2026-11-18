@@ -10,6 +10,7 @@ import { useHousehold } from "../households/HouseholdPages";
 import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { rankSlices, ShareBar, type Slice } from "../shares";
 import { EmptyState, ErrorText, Money, PageHeader, Sheet, SkeletonRows, Summary, Surface } from "../ui";
+import { usePendingDeleteIds } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -42,7 +43,10 @@ export function IncomePage() {
   const members = useMembers(household.id).data ?? [];
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
 
-  const rows = income.data ?? [];
+  const pendingDeletes = usePendingDeleteIds();
+  const rows = (income.data ?? []).filter(
+    (i) => !pendingDeletes.has(i.id) && !(i.deductedFromId && pendingDeletes.has(i.deductedFromId)),
+  );
   const { earned, deducted, net } = incomeTotals(rows);
   const { spent } = expenseTotals(expenses.data ?? [], categories);
   // Investing counts as saved, not spent; deductions are neither.

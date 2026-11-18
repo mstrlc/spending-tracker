@@ -1,16 +1,27 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useDeleteSettlement, useMembers, useSaveSettlement } from "../api/hooks";
-import type { Debt, Settlement } from "../api/types";
+import type { Debt, Settlement, SettlementInput } from "../api/types";
 import { todayIso } from "../lib/dates";
 import { parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
-import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
+import { useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 const FIELDS = ["date", "fromUserId", "toUserId", "amountMinor", "notes"];
+
+function settlementToInput(s: Settlement): SettlementInput {
+  return {
+    date: s.date,
+    fromUserId: s.fromUserId,
+    toUserId: s.toUserId,
+    amountMinor: s.amountMinor,
+    notes: s.notes,
+    version: s.version,
+  };
+}
 
 /** Records money one member paid another back, or edits [settlement]. [owed] fills in a new one to settle it in full. */
 export function SettlementForm({
@@ -26,9 +37,10 @@ export function SettlementForm({
 }) {
   const household = useHousehold();
   const members = useMembers(household.id).data ?? [];
-  const save = useSaveSettlement(household.id);
-  const remove = useDeleteSettlement(household.id);
-  const confirm = useConfirm();
+  const saveSettlement = useSaveSettlement(household.id);
+  const deleteSettlement = useDeleteSettlement(household.id);
+  const save = useUndoableSave("Settlement", saveSettlement, deleteSettlement);
+  const remove = useUndoableDelete("Settlement", deleteSettlement);
   const amountRef = useRef<HTMLInputElement>(null);
 
   const [date, setDate] = useState(settlement?.date ?? defaultDate ?? todayIso());
@@ -51,16 +63,19 @@ export function SettlementForm({
     }
     setAmountError(null);
     save.mutate(
-      { id: settlement?.id, input: { date, fromUserId, toUserId, amountMinor, notes, version: settlement?.version } },
+      {
+        id: settlement?.id,
+        input: { date, fromUserId, toUserId, amountMinor, notes, version: settlement?.version },
+        previous: settlement ? settlementToInput(settlement) : undefined,
+      },
       { onSuccess: onDone },
     );
   }
 
-  async function confirmDelete() {
+  function handleDelete() {
     if (!settlement) return;
-    if (await confirm({ title: "Delete this settlement?", description: "The balance goes back to what it was before it." })) {
-      remove.mutate({ id: settlement.id, version: settlement.version }, { onSuccess: onDone });
-    }
+    remove.schedule({ id: settlement.id, version: settlement.version });
+    onDone();
   }
 
   return (
@@ -69,7 +84,7 @@ export function SettlementForm({
         footer={
           <>
             {settlement && (
-              <Button type="button" variant="ghost" className="text-destructive" onClick={confirmDelete} disabled={remove.isPending}>
+              <Button type="button" variant="ghost" className="text-destructive" onClick={handleDelete} disabled={remove.isPending}>
                 Delete
               </Button>
             )}

@@ -1,11 +1,12 @@
 import { useRef, useState, type FormEvent } from "react";
 import { PlusIcon, XIcon } from "lucide-react";
 import { useAccounts, useDeleteIncome, useIncome, useMembers, useSaveIncome } from "../api/hooks";
-import type { BankRowRef, Income, PayslipDeduction } from "../api/types";
+import type { BankRowRef, Income, IncomeInput, PayslipDeduction } from "../api/types";
 import { monthRange, todayIso } from "../lib/dates";
 import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
+import { useUndoableDelete, useUndoableSave } from "../undo";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
 import { FieldDescription } from "@/components/ui/field";
@@ -24,6 +25,23 @@ export type IncomeDraft = Partial<
 >;
 
 type PayslipRow = { source: string; amount: string };
+
+function incomeToInput(i: Income): IncomeInput {
+  return {
+    kind: i.kind,
+    date: i.date,
+    amountMinor: i.amountMinor,
+    source: i.source,
+    accountId: i.accountId,
+    recipientUserId: i.recipientUserId,
+    earnedMonth: i.earnedMonth,
+    notes: i.notes,
+    deductedFromId: i.deductedFromId,
+    deductions: [],
+    version: i.version,
+    bankRows: [],
+  };
+}
 
 /**
  * Adds income or a deduction (staying open for the next line) or edits [income]. Lives in a side sheet;
@@ -51,8 +69,10 @@ export function IncomeForm({
   const household = useHousehold();
   const accounts = useAccounts(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
-  const save = useSaveIncome(household.id);
-  const remove = useDeleteIncome(household.id);
+  const saveIncome = useSaveIncome(household.id);
+  const deleteIncome = useDeleteIncome(household.id);
+  const save = useUndoableSave("Income", saveIncome, deleteIncome);
+  const remove = useUndoableDelete("Income", deleteIncome);
   const amountRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
 
@@ -135,6 +155,7 @@ export function IncomeForm({
           version: income?.version,
           bankRows: income ? [] : (bankRows ?? []),
         },
+        previous: income ? incomeToInput(income) : undefined,
       },
       {
         onSuccess: (saved) => {
@@ -163,14 +184,15 @@ export function IncomeForm({
     // Only this month's linked deductions are loaded; deductedMinor also counts any from other months.
     const linked = income.kind === "deduction" ? 0 : linkedDeductions.length;
     const hasLinked = income.kind !== "deduction" && (linked > 0 || income.deductedMinor !== 0);
-    const description = !hasLinked
-      ? "This can't be undone."
-      : linked === 1 && income.deductedMinor === linkedDeductions[0].amountMinor
-        ? "Its deduction goes with it. This can't be undone."
-        : "Its deductions go with it. This can't be undone.";
-    if (await confirm({ title: `Delete ${what}?`, description })) {
-      remove.mutate({ id: income.id, version: income.version }, { onSuccess: onDone });
+    if (hasLinked) {
+      const description =
+        linked === 1 && income.deductedMinor === linkedDeductions[0].amountMinor
+          ? "Its deduction goes with it."
+          : "Its deductions go with it.";
+      if (!(await confirm({ title: `Delete ${what}?`, description }))) return;
     }
+    remove.schedule({ id: income.id, version: income.version });
+    onDone();
   }
 
   return (

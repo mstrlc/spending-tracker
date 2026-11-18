@@ -10,12 +10,12 @@ import {
   useSaveExpense,
   useTrips,
 } from "../api/hooks";
-import type { BankRowRef, Expense } from "../api/types";
+import type { BankRowRef, Expense, ExpenseInput } from "../api/types";
 import { categoryTree } from "../categories/tree";
 import { formatDay, todayIso } from "../lib/dates";
 import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
-import { useConfirm } from "../dialogs";
+import { useUndoableDelete, useUndoableSave } from "../undo";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -65,6 +65,27 @@ export type ExpenseDraft = Partial<
   >
 >;
 
+function expenseToInput(e: Expense): ExpenseInput {
+  return {
+    date: e.date,
+    amountMinor: e.amountMinor,
+    merchant: e.merchant,
+    categoryId: e.categoryId,
+    accountId: e.accountId,
+    paidByUserId: e.paidByUserId,
+    tripId: e.tripId,
+    originalAmountMinor: e.originalAmountMinor,
+    originalCurrency: e.originalCurrency,
+    notes: e.notes,
+    split: e.split,
+    createsDebt: e.createsDebt,
+    lines: e.lines.map((l) => ({ categoryId: l.categoryId, amountMinor: l.amountMinor, notes: l.notes })),
+    refundOfId: e.refundOfId,
+    version: e.version,
+    bankRows: [],
+  };
+}
+
 /**
  * Adds expenses (staying open for the next one) or edits [expense]. Lives in a side sheet;
  * [onSaved] reports each saved row, [onDone] closes the sheet. With [bankRows], it adds the one expense those bank
@@ -96,10 +117,11 @@ export function ExpenseForm({
   const members = useMembers(household.id).data ?? [];
   const trips = useTrips(household.id).data ?? [];
   const merchants = useMerchants(household.id).data ?? [];
-  const save = useSaveExpense(household.id);
-  const remove = useDeleteExpense(household.id);
+  const saveExpense = useSaveExpense(household.id);
+  const deleteExpense = useDeleteExpense(household.id);
+  const save = useUndoableSave("Expense", saveExpense, deleteExpense);
+  const remove = useUndoableDelete("Expense", deleteExpense);
   const amountRef = useRef<HTMLInputElement>(null);
-  const confirm = useConfirm();
 
   const [date, setDate] = useState(start.date ?? defaultDate ?? todayIso());
   const [amount, setAmount] = useState(start.amountMinor != null ? toInputValue(start.amountMinor, household.currency) : "");
@@ -302,6 +324,7 @@ export function ExpenseForm({
           version: expense?.version,
           bankRows: expense ? [] : (bankRows ?? []),
         },
+        previous: expense ? expenseToInput(expense) : undefined,
       },
       {
         onSuccess: (saved) => {
@@ -328,11 +351,10 @@ export function ExpenseForm({
     );
   }
 
-  async function confirmDelete() {
+  function handleDelete() {
     if (!expense) return;
-    if (await confirm({ title: `Delete ${expense.merchant || "this expense"}?`, description: "This can't be undone." })) {
-      remove.mutate({ id: expense.id, version: expense.version }, { onSuccess: onDone });
-    }
+    remove.schedule({ id: expense.id, version: expense.version });
+    onDone();
   }
 
   return (
@@ -341,7 +363,7 @@ export function ExpenseForm({
         footer={
           <>
             {expense && (
-              <Button type="button" variant="ghost" className="text-destructive" onClick={confirmDelete} disabled={remove.isPending}>
+              <Button type="button" variant="ghost" className="text-destructive" onClick={handleDelete} disabled={remove.isPending}>
                 Delete
               </Button>
             )}
