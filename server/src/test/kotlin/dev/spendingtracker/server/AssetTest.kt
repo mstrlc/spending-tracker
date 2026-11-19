@@ -353,6 +353,41 @@ class AssetTest {
     }
 
     @Test
+    fun creditCardWithOnlyAvailableBalanceFallsBackToHandValuation() {
+        val bank = FakeBankData().apply {
+            linkState = LinkState.LINKED
+            accountIds = listOf("ext-card")
+            accounts["ext-card"] = BankAccountInfo("ext-card", null, null, "CZK", "Credit Card", "Alice")
+            // Bank only reports available credit (positive credit limit minus balance).
+            balanceByAccount["ext-card"] = BankBalance(900_000, "CZK", "interimAvailable", LocalDate(2026, 3, 20))
+        }
+        apiTest(bank = bank) {
+            val client = newClient().also { it.signup() }
+            val hhId = client.createHousehold(currency = "CZK").id
+            val household = "/api/households/$hhId"
+
+            val cardAccount = client.post("$household/accounts") { setBody(AccountInput("Credit Card", kind = AccountKind.CREDIT_CARD)) }.body<Account>()
+            val cardDebt = client.post("$household/assets") {
+                setBody(AssetInput("Card Debt", kind = AssetKind.CARD_DEBT, accountId = cardAccount.id))
+            }.body<Asset>()
+            client.post("$household/assets/${cardDebt.id}/valuations") { setBody(ValuationInput(LocalDate(2026, 3, 15), 25_000)) }
+
+            val started = client.post("$household/bank-connections") { setBody(StartBankConnection("AIRBANK_CZ")) }.body<BankConnectionStarted>()
+            client.post("$household/bank-connections/${started.connectionId}/finish")
+            client.post("$household/bank-connections/${started.connectionId}/feeds") {
+                setBody(CreateConnectionFeeds(listOf(FeedFromAccount("ext-card", cardAccount.id))))
+            }
+            client.post("$household/bank-connections/${started.connectionId}/sync")
+
+            val gotCard = client.get("$household/assets").body<List<Asset>>().single { it.id == cardDebt.id }
+            assertEquals(ValueSource.VALUATION, gotCard.valueSource)
+            assertEquals(-25_000L, gotCard.valueMinor)
+            assertEquals(LocalDate(2026, 3, 15), gotCard.valuedOn)
+            assertEquals(true, gotCard.bankAvailableOnly)
+        }
+    }
+
+    @Test
     fun xirrComputesAnnualisedMoneyWeightedReturn() {
         // Single contribution doubling in 1 year (365 days) -> 100%.
         val doubled = xirr(listOf(CashFlow(LocalDate(2025, 1, 1), -100_000.0), CashFlow(LocalDate(2026, 1, 1), 200_000.0)))

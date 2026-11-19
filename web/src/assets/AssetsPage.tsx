@@ -53,7 +53,13 @@ function valuedBy(i: Asset): string {
   if (i.valueSource === "market" && i.security && i.valuedOn) return `${i.security.symbol} · ${formatClose(i.security)} on ${formatDay(i.valuedOn)}`;
   if (i.security) return `${i.security.symbol} · no shares recorded`;
   if (i.valueSource === "bank" && i.valuedOn) return `bank balance on ${formatDay(i.valuedOn)}`;
-  return i.valuedOn ? `valued ${formatDay(i.valuedOn)}` : i.accountId ? "waiting for bank balance" : "not valued yet";
+  return i.valuedOn
+    ? `valued ${formatDay(i.valuedOn)}`
+    : i.bankAvailableOnly
+      ? "bank only reports available credit"
+      : i.accountId
+        ? "waiting for bank balance"
+        : "not valued yet";
 }
 
 type Editor = { mode: "closed" } | { mode: "add" } | { mode: "edit"; asset: Asset } | { mode: "view"; id: string };
@@ -524,6 +530,9 @@ function valuationNote(i: Asset): string {
   if (i.security) return `Follows ${i.security.symbol}. Add the shares to its contributions to value it at the market.`;
   if (i.valueSource === "bank" && i.valuedOn) {
     return `Valued from the linked account's bank feed balances as of ${formatDay(i.valuedOn)}, converted at the ČNB rate.`;
+  }
+  if (i.bankAvailableOnly) {
+    return "The linked bank only reports available credit, which includes the unused credit line, so hand valuations are used instead.";
   }
   if (i.accountId) return "Linked to an account, waiting for a bank balance reading. Hand valuations fill in until one arrives.";
   if (i.valuedOn) return `Last valued ${formatDay(i.valuedOn)}; anything put in since counts at cost.`;

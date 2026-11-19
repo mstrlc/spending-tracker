@@ -1698,6 +1698,8 @@ export interface components {
              * Format: int64
              */
             feesMinor: number;
+            /** Boolean */
+            bankAvailableOnly?: boolean;
         };
         /**
          * AssetKind
