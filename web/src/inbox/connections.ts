@@ -25,15 +25,22 @@ export function connectionWarning(conn: BankConnection, now = Date.now()): strin
   return null;
 }
 
-/** The day after the newest row already read into [accountId], so a new feed doesn't bring that history in twice. */
-export function importFromAfter(feeds: BankFeed[], accountId: string): string {
+/**
+ * Where a new feed of [accountId] starts: the day after the newest row already read into the account, so its history
+ * doesn't come in twice, and never before the household's balances start ([start], `debtsFrom`), before which the old
+ * ledger is the record. Empty when neither applies.
+ */
+export function importFromAfter(feeds: BankFeed[], accountId: string, start?: string | null): string {
   const latest = feeds
     .filter((f) => f.accountId === accountId && f.lastDate)
     .map((f) => f.lastDate!)
     .sort()
     .at(-1);
-  if (!latest) return "";
-  const next = new Date(`${latest}T00:00:00Z`);
-  next.setUTCDate(next.getUTCDate() + 1);
-  return next.toISOString().slice(0, 10);
+  let after = "";
+  if (latest) {
+    const next = new Date(`${latest}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    after = next.toISOString().slice(0, 10);
+  }
+  return start && start > after ? start : after;
 }

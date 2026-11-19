@@ -15,7 +15,11 @@ enum class AccountStatus {
  */
 @Serializable
 enum class AccountKind {
+    /** A current (checking) account. */
     @SerialName("bank") BANK,
+
+    /** A savings account: pays interest, usually monthly, with tax withheld ([Account.interestTaxPercent]). */
+    @SerialName("savings") SAVINGS,
     @SerialName("credit_card") CREDIT_CARD,
     @SerialName("cash") CASH,
     @SerialName("other") OTHER,
@@ -31,6 +35,8 @@ data class Account(
     val version: Int,
     val kind: AccountKind,
     val iban: String?,
+    /** A savings account's tax withheld from interest, in percent (15 in Czechia); null for other kinds. */
+    val interestTaxPercent: Int? = null,
 )
 
 /** Body for creating and updating an account; [version] is required when updating. */
@@ -43,4 +49,6 @@ data class AccountInput(
     val kind: AccountKind = AccountKind.BANK,
     /** Spaces and case don't matter; blank means none. */
     val iban: String? = null,
+    /** Savings accounts only: tax withheld from interest in percent, 0–99; null on a savings account means 15. */
+    val interestTaxPercent: Int? = null,
 )

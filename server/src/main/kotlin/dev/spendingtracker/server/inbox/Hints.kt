@@ -14,12 +14,25 @@ class HintContext(
 private val REVOLUT_TOPUP = Regex("revolut\\*+\\d+\\*?", RegexOption.IGNORE_CASE)
 private val CARD_REPAYMENT = Regex("spl[aá]tka klienta", RegexOption.IGNORE_CASE)
 
+/** What banks call interest paid out: "Úrok", "Připsaný úrok", "Interest". */
+private val INTEREST = Regex("[uú]rok|interest", RegexOption.IGNORE_CASE)
+
+/** The hint on interest paid into a savings account. */
+const val INTEREST_HINT = "Interest"
+
 /**
  * What the reader notices about a row, for whoever decides it: money between the household's own accounts, a top-up,
  * a currency exchange, a card being paid off, a refund. Only a hint: nothing is filed on it in this slice.
  */
 fun hintFor(row: ParsedRow, shape: FeedShape, context: HintContext): String {
     if (row.counterpartyIban != null && row.counterpartyIban in context.ownIbans) return "Between your own accounts"
+    // Money in on a savings account from nobody, said to be interest or saying nothing at all (ČSOB books it at the
+    // month's end with no text), is the interest it pays.
+    if (shape.isSavings && row.amountMinor > 0 && row.counterpartyIban == null && row.counterpartyName.isEmpty() &&
+        (INTEREST.containsMatchIn(row.text) || INTEREST.containsMatchIn(row.message) || (row.text.isBlank() && row.message.isBlank()))
+    ) {
+        return INTEREST_HINT
+    }
     if (REVOLUT_TOPUP.containsMatchIn(row.text) || REVOLUT_TOPUP.containsMatchIn(row.message)) return "Revolut top-up"
     if (CARD_REPAYMENT.containsMatchIn(row.message) || CARD_REPAYMENT.containsMatchIn(row.text)) return "Card repayment"
     if (shape.institution == BankInstitution.REVOLUT) {

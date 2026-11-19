@@ -13,6 +13,7 @@ import dev.spendingtracker.server.inbox.applyRules
 import dev.spendingtracker.server.inbox.feedShape
 import dev.spendingtracker.server.inbox.loadHintContext
 import dev.spendingtracker.server.inbox.parseGoCardless
+import dev.spendingtracker.server.inbox.startOfBankData
 import dev.spendingtracker.server.inbox.storeRows
 import dev.spendingtracker.server.market.Market
 import dev.spendingtracker.shared.api.BANK_SYNCS_PER_DAY
@@ -120,10 +121,10 @@ class BankSync(private val data: BankData, private val market: Market, private v
             if (syncsToday >= BANK_SYNCS_PER_DAY) {
                 return@dbQuery null to "Already read $BANK_SYNCS_PER_DAY times today, which is the bank's limit. Try again tomorrow."
             }
-            val importFrom = feed[BankFeeds.importFrom]
+            val importFrom = startOfBankData(householdId, feed[BankFeeds.importFrom])
             val newestBooked = BankRows.bookingDate.max()
             val newest = BankRows.select(newestBooked).where { BankRows.feedId eq feedId }.single()[newestBooked]
-            // From a week before the newest row we have, never before the feed's import-from date.
+            // From a week before the newest row we have, never before the feed's import-from date or the household's start.
             val from = when {
                 newest == null -> importFrom
                 else -> (newest - DatePeriod(days = SYNC_OVERLAP_DAYS)).let { if (importFrom != null && it < importFrom) importFrom else it }

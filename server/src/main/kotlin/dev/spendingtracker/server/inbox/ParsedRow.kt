@@ -26,7 +26,8 @@ data class ParsedRow(
 )
 
 /** How rows of a feed are read. [isCard] when the feed's account is a credit card. */
-data class FeedShape(val institution: BankInstitution, val isCard: Boolean)
+/** How a feed is read: its bank, and whether its account is a credit card or a savings account. */
+data class FeedShape(val institution: BankInstitution, val isCard: Boolean, val isSavings: Boolean = false)
 
 val BankInstitution.dbValue get() = name.lowercase()
 

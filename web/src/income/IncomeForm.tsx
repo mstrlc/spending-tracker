@@ -22,7 +22,12 @@ const FIELDS = ["kind", "date", "earnedMonth", "amountMinor", "source", "account
 /** What a new income line starts with, such as a bank row's suggestion. */
 export type IncomeDraft = Partial<
   Pick<Income, "date" | "amountMinor" | "source" | "accountId" | "recipientUserId" | "notes" | "kind" | "earnedMonth" | "deductedFromId">
->;
+> & {
+  /** Deductions to fill in on a new earning, such as tax withheld from interest. */
+  deductions?: { source: string; amountMinor: number }[];
+  /** What the bank row says came in, when [amountMinor] is the gross before [deductions]. */
+  expectedNetMinor?: number;
+};
 
 type PayslipRow = { source: string; amount: string };
 
@@ -89,7 +94,9 @@ export function IncomeForm({
     start.earnedMonth && start.earnedMonth !== date.slice(0, 7) ? start.earnedMonth : null,
   );
   const [deductedFromId, setDeductedFromId] = useState(start.deductedFromId ?? "");
-  const [payslipRows, setPayslipRows] = useState<PayslipRow[]>([]);
+  const [payslipRows, setPayslipRows] = useState<PayslipRow[]>(
+    () => start.deductions?.map((d) => ({ source: d.source, amount: toInputValue(d.amountMinor, household.currency) })) ?? [],
+  );
   const [amountError, setAmountError] = useState<string | null>(null);
   const [deductionsError, setDeductionsError] = useState<string | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
@@ -106,7 +113,7 @@ export function IncomeForm({
   // Closed accounts stay selectable only for rows that already use them.
   const accountOptions = accounts.filter((a) => a.status === "active" || a.id === income?.accountId);
 
-  const expectedNetMinor = !income && !deduction && draft?.amountMinor != null ? draft.amountMinor : null;
+  const expectedNetMinor = !income && !deduction ? (draft?.expectedNetMinor ?? draft?.amountMinor ?? null) : null;
   const parsedDeductionMinors = payslipRows.map((r) => parseMoney(r.amount, household.currency) ?? 0);
   const summary = payslipSummary(parseMoney(amount, household.currency), parsedDeductionMinors, expectedNetMinor);
 

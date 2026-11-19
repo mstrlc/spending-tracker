@@ -1,5 +1,6 @@
 package dev.spendingtracker.server.importing
 
+import dev.spendingtracker.server.account.DEFAULT_INTEREST_TAX_PERCENT
 import dev.spendingtracker.server.account.normalizeIban
 import dev.spendingtracker.server.auth.userId
 import dev.spendingtracker.server.common.ApiException
@@ -188,6 +189,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 it[status] = if (account.status == AccountStatus.ACTIVE) "active" else "closed"
                 it[kind] = account.kind.dbValue
                 it[Accounts.iban] = iban
+                if (account.kind == AccountKind.SAVINGS) it[Accounts.interestTaxPercent] = DEFAULT_INTEREST_TAX_PERCENT
                 it[Accounts.importId] = this@Importer.importId
                 it[version] = 1
             }

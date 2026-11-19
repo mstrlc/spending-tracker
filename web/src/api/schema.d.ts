@@ -1334,6 +1334,11 @@ export interface components {
             kind: components["schemas"]["AccountKind"];
             /** String */
             iban: null | string;
+            /**
+             * Int
+             * Format: int32
+             */
+            interestTaxPercent?: null | number;
         };
         /**
          * AccountStatus
@@ -1344,7 +1349,7 @@ export interface components {
          * AccountKind
          * @enum {string}
          */
-        AccountKind: "bank" | "credit_card" | "cash" | "other";
+        AccountKind: "bank" | "savings" | "credit_card" | "cash" | "other";
         /** AccountInput */
         AccountInput: {
             /** String */
@@ -1360,6 +1365,11 @@ export interface components {
             kind?: components["schemas"]["AccountKind"];
             /** String */
             iban?: null | string;
+            /**
+             * Int
+             * Format: int32
+             */
+            interestTaxPercent?: null | number;
         };
         /** Category */
         Category: {
@@ -2727,6 +2737,11 @@ export interface components {
             earnedMonth: null | string;
             /** ArrayList<RefundCandidate> */
             refundCandidates: components["schemas"]["RefundCandidate"][];
+            /**
+             * Long
+             * Format: int64
+             */
+            withheldTaxMinor?: null | number;
         };
         /**
          * SuggestedRecord

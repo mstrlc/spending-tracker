@@ -64,7 +64,7 @@ export function ConnectionFeedsForm({
     setDrafts((prev) => ({ ...prev, [externalId]: { ...prev[externalId], ...patch } }));
   }
 
-  const importFromOf = (d: RowDraft) => d.importFrom ?? importFromAfter(allFeeds, d.accountId);
+  const importFromOf = (d: RowDraft) => d.importFrom ?? importFromAfter(allFeeds, d.accountId, household.debtsFrom);
 
   const ready = (d: RowDraft | undefined) => !!d?.include && (!!d.feedId || !!d.accountId);
 

@@ -77,6 +77,7 @@ fun Route.accountRoutes() = route("/accounts") {
                     it[status] = input.status.dbValue
                     it[kind] = input.kind.dbValue
                     it[iban] = input.iban
+                    it[interestTaxPercent] = input.interestTaxPercent
                     it[version] = 1
                 }
                 Accounts.selectAll().where { Accounts.id eq id }.single().toAccount()
@@ -112,6 +113,7 @@ fun Route.accountRoutes() = route("/accounts") {
                     it[status] = input.status.dbValue
                     it[kind] = input.kind.dbValue
                     it[iban] = input.iban
+                    it[interestTaxPercent] = input.interestTaxPercent
                     it[Accounts.version] = version + 1
                     it[updatedAt] = Clock.System.now()
                 }
@@ -153,10 +155,24 @@ fun Route.accountRoutes() = route("/accounts") {
     }
 }
 
-private data class ValidAccount(val name: String, val owner: Uuid?, val status: AccountStatus, val kind: AccountKind, val iban: String?)
+private data class ValidAccount(
+    val name: String,
+    val owner: Uuid?,
+    val status: AccountStatus,
+    val kind: AccountKind,
+    val iban: String?,
+    val interestTaxPercent: Int?,
+)
 
-private fun AccountInput.validated() =
-    ValidAccount(requiredText(name, "name", max = 100), parseId(ownerUserId, "ownerUserId"), status, kind, normalizeIban(iban))
+/** Czech banks withhold 15% of interest. */
+const val DEFAULT_INTEREST_TAX_PERCENT = 15
+
+private fun AccountInput.validated(): ValidAccount {
+    // Only a savings account has interest tax; one without a rate given gets the Czech 15%.
+    val tax = if (kind != AccountKind.SAVINGS) null else interestTaxPercent ?: DEFAULT_INTEREST_TAX_PERCENT
+    if (tax != null && tax !in 0..99) throw badRequest("invalid_interest_tax", "Interest tax must be between 0 and 99%", "interestTaxPercent")
+    return ValidAccount(requiredText(name, "name", max = 100), parseId(ownerUserId, "ownerUserId"), status, kind, normalizeIban(iban), tax)
+}
 
 /** [raw] without spaces, upper case, checked against the IBAN format and its check digits; blank is none. */
 internal fun normalizeIban(raw: String?): String? {
@@ -201,4 +217,5 @@ private fun ResultRow.toAccount() = Account(
     version = this[Accounts.version],
     kind = AccountKind.entries.first { it.dbValue == this[Accounts.kind] },
     iban = this[Accounts.iban],
+    interestTaxPercent = this[Accounts.interestTaxPercent],
 )

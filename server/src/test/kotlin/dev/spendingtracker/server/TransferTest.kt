@@ -99,9 +99,12 @@ class TransferTest {
         assertEquals("CZK", candidate.currency)
         assertEquals(SuggestedRecord.TRANSFER, out.suggestion!!.record)
         assertEquals(SuggestedRecord.TRANSFER, inn.suggestion!!.record)
-        // Both of the outgoing 1 000 rows want the incoming one nearest in time; the far one isn't offered.
-        assertEquals(listOf(inn.id), rows.first { it.text == "Bakery" }.suggestion!!.transferCandidates.map { it.rowId })
-        assertEquals(listOf(out.id, rows.first { it.text == "Bakery" }.id).sorted(), inn.suggestion!!.transferCandidates.map { it.rowId }.sorted())
+        // The bakery payment is the same amount on the same day, but nothing says it went to savings: it isn't offered,
+        // and stays an expense. The far row isn't offered either.
+        assertEquals(emptyList(), rows.first { it.text == "Bakery" }.suggestion!!.transferCandidates)
+        assertEquals(SuggestedRecord.EXPENSE, rows.first { it.text == "Bakery" }.suggestion!!.record)
+        // The incoming row names Current, so the bakery payment there is a weaker candidate after its own partner.
+        assertEquals(out.id, inn.suggestion!!.transferCandidates.first().rowId)
         assertEquals(SuggestedRecord.INCOME, rows.first { it.text == "Elsewhere" }.suggestion!!.record)
 
         val filed = client.post("$base/bank-rows/transfer") { setBody(TransferBankRows(listOf(out.ref(), inn.ref()), notes = " top-up ")) }

@@ -188,6 +188,11 @@ data class BankRowSuggestion(
     val incomeKind: IncomeKind,
     val earnedMonth: String?,
     val refundCandidates: List<RefundCandidate>,
+    /**
+     * Interest on a savings account arrives with tax already withheld: what was withheld, worked back from the account's
+     * rate. The income line is then [amountMinor] plus this, with this as a deduction. Null for anything else.
+     */
+    val withheldTaxMinor: Long? = null,
 )
 
 /** A recent expense a money-in row may refund; [amountMinor] is the original's, [refundedMinor] what its refunds already returned. */

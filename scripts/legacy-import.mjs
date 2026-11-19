@@ -1,18 +1,27 @@
 #!/usr/bin/env node
 // Converts the old app's database (data/legacy/d1.sqlite) into an import file for POST /import, which the
-// Import page uploads. Expenses and income come across, with the members, accounts, categories and trips they use;
-// the old Investments expenses become contributions to assets (see "Importing the old app" in ARCHITECTURE.md).
-// Bank feeds and their rows come across too, with what a person decided about each. The old app's automatic
-// decisions (bank-sync) are hints, not facts: those rows stay in the inbox with the old decision as their hint.
-// Pairings and rules stay behind.
+// Import page uploads. Expenses and income dated before the cutover come across, with the members, accounts,
+// categories and trips they use; the old Investments expenses become contributions to assets (see "Importing the old
+// app" in ARCHITECTURE.md). From the cutover on, the bank is the source: no bank feeds, rows, transfers or pairings
+// come across, so nothing old needs matching against them. Feeds are added afresh and read statements from the cutover.
 //
-//   node scripts/legacy-import.mjs [data/legacy/d1.sqlite] [data/legacy/import.json]
+// Every bank account the old app read gets a ledger account of its own with its IBAN: the old app filed some under
+// one (ČSOB Sam's savings under her current account), which hid money moving between them.
+//
+// The old merchant aliases (bank text -> merchant) are written to a second file as suggestion rules, to add with
+// POST /inbox-rules once the import is in.
+//
+//   node scripts/legacy-import.mjs [data/legacy/d1.sqlite] [data/legacy/import.json] [data/legacy/rules.json]
 //
 // The output holds real household data: keep it in the gitignored data/legacy/.
 import { DatabaseSync } from "node:sqlite";
 import { writeFileSync } from "node:fs";
 
-const [source = "data/legacy/d1.sqlite", target = "data/legacy/import.json"] = process.argv.slice(2);
+const [source = "data/legacy/d1.sqlite", target = "data/legacy/import.json", rulesTarget = "data/legacy/rules.json"] =
+  process.argv.slice(2);
+
+/** The day the new app takes over: records before it come from the old app, everything from it on from the bank. */
+const CUTOVER = "2026-10-01";
 const db = new DatabaseSync(source, { readOnly: true });
 const all = (sql) => db.prepare(sql).all();
 
@@ -21,8 +30,9 @@ const INVESTMENTS = "Investments";
 const person = (name) => (name === "" || name === JOINT ? null : name);
 const blank = (value) => (value === "" ? null : value);
 
-const spending = all("SELECT * FROM spending ORDER BY date, id");
-const income = all("SELECT * FROM income ORDER BY month, id");
+const spending = all(`SELECT * FROM spending WHERE date < '${CUTOVER}' ORDER BY date, id`);
+// Income only knew its month, imported as the 1st: a month before the cutover's.
+const income = all(`SELECT * FROM income WHERE month || '-01' < '${CUTOVER}' ORDER BY month, id`);
 const legacyAccounts = new Map(all("SELECT * FROM accounts").map((a) => [a.name, a]));
 
 // ---- Assets: the Investments expenses become contributions ----
@@ -96,71 +106,56 @@ const incomeLines = income.map((r) => {
   };
 });
 
-// ---- Bank feeds and rows ----
+// ---- Accounts ----
 
-const INSTITUTIONS = {
-  REVOLUT_REVOLT21: "revolut",
-  CSOB_CEKOCZPPXXX: "csob",
-  KOMERCNI_KOMBCZPPXXX: "kb",
-  RAIFFEISEN_RZBCCZPP: "raiffeisen",
-};
-const AUTOMATIC = new Set(["", "bank-sync"]);
-const investmentSpending = new Set(spending.filter((r) => r.category === INVESTMENTS).map((r) => r.id));
-
-const feedNames = new Set();
-const bankFeeds = [];
-const feedOf = new Map();
-for (const b of all("SELECT * FROM bank_accounts WHERE mode = 'import' ORDER BY ledger_account, currency, id")) {
-  let name = [b.ledger_account, b.name, b.currency === "CZK" ? "" : b.currency].filter(Boolean).join(" · ");
-  for (let n = 2; feedNames.has(name.toLowerCase()); n++) name = `${name.replace(/ \(\d+\)$/, "")} (${n})`;
-  feedNames.add(name.toLowerCase());
-  feedOf.set(b.id, name);
-  bankFeeds.push({
-    name,
-    account: b.ledger_account,
-    currency: b.currency,
-    institution: INSTITUTIONS[b.institution_id] ?? "other",
-    iban: blank(b.iban),
-    importFrom: blank(b.import_from),
-  });
+// The bank accounts the old app read, each its own ledger account. The one whose IBAN is the old ledger account's
+// (or the only one) keeps the old name, which the expenses use; another IBAN filed under the same name becomes
+// "<name> · <the bank's name for it>" (with the last digits when two share it). Currency pockets of one IBAN stay one account.
+const bankAccounts = all("SELECT * FROM bank_accounts WHERE mode = 'import' AND ledger_account != '' ORDER BY ledger_account, name, iban");
+const splitAccounts = new Map();
+for (const [ledger, group] of Map.groupBy(bankAccounts, (b) => b.ledger_account)) {
+  const old = legacyAccounts.get(ledger);
+  const ibans = [...new Set(group.map((b) => b.iban || null))];
+  const main = ibans.includes(old?.iban || null) ? old?.iban || null : ibans[0];
+  for (const iban of ibans) {
+    const bank = group.find((b) => (b.iban || null) === iban);
+    // Two with the same bank name ("Spoření s bonusem") are told apart by their account number's last digits.
+    const twins = group.filter((b) => b.name === bank.name && (b.iban || null) !== main).length > 1;
+    const name = iban === main ? ledger : `${ledger} · ${bank.name || iban}${twins ? ` …${iban.slice(-4)}` : ""}`;
+    splitAccounts.set(`${ledger}|${iban}`, { name, ledger, iban });
+  }
 }
-
-const bankRows = all("SELECT * FROM bank_transactions ORDER BY date, id")
-  .filter((t) => feedOf.has(t.account_id))
-  .map((t) => {
-    const row = { feed: feedOf.get(t.account_id), raw: JSON.parse(t.raw), hint: "" };
-    const human = !AUTOMATIC.has(t.decided_by);
-    if (human && t.status === "accepted" && t.spending_id != null) {
-      if (investmentSpending.has(t.spending_id)) row.skipped = "Paid into an asset (old app)";
-      else row.expense = `legacy:spending:${t.spending_id}`;
-    } else if (human && t.status === "skipped") {
-      row.skipped = t.reason || "Skipped in the old app";
-    } else if (t.status !== "pending") {
-      row.hint = `Old app: ${t.reason || t.kind}`;
-    } else {
-      row.hint = t.reason;
-    }
-    return row;
-  });
 
 const usedAccounts = new Set([
   ...expenses.map((e) => e.account),
-  ...bankFeeds.map((f) => f.account),
   ...[...assets.values()].flatMap((a) => a.contributions.map((c) => c.account)),
+  ...[...splitAccounts.values()].map((a) => a.name),
 ].filter(Boolean));
 
 const accounts = [...usedAccounts].sort().map((name) => {
-  const old = legacyAccounts.get(name);
+  const split = [...splitAccounts.values()].find((a) => a.name === name);
+  const old = legacyAccounts.get(split?.ledger ?? name);
   if (!old) return { name, kind: name === "Cash" ? "cash" : "other", owner: null, status: "active", iban: null };
   return {
     name,
     // "not-account" was a stand-in such as "(odpočet z faktury)": costs netted against an invoice.
-    kind: old.status === "not-account" ? "other" : /kreditka/i.test(name) ? "credit_card" : "bank",
+    // A savings account ("Spoření", "spořicí") pays interest with tax withheld; the import gives it the Czech 15%.
+    kind: old.status === "not-account" ? "other" : /kreditka/i.test(name) ? "credit_card" : /spo[řr]|saving/i.test(name) ? "savings" : "bank",
     owner: person(old.owner),
     status: old.status === "closed" ? "closed" : "active",
-    iban: blank(old.iban),
+    iban: split ? split.iban : blank(old.iban),
   };
 });
+
+// ---- Merchant aliases as suggestion rules ----
+
+const rules = all("SELECT * FROM merchant_aliases ORDER BY key").map((a) => ({
+  name: a.merchant,
+  textContains: a.key,
+  outcome: "expense",
+  merchant: a.merchant,
+  auto: false,
+}));
 
 const categoryNames = new Map();
 for (const e of expenses) {
@@ -183,17 +178,10 @@ const people = all("SELECT * FROM people WHERE kind = 'person' ORDER BY sort_ord
   email: p.email,
 }));
 
-function nextDay(iso) {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-const newestExpense = expenses.reduce((max, e) => (e.date > max ? e.date : max), "");
-const debtsFrom = newestExpense ? nextDay(newestExpense) : null;
-
 const file = {
   currency: "CZK",
-  ...(debtsFrom ? { debtsFrom } : {}),
+  // Debts count from the cutover: before it the old app's ledger has no record of who owed whom.
+  debtsFrom: CUTOVER,
   people,
   accounts,
   categories,
@@ -201,14 +189,14 @@ const file = {
   expenses,
   income: incomeLines,
   assets: [...assets.values()],
-  bankFeeds,
-  bankRows,
 };
 writeFileSync(target, JSON.stringify(file, null, 2) + "\n");
+writeFileSync(rulesTarget, JSON.stringify(rules, null, 2) + "\n");
 
 const contributions = file.assets.reduce((n, a) => n + a.contributions.length, 0);
 console.log(
   `Wrote ${target}: ${people.length} people, ${accounts.length} accounts, ${categories.length} categories, ` +
     `${trips.length} trips, ${expenses.length} expenses, ${incomeLines.length} income lines, ` +
-    `${file.assets.length} assets with ${contributions} contributions, ${bankFeeds.length} bank feeds with ${bankRows.length} rows.`,
+    `${file.assets.length} assets with ${contributions} contributions (before ${CUTOVER}).\n` +
+    `Wrote ${rulesTarget}: ${rules.length} suggestion rules from the old merchant aliases.`,
 );

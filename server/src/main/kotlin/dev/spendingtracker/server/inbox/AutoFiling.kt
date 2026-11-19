@@ -212,11 +212,14 @@ private class Engine(
             val ownerB = owners[b[BankFeeds.accountId]]
             return ownerA != null && ownerB != null && ownerA != ownerB
         }
+        val evidence = TransferEvidence.load(householdId)
+        // The same amount isn't enough: the rows have to say they're one transfer (see TransferEvidence).
         fun partners(row: ResultRow) = open.filter { other ->
             other[BankRows.feedId] != row[BankRows.feedId] && !betweenMembers(row, other) &&
                 other[BankRows.currency] == row[BankRows.currency] &&
                 other[BankRows.amountMinor] == -row[BankRows.amountMinor] && row[BankRows.amountMinor] != 0L &&
-                abs(row[BankRows.date].daysUntil(other[BankRows.date])) <= PAIR_DAYS
+                abs(row[BankRows.date].daysUntil(other[BankRows.date])) <= PAIR_DAYS &&
+                evidence.supports(row, other)
         }
         val subjectIds = subject.map { it[BankRows.id] }.toSet()
         val seen = mutableSetOf<Uuid>()

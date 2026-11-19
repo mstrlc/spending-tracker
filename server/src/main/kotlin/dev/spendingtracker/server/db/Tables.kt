@@ -56,6 +56,7 @@ object Accounts : Table("accounts") {
     val status = text("status")
     val kind = text("kind")
     val iban = text("iban").nullable()
+    val interestTaxPercent = integer("interest_tax_percent").nullable()
     val importId = uuid("import_id").nullable()
     val version = integer("version")
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)

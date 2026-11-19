@@ -122,6 +122,20 @@ describe("bank row drafts", () => {
     expect(draftExpense([advance]).amountMinor).toBe(250_000);
   });
 
+  it("drafts savings interest at its gross, with the withheld tax as a deduction", () => {
+    const interest = row({
+      amountMinor: 65_649,
+      hint: "Interest",
+      suggestion: suggestion({ record: "income", amountMinor: 65_649, incomeSource: "Interest", withheldTaxMinor: 11_585 }),
+    });
+    expect(draftIncome([interest], "u2")).toMatchObject({
+      amountMinor: 77_234,
+      source: "Interest",
+      deductions: [{ source: "Tax on interest", amountMinor: 11_585 }],
+      expectedNetMinor: 65_649,
+    });
+  });
+
   it("lets a matching rule decide who receives income and why a row is skipped", () => {
     const ruled = row({
       amountMinor: 4_500_000,

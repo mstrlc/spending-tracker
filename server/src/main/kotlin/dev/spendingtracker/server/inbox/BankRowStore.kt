@@ -8,6 +8,7 @@ import dev.spendingtracker.server.common.versionConflict
 import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.BankFeeds
 import dev.spendingtracker.server.db.BankRows
+import dev.spendingtracker.server.db.Households
 import dev.spendingtracker.server.db.Expenses
 import dev.spendingtracker.server.db.HouseholdMembers
 import dev.spendingtracker.server.db.Income
@@ -49,10 +50,14 @@ fun loadHintContext(householdId: Uuid): HintContext {
     return HintContext(ibans.toSet(), names)
 }
 
-/** How a feed's rows are read: its bank, and whether its account is a credit card. Call inside a transaction. */
+/** How a feed's rows are read: its bank, and whether its account is a credit card or savings. Call inside a transaction. */
 fun feedShape(institution: String, accountId: Uuid): FeedShape {
     val kind = Accounts.select(Accounts.kind).where { Accounts.id eq accountId }.single()[Accounts.kind]
-    return FeedShape(bankInstitution(institution), kind == AccountKind.CREDIT_CARD.name.lowercase())
+    return FeedShape(
+        bankInstitution(institution),
+        isCard = kind == AccountKind.CREDIT_CARD.name.lowercase(),
+        isSavings = kind == AccountKind.SAVINGS.name.lowercase(),
+    )
 }
 
 /** [addedIds]: the external ids of the rows added. */
@@ -64,8 +69,8 @@ private class ExistingRowRef(val externalId: String, val counterpartyIban: Strin
 /**
  * Adds [rows] to a feed, leaving out those it has already (same external id, or the same booking date, amount and
  * currency with the same counterparty IBAN or text, as when a statement and the live feed both bring it) and those
- * booked before [importFrom]. [hints] can give a row a hint of its own (the old app's decision); otherwise the
- * reader's applies. Call inside a transaction.
+ * booked before [importFrom] or before the household's balances start ([startOfBankData]). [hints] can give a row a
+ * hint of its own (the old app's decision); otherwise the reader's applies. Call inside a transaction.
  */
 
 fun storeRows(
@@ -93,9 +98,10 @@ fun storeRows(
             }.toMutableList()
         }
 
-    val before = rows.count { importFrom != null && it.bookingDate < importFrom }
+    val start = startOfBankData(householdId, importFrom)
+    val before = rows.count { start != null && it.bookingDate < start }
     val fresh = rows.filter { row ->
-        if (importFrom != null && row.bookingDate < importFrom) return@filter false
+        if (start != null && row.bookingDate < start) return@filter false
         if (!known.add(row.externalId)) return@filter false
         // Also recognize the same transaction imported earlier from a different format (e.g. CSV vs GoCardless).
         val candidates = pool[ExistingRowKey(row.bookingDate, row.amountMinor, row.currency)]
@@ -283,4 +289,14 @@ fun linkedRecords(householdId: Uuid): Pair<Set<Uuid>, Set<Uuid>> {
         .where { (BankRows.householdId eq householdId) and (BankRows.expenseId.isNotNull() or BankRows.incomeId.isNotNull()) }
         .toList()
     return rows.mapNotNull { it[BankRows.expenseId] }.toSet() to rows.mapNotNull { it[BankRows.incomeId] }.toSet()
+}
+
+/**
+ * The first day a feed keeps bank rows from: its own [importFrom], but never before the household's balances start
+ * (`debts_from`). Before that day the old app's ledger is the record, so bank rows from then would only duplicate it.
+ * Call inside a transaction.
+ */
+fun startOfBankData(householdId: Uuid, importFrom: LocalDate?): LocalDate? {
+    val debtsFrom = Households.select(Households.debtsFrom).where { Households.id eq householdId }.singleOrNull()?.get(Households.debtsFrom)
+    return listOfNotNull(importFrom, debtsFrom).maxOrNull()
 }

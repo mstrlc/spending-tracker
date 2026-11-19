@@ -14,7 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 
 const KINDS: { value: AccountKind; label: string }[] = [
-  { value: "bank", label: "Bank account" },
+  { value: "bank", label: "Current account" },
+  { value: "savings", label: "Savings account" },
   { value: "credit_card", label: "Credit card" },
   { value: "cash", label: "Cash" },
   { value: "other", label: "Other" },
@@ -39,6 +40,8 @@ export function AccountsPage() {
   const [ownerUserId, setOwnerUserId] = useState("");
   const [kind, setKind] = useState<AccountKind>("bank");
   const [iban, setIban] = useState("");
+  // Czech banks withhold 15% of interest; a savings account starts with that.
+  const [interestTax, setInterestTax] = useState("15");
   const [renaming, setRenaming] = useState<string | null>(null);
   const prompt = usePrompt();
   const rows = (accounts.data ?? []).filter((a) => !pendingDeletes.has(a.id));
@@ -46,7 +49,15 @@ export function AccountsPage() {
   function add(e: FormEvent) {
     e.preventDefault();
     save.mutate(
-      { input: { name, ownerUserId: ownerUserId || null, kind, iban: iban || null } },
+      {
+        input: {
+          name,
+          ownerUserId: ownerUserId || null,
+          kind,
+          iban: iban || null,
+          interestTaxPercent: kind === "savings" && interestTax.trim() !== "" ? Number(interestTax) : null,
+        },
+      },
       {
         onSuccess: () => {
           setName("");
@@ -63,6 +74,7 @@ export function AccountsPage() {
       status: account.status,
       kind: account.kind,
       iban: account.iban,
+      interestTaxPercent: account.interestTaxPercent ?? null,
       version: account.version,
     };
     save.mutate({
@@ -82,6 +94,17 @@ export function AccountsPage() {
     if (next !== null) update(a, { iban: next.trim() || null });
   }
 
+  async function editInterestTax(a: Account) {
+    const next = await prompt({
+      title: `Tax on interest from ${a.name}`,
+      label: "Withheld, in %",
+      description: "What the bank keeps of the interest before paying it out: 15% in Czechia, 0 if it pays gross.",
+      initial: String(a.interestTaxPercent ?? 15),
+    });
+    if (next === null || next.trim() === "") return;
+    update(a, { interestTaxPercent: Number(next.trim().replace("%", "")) });
+  }
+
   function deleteRow(a: Account) {
     remove.schedule({ id: a.id, version: a.version });
   }
@@ -93,7 +116,8 @@ export function AccountsPage() {
       <PageHeader title="Accounts" />
       <PageIntro>
         The bank accounts, cards and cash you pay from. A credit card's purchases are spending; paying it off is a transfer.
-        Close an account to keep its history but hide it from new expenses.
+        A savings account's interest comes in as income, with the tax the bank withheld as a deduction. Close an account
+        to keep its history but hide it from new expenses.
       </PageIntro>
 
       <Surface className="p-4">
@@ -120,16 +144,21 @@ export function AccountsPage() {
               ))}
             </NativeSelect>
           </Field>
-          {(kind === "bank" || kind === "credit_card") && (
+          {(kind === "bank" || kind === "savings" || kind === "credit_card") && (
             <Field label="IBAN" name="iban" error={save.error} className="w-64">
               <Input placeholder="Optional" value={iban} onChange={(e) => setIban(e.target.value)} />
+            </Field>
+          )}
+          {kind === "savings" && (
+            <Field label="Tax on interest (%)" name="interestTaxPercent" error={save.error} className="w-36">
+              <Input inputMode="numeric" value={interestTax} onChange={(e) => setInterestTax(e.target.value)} />
             </Field>
           )}
           <Button type="submit" disabled={save.isPending}>
             Add account
           </Button>
         </form>
-        <FormError error={save.error} fields={["name", "ownerUserId", "kind", "iban"]} />
+        <FormError error={save.error} fields={["name", "ownerUserId", "kind", "iban", "interestTaxPercent"]} />
       </Surface>
 
       <Surface>
@@ -166,6 +195,11 @@ export function AccountsPage() {
                       {a.status === "closed" && <Chip>Closed</Chip>}
                     </span>
                     {a.iban && <div className="amount pl-6 text-xs font-normal text-muted-foreground">{formatIban(a.iban)}</div>}
+                    {a.kind === "savings" && (
+                      <div className="pl-6 text-xs font-normal text-muted-foreground">
+                        Interest taxed {a.interestTaxPercent ?? 15}%
+                      </div>
+                    )}
                     {(() => {
                       const fed = assets.find((asset) => asset.accountId === a.id);
                       return fed ? <div className="pl-6 text-xs font-normal text-muted-foreground">Feeds {fed.name}</div> : null;
@@ -197,6 +231,7 @@ export function AccountsPage() {
                       actions={[
                         { label: "Rename", onSelect: () => setRenaming(a.id) },
                         { label: a.iban ? "Edit IBAN" : "Add IBAN", onSelect: () => editIban(a) },
+                        ...(a.kind === "savings" ? [{ label: "Tax on interest…", onSelect: () => editInterestTax(a) }] : []),
                         {
                           label: a.status === "active" ? "Close account" : "Reopen account",
                           onSelect: () => update(a, { status: a.status === "active" ? "closed" : "active" }),

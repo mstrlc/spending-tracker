@@ -51,14 +51,19 @@ export function draftIncome(rows: BankRow[], accountOwner: string | null): Incom
   const s = rows.find((r) => r.suggestion)?.suggestion;
   const total = sum(rows.map(signedAmount));
   const deduction = s?.incomeKind === "deduction";
+  // Interest arrives net of withheld tax: the line is the gross, with the tax taken off it, so the net is what came in.
+  const tax = rows.length === 1 && !deduction ? (s?.withheldTaxMinor ?? null) : null;
   return {
     date: earliest(rows),
-    amountMinor: total === undefined ? undefined : deduction ? -total : total,
+    amountMinor: total === undefined ? undefined : deduction ? -total : tax !== null ? total + tax : total,
     source: s?.incomeSource,
     accountId: sameAccount(rows),
     recipientUserId: s?.ruleId ? s.paidByUserId : accountOwner,
     kind: deduction ? "deduction" : undefined,
     earnedMonth: deduction ? (s?.earnedMonth ?? undefined) : undefined,
+    ...(tax !== null && total !== undefined
+      ? { deductions: [{ source: "Tax on interest", amountMinor: tax }], expectedNetMinor: total }
+      : {}),
   };
 }
 

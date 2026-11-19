@@ -287,12 +287,13 @@ export function ExpenseWhose({
 
 const ACCOUNT_ICONS: Record<AccountKind, LucideIcon> = {
   bank: LandmarkIcon,
+  savings: PiggyBankIcon,
   credit_card: CreditCardIcon,
   cash: BanknoteIcon,
   other: WalletIcon,
 };
 
-/** The icon for a kind of account: bank, card, cash, other. */
+/** The icon for a kind of account: current, savings, card, cash, other. */
 export function AccountIcon({ kind, className }: { kind: AccountKind | undefined; className?: string }) {
   const Icon = ACCOUNT_ICONS[kind ?? "other"];
   return <Icon aria-hidden="true" className={cn("size-3.5 shrink-0 text-muted-foreground", className)} />;

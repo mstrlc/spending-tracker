@@ -606,8 +606,8 @@ class InboxTest {
         """.trimIndent()
         client.post("$base/bank-feeds/${aliceFeed.id}/statements") { setBody(StatementUpload(aliceGc, "alice.json")) }
 
-        // Paired rows on Bob's feed and Alice's second feed for 777.00 on 2026-09-12:
-        // Bob's row should rank ahead of Alice 2's row because Alice owes Bob.
+        // Paired rows on Bob's feed and Alice's second feed for 777.00 on 2026-09-12, both naming Alice as the payer
+        // (the same amount alone isn't enough): Bob's row should rank ahead of Alice 2's row because Alice owes Bob.
         val bobGc = """
             {
               "transactions": {
@@ -616,6 +616,7 @@ class InboxTest {
                     "transactionId": "bob-pair-in",
                     "bookingDate": "2026-09-12",
                     "transactionAmount": { "amount": "777.00", "currency": "CZK" },
+                    "debtorName": "Alice",
                     "remittanceInformationUnstructured": "Pair in Bob"
                   }
                 ]
@@ -630,6 +631,7 @@ class InboxTest {
                     "transactionId": "alice2-pair-in",
                     "bookingDate": "2026-09-12",
                     "transactionAmount": { "amount": "777.00", "currency": "CZK" },
+                    "debtorName": "Alice",
                     "remittanceInformationUnstructured": "Pair in Alice 2"
                   }
                 ]

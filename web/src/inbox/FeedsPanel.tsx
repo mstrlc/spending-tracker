@@ -451,7 +451,8 @@ function FeedForm({ feed, onDone }: { feed?: BankFeed; onDone: () => void }) {
   const [institution, setInstitution] = useState<BankInstitution>(feed?.institution ?? "other");
   const [currency, setCurrency] = useState(feed?.currency ?? household.currency);
   const [iban, setIban] = useState(feed?.iban ?? "");
-  const [importFrom, setImportFrom] = useState(feed?.importFrom ?? "");
+  // A new feed starts where the household's balances do: before that the old ledger is the record.
+  const [importFrom, setImportFrom] = useState(feed?.importFrom ?? household.debtsFrom ?? "");
 
   // A new feed is named after its account and currency until someone types a name.
   const [named, setNamed] = useState(feed !== undefined);

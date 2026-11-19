@@ -1,5 +1,6 @@
 package dev.spendingtracker.server.inbox
 
+import dev.spendingtracker.server.account.DEFAULT_INTEREST_TAX_PERCENT
 import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.BankFeeds
 import dev.spendingtracker.server.db.BankRows
@@ -51,16 +52,11 @@ import java.math.RoundingMode
 import java.util.Currency
 import java.util.TreeMap
 import kotlin.math.abs
+import kotlin.math.roundToLong
 import kotlin.uuid.Uuid
 
 /** Hints that don't say the money stayed in the household. */
 private val NOT_MOVEMENT = setOf("Refund", "Money in", "Money in on a card: a refund?")
-
-/** Hints that say the money moved between the household's own accounts (the old app's carry an "Old app: " prefix). */
-private val MOVEMENT_HINTS = setOf(
-    "Between your own accounts", "Revolut top-up", "Top-up", "Currency exchange", "Card repayment",
-    "To or from someone in the household",
-)
 
 /** How far the two sides of a transfer may be apart, and how far their converted amounts may differ. */
 private const val TRANSFER_DAYS = 4
@@ -89,9 +85,13 @@ fun suggestFor(
     rules: List<RuleDef> = loadRules(householdId),
 ): Map<Uuid, BankRowSuggestion> {
     if (rows.isEmpty()) return emptyMap()
-    val accountRows = Accounts.select(Accounts.id, Accounts.ownerUserId, Accounts.kind, Accounts.iban).where { Accounts.householdId eq householdId }.toList()
+    val accountRows = Accounts.select(Accounts.id, Accounts.ownerUserId, Accounts.kind, Accounts.iban, Accounts.interestTaxPercent)
+        .where { Accounts.householdId eq householdId }.toList()
     val owners = accountRows.associate { it[Accounts.id] to it[Accounts.ownerUserId] }
     val cards = accountRows.filter { it[Accounts.kind] == "credit_card" }.map { it[Accounts.id] }.toSet()
+    // What each savings account withholds from interest, in percent.
+    val interestTax = accountRows.filter { it[Accounts.kind] == "savings" }
+        .associate { it[Accounts.id] to (it[Accounts.interestTaxPercent] ?: DEFAULT_INTEREST_TAX_PERCENT) }
     // The account an IBAN belongs to: an account's own, else a feed's.
     val accountByIban = BankFeeds.select(BankFeeds.iban, BankFeeds.accountId).where { BankFeeds.householdId eq householdId }
         .mapNotNull { r -> r[BankFeeds.iban]?.let { it to r[BankFeeds.accountId] } }.toMap() +
@@ -130,6 +130,8 @@ fun suggestFor(
             (BankRows.date lessEq dates.max().plus(DatePeriod(days = TRANSFER_DAYS)))
     }.toList()
     val fx = FxTable.load((rows + pool).map { it[BankRows.currency] }.filter { it != householdCurrency }.toSet() + householdCurrency)
+    val evidence = TransferEvidence.load(householdId)
+    val otherSides = otherSides(rows, pool, householdCurrency, fx, evidence, owners, owes)
     val (linkedExpenses, linkedIncome) = linkedRecords(householdId)
     val first = dates.min().minus(DatePeriod(days = INCOME_MONTH_DAYS))
     val last = dates.max().plus(DatePeriod(days = INCOME_MONTH_DAYS))
@@ -173,8 +175,11 @@ fun suggestFor(
         // Money in is income, unless it's a refund: a Revolut card refund, or money back on a card or from where you
         // only ever spent, that isn't money moving between your own accounts (a card repayment, a top-up).
         val movement = row[BankRows.hint].let { it.isNotEmpty() && it !in NOT_MOVEMENT }
-        val refund = row[BankRows.code] == "CARD_REFUND" ||
-            (!movement && (accountId in cards || (key in pastExpenses && key !in pastIncome)))
+        val interest = row[BankRows.hint] == INTEREST_HINT && native > 0
+        val refund = !interest && (
+            row[BankRows.code] == "CARD_REFUND" ||
+                (!movement && (accountId in cards || (key in pastExpenses && key !in pastIncome)))
+            )
         val rule = rules.firstMatch(row)
         // A rule can say the row is the other kind than the guess: money in as an expense (a refund), or out as income.
         val expenseOrIncome = when (rule?.outcome) {
@@ -186,61 +191,16 @@ fun suggestFor(
         val text = row[BankRows.text]
         val owner = owners[accountId]
 
-        val duplicates = when (expenseOrIncome) {
-            SuggestedRecord.EXPENSE -> {
-                val amount = converted?.let { -it }
-                expenses.filter { e ->
-                    (e[Expenses.accountId] == null || e[Expenses.accountId] == accountId) &&
-                        abs(date.daysUntil(e[Expenses.date])) <= DUPLICATE_DAYS &&
-                        amount != null && closeEnough(e[Expenses.amountMinor], amount, currency != householdCurrency)
-                }.sortedBy { abs(date.daysUntil(it[Expenses.date])) }.take(3).map { e ->
-                    DuplicateCandidate(SuggestedRecord.EXPENSE, e[Expenses.id].toString(), e[Expenses.date], e[Expenses.amountMinor], e.getOrNull(Merchants.name).orEmpty())
-                }
-            }
-            else -> incomeLines.filter { i ->
-                val gap = date.daysUntil(i[Income.date])
-                // A deduction is money out booked as a positive line; an earning is what came in (net of linked deductions).
-                val target = if (forDeduction) converted?.let { -it } else converted
-                val gross = i[Income.amountMinor]
-                val deducted = if (i[Income.kind] == IncomeKind.EARNING.dbValue) deductedByEarning[i[Income.id]] ?: 0L else 0L
-                (i[Income.kind] == IncomeKind.DEDUCTION.dbValue) == forDeduction &&
-                    (i[Income.accountId] == null || i[Income.accountId] == accountId) &&
-                    (abs(gap) <= INCOME_DAYS || (i[Income.date].day == 1 && gap <= 0 && -gap <= INCOME_MONTH_DAYS)) &&
-                    target != null && (
-                        closeEnough(gross, target, currency != householdCurrency) ||
-                            (deducted != 0L && closeEnough(gross - deducted, target, currency != householdCurrency))
-                        )
-            }.sortedBy { abs(date.daysUntil(it[Income.date])) }.take(3).map { i ->
-                val deducted = if (i[Income.kind] == IncomeKind.EARNING.dbValue) deductedByEarning[i[Income.id]] ?: 0L else 0L
-                DuplicateCandidate(SuggestedRecord.INCOME, i[Income.id].toString(), i[Income.date], i[Income.amountMinor] - deducted, i[Income.sourceName])
-            }
-        }
-
         val past = pastExpenses[key]
         val guessName = cleanDescriptor(text).ifEmpty { text }
         val known = merchantsByName[guessName.lowercase()]
         val pastSource = pastIncome[key]
-        val candidates = pool.asSequence()
-            .filter { other ->
-                other[BankRows.id] != row[BankRows.id] && other[BankRows.feedId] != row[BankRows.feedId] &&
-                    (other[BankRows.amountMinor] > 0) != (native > 0) &&
-                    abs(date.daysUntil(other[BankRows.date])) <= TRANSFER_DAYS &&
-                    sameMoney(row, other, householdCurrency, fx)
-            }
-            .sortedWith(
-                compareBy<ResultRow>(
-                    { abs(date.daysUntil(it[BankRows.date])) },
-                    { !candidateBalanceMatches(row, it, owners, owes) },
-                    { it[BankRows.id].toString() },
-                ),
+        val candidates = otherSides[row[BankRows.id]].orEmpty().map { other ->
+            TransferCandidate(
+                other[BankRows.id].toString(), other[BankRows.version], other[BankFeeds.accountId].toString(),
+                other[BankRows.date], other[BankRows.amountMinor], other[BankRows.currency], other[BankRows.text],
             )
-            .take(3)
-            .map { other ->
-                TransferCandidate(
-                    other[BankRows.id].toString(), other[BankRows.version], other[BankFeeds.accountId].toString(),
-                    other[BankRows.date], other[BankRows.amountMinor], other[BankRows.currency], other[BankRows.text],
-                )
-            }.toList()
+        }
         val counterpartyAccountId = row[BankRows.counterpartyIban]?.let(accountByIban::get)?.takeIf { it != accountId }
         val ownAccount = counterpartyAccountId?.takeIf { candidates.isEmpty() }
         val isMovement = row[BankRows.hint].removePrefix("Old app: ") in MOVEMENT_HINTS
@@ -274,6 +234,48 @@ fun suggestFor(
             ruleMerchant != null -> merchantsByName[ruleMerchant.lowercase()]?.get(Merchants.defaultCategoryId)
             else -> guessedCategory
         }
+        // A record entered by hand is the same one only if its merchant or source has a name in common with the row:
+        // the same amount a few days apart isn't enough.
+        val rowWords = words(listOf(text, row[BankRows.counterpartyName], row[BankRows.message]).joinToString(" "))
+        val incomeSource = (if (forIncome || forDeduction) rule!!.incomeSource.ifBlank { null } else null)
+            ?: pastSource?.get(Income.sourceName) ?: (if (interest) "Interest" else null) ?: row[BankRows.counterpartyName].ifEmpty { text }
+        // Interest arrives net: the bank kept [rate]% of the gross, so gross = net * 100 / (100 - rate).
+        val withheldTax = if (!interest || rule != null || converted == null) null else {
+            val rate = interestTax[accountId] ?: 0
+            if (rate == 0) null else (converted * 100.0 / (100 - rate)).roundToLong() - converted
+        }
+        val duplicates = when (expenseOrIncome) {
+            SuggestedRecord.EXPENSE -> {
+                val amount = converted?.let { -it }
+                expenses.filter { e ->
+                    (e[Expenses.accountId] == null || e[Expenses.accountId] == accountId) &&
+                        abs(date.daysUntil(e[Expenses.date])) <= DUPLICATE_DAYS &&
+                        amount != null && closeEnough(e[Expenses.amountMinor], amount, currency != householdCurrency) &&
+                        alike(e.getOrNull(Merchants.name).orEmpty(), merchant, rowWords)
+                }.sortedBy { abs(date.daysUntil(it[Expenses.date])) }.take(3).map { e ->
+                    DuplicateCandidate(SuggestedRecord.EXPENSE, e[Expenses.id].toString(), e[Expenses.date], e[Expenses.amountMinor], e.getOrNull(Merchants.name).orEmpty())
+                }
+            }
+            else -> incomeLines.filter { i ->
+                val gap = date.daysUntil(i[Income.date])
+                // A deduction is money out booked as a positive line; an earning is what came in (net of linked deductions).
+                val target = if (forDeduction) converted?.let { -it } else converted
+                val gross = i[Income.amountMinor]
+                val deducted = if (i[Income.kind] == IncomeKind.EARNING.dbValue) deductedByEarning[i[Income.id]] ?: 0L else 0L
+                (i[Income.kind] == IncomeKind.DEDUCTION.dbValue) == forDeduction &&
+                    (i[Income.accountId] == null || i[Income.accountId] == accountId) &&
+                    (abs(gap) <= INCOME_DAYS || (i[Income.date].day == 1 && gap <= 0 && -gap <= INCOME_MONTH_DAYS)) &&
+                    alike(i[Income.sourceName], incomeSource, rowWords) &&
+                    target != null && (
+                        closeEnough(gross, target, currency != householdCurrency) ||
+                            (deducted != 0L && closeEnough(gross - deducted, target, currency != householdCurrency))
+                        )
+            }.sortedBy { abs(date.daysUntil(it[Income.date])) }.take(3).map { i ->
+                val deducted = if (i[Income.kind] == IncomeKind.EARNING.dbValue) deductedByEarning[i[Income.id]] ?: 0L else 0L
+                DuplicateCandidate(SuggestedRecord.INCOME, i[Income.id].toString(), i[Income.date], i[Income.amountMinor] - deducted, i[Income.sourceName])
+            }
+        }
+
         val refundCandidates = if (native <= 0 || converted == null || (rule != null && !forExpense)) emptyList() else {
             val merchantId = merchantsByName[merchant.lowercase()]?.get(Merchants.id)
             val sameKey = if (key.isEmpty()) emptySet() else expensesByKey[key].orEmpty()
@@ -324,8 +326,7 @@ fun suggestFor(
             merchant = merchant,
             categoryId = category?.toString(),
             paidByUserId = (if (forExpense || forIncome || forDeduction) rule!!.personUserId ?: owner else if (past != null) past[Expenses.paidByUserId] else owner)?.toString(),
-            incomeSource = (if (forIncome || forDeduction) rule!!.incomeSource.ifBlank { null } else null)
-                ?: pastSource?.get(Income.sourceName) ?: row[BankRows.counterpartyName].ifEmpty { text },
+            incomeSource = incomeSource,
             duplicates = duplicates,
             transferCandidates = candidates,
             transferAccountId = (if (rule?.outcome == RuleOutcome.TRANSFER) rule.otherAccountId?.takeIf { it != accountId } else null)?.toString()
@@ -338,9 +339,88 @@ fun suggestFor(
             incomeKind = if (forDeduction) IncomeKind.DEDUCTION else IncomeKind.EARNING,
             earnedMonth = if (forDeduction) date.yearMonth.plus(rule!!.monthOffset, DateTimeUnit.MONTH).toString() else null,
             refundCandidates = refundCandidates,
+            withheldTaxMinor = withheldTax,
         )
     }
 }
+
+/**
+ * The other sides of [rows]' transfers among [pool]: pending rows on another feed, opposite in sign, within
+ * [TRANSFER_DAYS], the same money, and backed by [evidence]. Rows are paired one to one, nearest in time first, so ten
+ * identical top-ups pair with ten identical card payments rather than all with the same one. A row lists its partner
+ * first, then the candidates nobody took.
+ */
+private fun otherSides(
+    rows: List<ResultRow>,
+    pool: List<ResultRow>,
+    householdCurrency: String,
+    fx: FxTable,
+    evidence: TransferEvidence,
+    owners: Map<Uuid, Uuid?>,
+    owes: Map<Pair<String, String>, Long>,
+): Map<Uuid, List<ResultRow>> {
+    /** How [row] ranks [other]: nearest first, then the stronger evidence, then a debt it would settle, then by id. */
+    fun order(row: ResultRow) = compareBy<ResultRow>(
+        { abs(row[BankRows.date].daysUntil(it[BankRows.date])) },
+        { -evidence.strength(row, it) },
+        { !candidateBalanceMatches(row, it, owners, owes) },
+        { it[BankRows.id].toString() },
+    )
+    val candidates = rows.associate { row ->
+        val date = row[BankRows.date]
+        row[BankRows.id] to pool.filter { other ->
+            other[BankRows.id] != row[BankRows.id] && other[BankRows.feedId] != row[BankRows.feedId] &&
+                (other[BankRows.amountMinor] > 0) != (row[BankRows.amountMinor] > 0) &&
+                abs(date.daysUntil(other[BankRows.date])) <= TRANSFER_DAYS &&
+                sameMoney(row, other, householdCurrency, fx) && evidence.supports(row, other)
+        }.sortedWith(order(row))
+    }
+    // Pair greedily, best pairs first by the same order seen from the money-out side (so both sides agree); a pool row
+    // outside [rows] can still be taken once.
+    val byId = (rows + pool).associateBy { it[BankRows.id] }
+    val partner = HashMap<Uuid, Uuid>()
+    val pairs = candidates.flatMap { (id, list) ->
+        list.map { other ->
+            val row = byId.getValue(id)
+            if (row[BankRows.amountMinor] < 0) row to other else other to row
+        }
+    }.distinctBy { (out, inn) -> out[BankRows.id] to inn[BankRows.id] }
+    pairs.sortedWith(
+        compareBy<Pair<ResultRow, ResultRow>>(
+            { (out, inn) -> abs(out[BankRows.date].daysUntil(inn[BankRows.date])) },
+            { (out, inn) -> -evidence.strength(out, inn) },
+            { (out, inn) -> !candidateBalanceMatches(out, inn, owners, owes) },
+            { (out, _) -> out[BankRows.date] },
+            { (out, inn) -> out[BankRows.id].toString() + inn[BankRows.id].toString() },
+        ),
+    ).forEach { (out, inn) ->
+        val a = out[BankRows.id]
+        val b = inn[BankRows.id]
+        if (a !in partner && b !in partner) {
+            partner[a] = b
+            partner[b] = a
+        }
+    }
+    // A row's own partner comes first, then what nobody else took: more than one means a person has to choose.
+    return candidates.mapValues { (id, list) ->
+        val mine = partner[id]
+        (list.filter { it[BankRows.id] == mine } + list.filter { it[BankRows.id] !in partner }).take(3)
+    }
+}
+
+/** Words that say nothing about who a payment was to or from. */
+private val FILLER_WORDS = setOf(
+    "SRO", "AS", "CZ", "CZE", "CZK", "EUR", "THE", "AND", "PRAHA", "PRAGUE", "BRNO", "IRL", "DUBLIN", "PLATBA",
+    "KARTOU", "BEZKONTAKTNI", "VAM", "DEKUJE", "ZA", "NAKUP", "WWW", "COM", "PAY", "APPLE", "GOOGLE",
+)
+
+/** The telling words of [text], without diacritics: at least three letters, no digits, no filler. */
+private fun words(text: String): Set<String> =
+    normalizeText(text).split(' ').filter { it.length >= 3 && it.none(Char::isDigit) && it !in FILLER_WORDS }.toSet()
+
+/** A record's [name] has a word in common with the bank row ([rowWords]) or is the merchant or source it suggests ([suggested]). */
+private fun alike(name: String, suggested: String, rowWords: Set<String>): Boolean =
+    name.isNotBlank() && (name.equals(suggested, ignoreCase = true) || words(name).any { it in rowWords })
 
 /** Current net debts between members: `(fromUserId, toUserId)` -> positive amount owed. */
 private fun loadCurrentBalances(householdId: Uuid): Map<Pair<String, String>, Long> =

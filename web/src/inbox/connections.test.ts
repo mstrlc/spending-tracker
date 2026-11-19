@@ -13,4 +13,10 @@ describe("importFromAfter", () => {
   it("is empty for an account with no rows yet", () => {
     expect(importFromAfter([feed("b", "2026-06-01")], "a")).toBe("");
   });
+
+  it("never starts before the household's balances do", () => {
+    expect(importFromAfter([], "a", "2026-10-01")).toBe("2026-10-01");
+    expect(importFromAfter([feed("a", "2026-09-10")], "a", "2026-10-01")).toBe("2026-10-01");
+    expect(importFromAfter([feed("a", "2026-10-10")], "a", "2026-10-01")).toBe("2026-10-11");
+  });
 });
