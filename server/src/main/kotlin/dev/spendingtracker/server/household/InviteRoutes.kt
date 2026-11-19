@@ -237,6 +237,7 @@ fun Route.inviteLinkRoutes() = route("/invites/{token}", {
                     row[Households.currency],
                     roleFrom(role),
                     row[Households.debtsFrom],
+                    jointFundingFrom(row[Households.jointFunding]),
                 )
             }
             call.respond(household)

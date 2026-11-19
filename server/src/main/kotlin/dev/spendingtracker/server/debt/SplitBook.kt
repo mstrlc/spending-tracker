@@ -6,7 +6,9 @@ import dev.spendingtracker.server.db.HouseholdMembers
 import dev.spendingtracker.server.db.Households
 import dev.spendingtracker.server.db.SplitRules
 import dev.spendingtracker.server.db.SplitShares
+import dev.spendingtracker.server.household.jointFundingFrom
 import dev.spendingtracker.shared.api.Debt
+import dev.spendingtracker.shared.api.JointFunding
 import kotlinx.datetime.LocalDate
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
@@ -45,6 +47,11 @@ internal data class DatedRule(val validFrom: LocalDate, val weights: Weights)
  * - A member's expense paid from a joint account makes them owe the others their share of the pot (the household
  *   default split; categories don't change who the pot belongs to).
  * - A member's expense paid from another member's account makes them owe the payer all of it.
+ * - Under [JointFunding.CONTRIBUTIONS], top-ups into joint accounts are credited to the member who put them in
+ *   (and withdrawals debited) against the household default split, proportionally capped at total joint-account
+ *   spending so money still sitting in joint accounts is not owed. Joint expenses paid from a joint account
+ *   adjust for any difference between the expense's split (category or own) and the household default split, so
+ *   both members topping up by the household split and spending it all produces zero debt.
  * Without an account nobody is known to have paid, so there's no debt; nor when the expense switches it off.
  */
 class SplitBook internal constructor(
@@ -58,7 +65,11 @@ class SplitBook internal constructor(
     private val accountOwners: Map<Uuid, Uuid?>,
     /** Expenses before this date produce no debts (null means all history counts). */
     val debtsFrom: LocalDate? = null,
+    val jointFunding: JointFunding = JointFunding.POT,
 ) {
+    fun isJointAccount(accountId: Uuid?): Boolean =
+        accountId != null && accountId in accountOwners && accountOwners[accountId] == null
+
     fun debtsFor(expense: ExpenseFacts): List<Debt> {
         if (debtsFrom != null && expense.date < debtsFrom) return emptyList()
         val accountId = expense.accountId ?: return emptyList()
@@ -70,6 +81,12 @@ class SplitBook internal constructor(
                 allocateJoint(expense)
                     .filter { (member, part) -> member != payer && part != 0L }
                     .map { (member, part) -> Debt(member.toString(), payer.toString(), part) }
+            owner == null && payer == null && jointFunding == JointFunding.CONTRIBUTIONS -> {
+                val potShare = allocate(expense.amountMinor, dated(null, expense.date) ?: equal())
+                val expenseShare = allocateJoint(expense)
+                val deltas = members.associateWith { (expenseShare[it] ?: 0L) - (potShare[it] ?: 0L) }
+                debtsFromNet(deltas)
+            }
             owner != null && payer == null ->
                 allocate(expense.amountMinor, overrides[expense.id] ?: dated(null, expense.date) ?: equal())
                     .filter { (member, part) -> member != owner && part != 0L }
@@ -80,11 +97,27 @@ class SplitBook internal constructor(
         }
     }
 
+    /**
+     * Debts from a member's top-up (positive [amountMinor]) or withdrawal (negative [amountMinor]) on a joint
+     * account: the household default split says what share each member owed of that funding.
+     */
+    fun debtsForTopUp(userId: Uuid, amountMinor: Long, date: LocalDate): List<Debt> {
+        if (amountMinor == 0L) return emptyList()
+        return allocate(amountMinor, dated(null, date) ?: equal())
+            .filter { (member, part) -> member != userId && part != 0L }
+            .map { (member, part) ->
+                if (part > 0) Debt(member.toString(), userId.toString(), part)
+                else Debt(userId.toString(), member.toString(), -part)
+            }
+    }
+
     /** How a joint expense is shared: its own split, its category's (or the parent's), the household's, or equally. */
     fun splitFor(expense: ExpenseFacts): Weights {
         overrides[expense.id]?.let { return it }
         return splitForCategory(expense.categoryId, expense.date)
     }
+
+    fun allocateJointShare(expense: ExpenseFacts): Map<Uuid, Long> = allocateJoint(expense)
 
     private fun allocateJoint(expense: ExpenseFacts): Map<Uuid, Long> {
         if (expense.id in overrides || expense.lines.isEmpty()) {
@@ -116,23 +149,53 @@ class SplitBook internal constructor(
 
 /**
  * Splits [amountMinor] by [weights] in whole minor units that add up exactly: each gets its rounded-down part, and
- * the units left over go to the largest remainders (ties by member id, so the result never changes between calls).
+ * the units left over go to the largest remainders (ties by key order, so the result never changes between calls).
  */
-fun allocate(amountMinor: Long, weights: Weights): Map<Uuid, Long> {
-    val total = weights.values.sumOf { it.toLong() }
+fun <K : Comparable<K>> allocateByWeights(amountMinor: Long, weights: Map<K, Long>): Map<K, Long> {
+    val total = weights.values.sum()
     if (total <= 0L) return emptyMap()
     val sign = if (amountMinor < 0) -1L else 1L
     val amount = amountMinor * sign
-    val members = weights.keys.sortedBy { it.toString() }
-    val parts = members.associateWith { amount * weights.getValue(it) / total }.toMutableMap()
+    val keys = weights.keys.sorted()
+    val parts = keys.associateWith { amount * weights.getValue(it) / total }.toMutableMap()
     var left = amount - parts.values.sum()
-    val byRemainder = members.sortedByDescending { amount * weights.getValue(it) % total }
-    for (member in byRemainder) {
+    val byRemainder = keys.sortedByDescending { amount * weights.getValue(it) % total }
+    for (key in byRemainder) {
         if (left == 0L) break
-        parts[member] = parts.getValue(member) + 1
+        parts[key] = parts.getValue(key) + 1
         left--
     }
     return parts.mapValues { it.value * sign }
+}
+
+/**
+ * Splits [amountMinor] by [weights] in whole minor units that add up exactly: each gets its rounded-down part, and
+ * the units left over go to the largest remainders (ties by member id, so the result never changes between calls).
+ */
+fun allocate(amountMinor: Long, weights: Weights): Map<Uuid, Long> =
+    allocateByWeights(amountMinor, weights.mapKeys { it.key.toString() }.mapValues { it.value.toLong() })
+        .mapKeys { Uuid.parse(it.key) }
+
+/**
+ * Turns zero-sum member deltas (positive = debtor, negative = creditor) into deterministic pairwise debts.
+ */
+fun debtsFromNet(deltas: Map<Uuid, Long>): List<Debt> {
+    val debtors = deltas.filterValues { it > 0 }.entries.sortedBy { it.key.toString() }
+        .map { it.key to it.value }.toMutableList()
+    val creditors = deltas.filterValues { it < 0 }.entries.sortedBy { it.key.toString() }
+        .map { it.key to -it.value }.toMutableList()
+    val result = mutableListOf<Debt>()
+    var di = 0
+    var ci = 0
+    while (di < debtors.size && ci < creditors.size) {
+        val (debtor, owes) = debtors[di]
+        val (creditor, owed) = creditors[ci]
+        val amount = minOf(owes, owed)
+        if (amount > 0L) result += Debt(debtor.toString(), creditor.toString(), amount)
+        if (owes == amount) di++ else debtors[di] = debtor to (owes - amount)
+        if (owed == amount) ci++ else creditors[ci] = creditor to (owed - amount)
+    }
+    return result
 }
 
 /** Nets debts into one line per pair of members that isn't square, largest first. */
@@ -181,8 +244,16 @@ fun loadSplitBook(householdId: Uuid, expenseIds: Collection<Uuid>? = null): Spli
     val accountOwners = Accounts.select(Accounts.id, Accounts.ownerUserId)
         .where { Accounts.householdId eq householdId }
         .associate { it[Accounts.id] to it[Accounts.ownerUserId] }
-    val debtsFrom = Households.select(Households.debtsFrom)
+    val householdRow = Households.select(Households.debtsFrom, Households.jointFunding)
         .where { Households.id eq householdId }
-        .single()[Households.debtsFrom]
-    return SplitBook(members, rules, overrides, parents, accountOwners, debtsFrom)
+        .single()
+    return SplitBook(
+        members,
+        rules,
+        overrides,
+        parents,
+        accountOwners,
+        householdRow[Households.debtsFrom],
+        jointFundingFrom(householdRow[Households.jointFunding]),
+    )
 }

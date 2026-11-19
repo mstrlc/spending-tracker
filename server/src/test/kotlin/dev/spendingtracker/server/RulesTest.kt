@@ -27,6 +27,7 @@ import dev.spendingtracker.shared.api.Income
 import dev.spendingtracker.shared.api.IncomeInput
 import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.Invite
+import dev.spendingtracker.shared.api.JointFunding
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.RuleDirection
 import dev.spendingtracker.shared.api.RuleOutcome
@@ -465,9 +466,9 @@ class RulesTest {
         val bob = newClient().also { it.signup("bob@example.com", "Bob") }
         val invite = alice.post("/api/households/${household.id}/invites") { setBody(CreateInviteRequest("bob@example.com", HouseholdRole.MEMBER)) }.body<Invite>()
         bob.post("/api/invites/${invite.token}/accept")
-        bob.put("$base/settings") { setBody(HouseholdSettings(true, null)) }.assertError(HttpStatusCode.Forbidden, "owner_only")
-        assertEquals(HouseholdSettings(false, null), bob.get("$base/settings").body<HouseholdSettings>())
-        assertEquals(HouseholdSettings(true, null), alice.put("$base/settings") { setBody(HouseholdSettings(true, null)) }.body<HouseholdSettings>())
+        bob.put("$base/settings") { setBody(HouseholdSettings(true, null, JointFunding.POT)) }.assertError(HttpStatusCode.Forbidden, "owner_only")
+        assertEquals(HouseholdSettings(false, null, JointFunding.POT), bob.get("$base/settings").body<HouseholdSettings>())
+        assertEquals(HouseholdSettings(true, null, JointFunding.POT), alice.put("$base/settings") { setBody(HouseholdSettings(true, null, JointFunding.POT)) }.body<HouseholdSettings>())
 
         val result = alice.apply(base)
         assertEquals(ApplyRulesResult(11, 0, 0, pairedByMatcher = 2, duplicatesByMatcher = 1), result)

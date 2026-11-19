@@ -11,6 +11,12 @@ enum class HouseholdRole {
 }
 
 @Serializable
+enum class JointFunding {
+    @SerialName("pot") POT,
+    @SerialName("contributions") CONTRIBUTIONS,
+}
+
+@Serializable
 data class CreateHouseholdRequest(val name: String, val currency: String)
 
 @Serializable
@@ -20,6 +26,7 @@ data class Household(
     val currency: String,
     val role: HouseholdRole,
     val debtsFrom: LocalDate?,
+    val jointFunding: JointFunding,
 )
 
 /**

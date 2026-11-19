@@ -33,6 +33,8 @@ object Households : Table("households") {
     val autoMatch = bool("auto_match").default(false)
     /** V30: expenses and settlements before this date don't count toward balances. */
     val debtsFrom = date("debts_from").nullable()
+    /** V31: whether joint accounts act as a pot or count top-ups toward debts. */
+    val jointFunding = text("joint_funding").default("pot")
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
 }

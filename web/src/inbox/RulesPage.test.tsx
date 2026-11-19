@@ -42,7 +42,7 @@ function renderRules(role: "owner" | "member", extra: Record<string, (request: R
     "GET /api/households/h1/members": () => Response.json([]),
     "GET /api/households/h1/categories": () => Response.json([]),
     "GET /api/households/h1/inbox-rules": () => Response.json([rule]),
-    "GET /api/households/h1/settings": () => Response.json({ autoMatch: false, debtsFrom: null }),
+    "GET /api/households/h1/settings": () => Response.json({ autoMatch: false, debtsFrom: null, jointFunding: "pot" }),
     ...extra,
   });
   renderWithProviders(
@@ -76,7 +76,7 @@ test("lists rules with what they match and become, and lets owners turn the matc
   const toggle = await screen.findByLabelText(/File transfers and duplicates automatically/);
   await waitFor(() => expect((toggle as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(toggle);
-  await waitFor(() => expect(saved).toEqual({ autoMatch: true, debtsFrom: null }));
+  await waitFor(() => expect(saved).toEqual({ autoMatch: true, debtsFrom: null, jointFunding: "pot" }));
 });
 
 test("members see the matcher setting but can't change it", async () => {

@@ -10,7 +10,7 @@ import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.db.Merchants
 import dev.spendingtracker.server.db.Settlements
 import dev.spendingtracker.server.db.Users
-import dev.spendingtracker.server.debt.loadSplitBook
+import dev.spendingtracker.server.debt.computeBalances
 import dev.spendingtracker.server.debt.netBalances
 import dev.spendingtracker.server.debt.toExpenseFacts
 import dev.spendingtracker.server.expense.loadExpenseLines
@@ -343,21 +343,8 @@ fun suggestFor(
 }
 
 /** Current net debts between members: `(fromUserId, toUserId)` -> positive amount owed. */
-private fun loadCurrentBalances(householdId: Uuid): Map<Pair<String, String>, Long> {
-    val book = loadSplitBook(householdId)
-    val expenseRows = Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id)
-        .selectAll()
-        .where { (Expenses.householdId eq householdId) and Expenses.accountId.isNotNull() and (Expenses.createsDebt eq true) }
-        .toList()
-    val lines = loadExpenseLines(householdId, expenseRows.map { it[Expenses.id] })
-    val expenseDebts = expenseRows.asSequence().flatMap { row ->
-        book.debtsFor(row.toExpenseFacts(lines[row[Expenses.id]].orEmpty())).asSequence()
-    }
-    val settlementDebts = Settlements.selectAll().where { Settlements.householdId eq householdId }.asSequence().map { row ->
-        Debt(row[Settlements.toUserId].toString(), row[Settlements.fromUserId].toString(), row[Settlements.amountMinor])
-    }
-    return netBalances(expenseDebts + settlementDebts).associate { (it.fromUserId to it.toUserId) to it.amountMinor }
-}
+private fun loadCurrentBalances(householdId: Uuid): Map<Pair<String, String>, Long> =
+    computeBalances(householdId).balances.associate { (it.fromUserId to it.toUserId) to it.amountMinor }
 
 /** True when [other] is on another member's personal account and the current balance points the same way as this movement. */
 private fun candidateBalanceMatches(
