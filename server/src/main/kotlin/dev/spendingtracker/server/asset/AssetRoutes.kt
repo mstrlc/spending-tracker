@@ -580,12 +580,12 @@ private class Book(
         readingsByFeed.values.flatten().minOfOrNull { it.date },
     ).minOrNull()
 
-    fun bankValue(accountId: Uuid, on: LocalDate): Priced? {
+    fun bankValue(accountId: Uuid, on: LocalDate, liability: Boolean = false): Priced? {
         val feedIds = feedsByAccount[accountId].orEmpty()
         if (feedIds.isEmpty()) return null
         val picked = feedIds.mapNotNull { feedId ->
             readingsByFeed[feedId].orEmpty()
-                .filter { it.date <= on }
+                .filter { it.date <= on && (!liability || !it.balanceType.endsWith("Available", ignoreCase = true)) }
                 .maxWithOrNull(
                     compareBy<BankReading> { it.date }
                         .thenBy { it.readAt }
@@ -603,11 +603,18 @@ private class Book(
         return latestDate?.let { Priced(sum, it) }
     }
 
+    fun hasOnlyAvailableReadings(accountId: Uuid, on: LocalDate): Boolean {
+        val readings = feedsByAccount[accountId].orEmpty()
+            .flatMap { readingsByFeed[it].orEmpty() }
+            .filter { it.date <= on }
+        return readings.isNotEmpty() && readings.all { it.balanceType.endsWith("Available", ignoreCase = true) }
+    }
+
     fun standing(row: ResultRow, on: LocalDate): Standing {
         val id = row[Assets.id]
         val kind = kindFrom(row[Assets.kind])
         val price = row[Assets.symbol]?.let { symbol -> { shares: BigDecimal, day: LocalDate -> prices.value(symbol, shares, day) } }
-        val bank = row[Assets.accountId]?.let { accountId -> { day: LocalDate -> bankValue(accountId, day) } }
+        val bank = row[Assets.accountId]?.let { accountId -> { day: LocalDate -> bankValue(accountId, day, liability = kind.liability) } }
         return standingOn(lots[id].orEmpty(), valuations[id].orEmpty(), fees[id].orEmpty(), on, price, liability = kind.liability, bankValue = bank)
     }
 
@@ -639,6 +646,9 @@ private class Book(
                 closeOn = close?.first,
             )
         }
+        val bankAvailableOnly = kind.liability &&
+            standing.valueSource != ValueSource.BANK &&
+            row[Assets.accountId]?.let { hasOnlyAvailableReadings(it, today) } == true
         return Asset(
             id = row[Assets.id].toString(),
             name = row[Assets.name],
@@ -658,6 +668,7 @@ private class Book(
             annualReturn = annualReturn,
             firstContributedOn = standing.firstContributedOn,
             feesMinor = fees[row[Assets.id]].orEmpty().sumOf { it.amountMinor },
+            bankAvailableOnly = bankAvailableOnly,
         )
     }
 }

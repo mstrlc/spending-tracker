@@ -89,6 +89,8 @@ data class Asset(
      * top for a [marketValued] one, so in [contributedMinor]. Either way already in [gainMinor].
      */
     val feesMinor: Long,
+    /** True when a liability's linked bank account has only reported available balances (which include unused credit). */
+    val bankAvailableOnly: Boolean = false,
 )
 
 /**
