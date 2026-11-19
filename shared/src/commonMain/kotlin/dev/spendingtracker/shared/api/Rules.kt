@@ -102,6 +102,6 @@ data class ApplyRulesResult(
     val duplicatesByMatcher: Int,
 )
 
-/** Household settings owners can change. [autoMatch]: the inbox matcher files transfer pairs and duplicates without asking. [debtsFrom]: expenses and settlements before this date don't count toward balances. */
+/** Household settings owners can change. [autoMatch]: the inbox matcher files transfer pairs and duplicates without asking. [debtsFrom]: expenses and settlements before this date don't count toward balances. [jointFunding]: whether joint accounts act as a pot or count top-ups toward debts. */
 @Serializable
-data class HouseholdSettings(val autoMatch: Boolean, val debtsFrom: LocalDate?)
+data class HouseholdSettings(val autoMatch: Boolean, val debtsFrom: LocalDate?, val jointFunding: JointFunding)

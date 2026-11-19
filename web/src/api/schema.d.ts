@@ -1237,6 +1237,8 @@ export interface components {
             /** String */
             claimName?: null | string;
         };
+        /** JointFunding */
+        JointFunding: "pot" | "contributions";
         /** Household */
         Household: {
             /** String */
@@ -1248,6 +1250,7 @@ export interface components {
             role: components["schemas"]["HouseholdRole"];
             /** LocalDate */
             debtsFrom: null | string;
+            jointFunding: components["schemas"]["JointFunding"];
         };
         /** CreateHouseholdRequest */
         CreateHouseholdRequest: {
@@ -1281,6 +1284,7 @@ export interface components {
             autoMatch: boolean;
             /** LocalDate */
             debtsFrom: null | string;
+            jointFunding: components["schemas"]["JointFunding"];
         };
         /** Invite */
         Invite: {
@@ -2093,7 +2097,7 @@ export interface components {
          * BalanceEntryKind
          * @enum {string}
          */
-        BalanceEntryKind: "expense" | "settlement";
+        BalanceEntryKind: "expense" | "settlement" | "top_up";
         /** JointContribution */
         JointContribution: {
             /** String */
@@ -2114,6 +2118,8 @@ export interface components {
             entries: components["schemas"]["BalanceEntry"][];
             /** ArrayList<JointContribution> */
             jointContributions: components["schemas"]["JointContribution"][];
+            /** ArrayList<JointContribution> */
+            jointLeftover: components["schemas"]["JointContribution"][];
         };
         /** Merchant */
         Merchant: {

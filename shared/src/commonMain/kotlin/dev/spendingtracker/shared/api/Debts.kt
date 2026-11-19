@@ -61,6 +61,7 @@ data class Debt(val fromUserId: String, val toUserId: String, val amountMinor: L
 enum class BalanceEntryKind {
     @SerialName("expense") EXPENSE,
     @SerialName("settlement") SETTLEMENT,
+    @SerialName("top_up") TOP_UP,
 }
 
 /**
@@ -88,6 +89,13 @@ data class JointContribution(val userId: String, val accountId: String, val amou
  * Where members stand with each other. [balances]: who owes whom after everything so far, one line per pair that
  * isn't square. [entries]: what moved the balance between from and to, newest first. [jointContributions]: the net
  * transfers into joint accounts between from and to, per member and joint account (none for a net of zero).
+ * [jointLeftover]: unspent top-ups still in joint accounts (when `jointFunding` is `contributions` and top-ups
+ * exceed joint-account spending), per member and joint account.
  */
 @Serializable
-data class Balances(val balances: List<Debt>, val entries: List<BalanceEntry>, val jointContributions: List<JointContribution>)
+data class Balances(
+    val balances: List<Debt>,
+    val entries: List<BalanceEntry>,
+    val jointContributions: List<JointContribution>,
+    val jointLeftover: List<JointContribution>,
+)

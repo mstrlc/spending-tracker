@@ -30,6 +30,7 @@ import dev.spendingtracker.shared.api.Balances
 import dev.spendingtracker.shared.api.Debt
 import dev.spendingtracker.shared.api.ExpenseLine
 import dev.spendingtracker.shared.api.JointContribution
+import dev.spendingtracker.shared.api.JointFunding
 import dev.spendingtracker.shared.api.Settlement
 import dev.spendingtracker.shared.api.SettlementInput
 import dev.spendingtracker.shared.api.SplitRule
@@ -83,53 +84,175 @@ fun Route.debtRoutes() {
         val householdId = call.household.id
         val from = call.dateParam("from")
         val to = call.dateParam("to")
-        val balances = dbQuery {
-            val book = loadSplitBook(householdId)
-            val debtsFrom = book.debtsFrom
-            var expenseFilter: Op<Boolean> = (Expenses.householdId eq householdId) and Expenses.accountId.isNotNull() and (Expenses.createsDebt eq true)
-            if (debtsFrom != null) expenseFilter = expenseFilter and (Expenses.date greaterEq debtsFrom)
-            val expenseRows = Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id)
-                .selectAll()
-                .where(expenseFilter)
-                .toList()
-            val lines = loadExpenseLines(householdId, expenseRows.map { it[Expenses.id] })
-            val expenseEntries = expenseRows.mapNotNull { row ->
-                val debts = book.debtsFor(row.toExpenseFacts(lines[row[Expenses.id]].orEmpty()))
-                if (debts.isEmpty()) return@mapNotNull null
-                BalanceEntry(
-                    kind = BalanceEntryKind.EXPENSE,
-                    id = row[Expenses.id].toString(),
-                    date = row[Expenses.date],
-                    label = row.getOrNull(Merchants.name).orEmpty(),
-                    amountMinor = row[Expenses.amountMinor],
-                    debts = debts,
-                )
-            }
-            var settlementFilter: Op<Boolean> = Settlements.householdId eq householdId
-            if (debtsFrom != null) settlementFilter = settlementFilter and (Settlements.date greaterEq debtsFrom)
-            val settlementEntries = Settlements.selectAll().where(settlementFilter).map { row ->
-                val settlement = row.toSettlement()
-                BalanceEntry(
-                    kind = BalanceEntryKind.SETTLEMENT,
-                    id = settlement.id,
-                    date = settlement.date,
-                    label = settlement.notes,
-                    amountMinor = settlement.amountMinor,
-                    // Paying back is a debt the other way.
-                    debts = listOf(Debt(settlement.toUserId, settlement.fromUserId, settlement.amountMinor)),
-                )
-            }
-            val all = expenseEntries + settlementEntries
-            Balances(
-                balances = netBalances(all.asSequence().flatMap { it.debts }),
-                entries = all
-                    .filter { (from == null || it.date >= from) && (to == null || it.date <= to) }
-                    .sortedWith(compareByDescending<BalanceEntry> { it.date }.thenBy { it.kind }.thenBy { it.id }),
-                jointContributions = jointContributions(householdId, from, to),
-            )
-        }
+        val balances = dbQuery { computeBalances(householdId, from, to) }
         call.respond(balances)
     }
+}
+
+private data class TopUpRow(
+    val id: Uuid,
+    val date: LocalDate,
+    val userId: Uuid,
+    val jointAccountId: Uuid,
+    val signedAmount: Long,
+)
+
+/**
+ * Computes net [Balances] for [householdId] across all history from `debtsFrom`, filtering returned entries and
+ * [Balances.jointContributions] to `[from]..[to]`. Call inside a transaction.
+ */
+fun computeBalances(householdId: Uuid, from: LocalDate? = null, to: LocalDate? = null): Balances {
+    val book = loadSplitBook(householdId)
+    val debtsFrom = book.debtsFrom
+    var expenseFilter: Op<Boolean> = (Expenses.householdId eq householdId) and Expenses.accountId.isNotNull() and (Expenses.createsDebt eq true)
+    if (debtsFrom != null) expenseFilter = expenseFilter and (Expenses.date greaterEq debtsFrom)
+    val expenseRows = Expenses.join(Merchants, JoinType.LEFT, Expenses.merchantId, Merchants.id)
+        .selectAll()
+        .where(expenseFilter)
+        .toList()
+    val lines = loadExpenseLines(householdId, expenseRows.map { it[Expenses.id] })
+    val expenseEntries = expenseRows.mapNotNull { row ->
+        val debts = book.debtsFor(row.toExpenseFacts(lines[row[Expenses.id]].orEmpty()))
+        if (debts.isEmpty()) return@mapNotNull null
+        BalanceEntry(
+            kind = BalanceEntryKind.EXPENSE,
+            id = row[Expenses.id].toString(),
+            date = row[Expenses.date],
+            label = row.getOrNull(Merchants.name).orEmpty(),
+            amountMinor = row[Expenses.amountMinor],
+            debts = debts,
+        )
+    }
+    var settlementFilter: Op<Boolean> = Settlements.householdId eq householdId
+    if (debtsFrom != null) settlementFilter = settlementFilter and (Settlements.date greaterEq debtsFrom)
+    val settlementEntries = Settlements.selectAll().where(settlementFilter).map { row ->
+        val settlement = row.toSettlement()
+        BalanceEntry(
+            kind = BalanceEntryKind.SETTLEMENT,
+            id = settlement.id,
+            date = settlement.date,
+            label = settlement.notes,
+            amountMinor = settlement.amountMinor,
+            // Paying back is a debt the other way.
+            debts = listOf(Debt(settlement.toUserId, settlement.fromUserId, settlement.amountMinor)),
+        )
+    }
+    val (topUpEntries, jointLeftover) = if (book.jointFunding == JointFunding.CONTRIBUTIONS) {
+        computeTopUpEntries(householdId, book, expenseRows, lines, debtsFrom)
+    } else {
+        emptyList<BalanceEntry>() to emptyList()
+    }
+    val all = expenseEntries + settlementEntries + topUpEntries
+    return Balances(
+        balances = netBalances(all.asSequence().flatMap { it.debts }),
+        entries = all
+            .filter { (from == null || it.date >= from) && (to == null || it.date <= to) }
+            .sortedWith(compareByDescending<BalanceEntry> { it.date }.thenBy { it.kind }.thenBy { it.id }),
+        jointContributions = jointContributions(householdId, from, to),
+        jointLeftover = jointLeftover,
+    )
+}
+
+private fun computeTopUpEntries(
+    householdId: Uuid,
+    book: SplitBook,
+    expenseRows: List<ResultRow>,
+    lines: Map<Uuid, List<ExpenseLine>>,
+    debtsFrom: LocalDate?,
+): Pair<List<BalanceEntry>, List<JointContribution>> {
+    val accounts = Accounts.select(Accounts.id, Accounts.name, Accounts.ownerUserId)
+        .where { Accounts.householdId eq householdId }
+        .toList()
+    val owners = accounts.associate { it[Accounts.id] to it[Accounts.ownerUserId] }
+    val accountNames = accounts.associate { it[Accounts.id] to it[Accounts.name] }
+    var transferFilter: Op<Boolean> = Transfers.householdId eq householdId
+    if (debtsFrom != null) transferFilter = transferFilter and (Transfers.date greaterEq debtsFrom)
+    val topUpRows = Transfers.selectAll().where(transferFilter).mapNotNull { t ->
+        val fromAccount = t[Transfers.fromAccountId]
+        val toAccount = t[Transfers.toAccountId]
+        val fromOwner = owners[fromAccount]
+        val toOwner = owners[toAccount]
+        val amount = t[Transfers.amountMinor]
+        when {
+            fromOwner != null && toOwner == null ->
+                TopUpRow(t[Transfers.id], t[Transfers.date], fromOwner, toAccount, amount)
+            fromOwner == null && toOwner != null ->
+                TopUpRow(t[Transfers.id], t[Transfers.date], toOwner, fromAccount, -amount)
+            else -> null
+        }
+    }
+    if (topUpRows.isEmpty()) return emptyList<BalanceEntry>() to emptyList()
+
+    val jointExpenses = expenseRows.filter { book.isJointAccount(it[Expenses.accountId]) }
+    val jointSpent = jointExpenses.sumOf { it[Expenses.amountMinor] }
+    val totalTopUps = topUpRows.sumOf { it.signedAmount }
+    val cappedAmounts = mutableMapOf<Uuid, Long>()
+    val leftover = mutableListOf<JointContribution>()
+
+    if (totalTopUps > jointSpent) {
+        // Only members who put in more than their share of joint-account spending have unspent money left in joint accounts.
+        val charges = HashMap<Uuid, Long>()
+        for (row in jointExpenses) {
+            val facts = row.toExpenseFacts(lines[row[Expenses.id]].orEmpty())
+            val owner = facts.ownerUserId
+            if (owner != null) {
+                charges.merge(owner, facts.amountMinor, Long::plus)
+            } else {
+                for ((member, part) in book.allocateJointShare(facts)) {
+                    charges.merge(member, part, Long::plus)
+                }
+            }
+        }
+        val netByMember = HashMap<Uuid, Long>()
+        for (row in topUpRows) netByMember.merge(row.userId, row.signedAmount, Long::plus)
+        val excessByMember = netByMember.mapValues { (m, net) -> maxOf(0L, net - (charges[m] ?: 0L)) }
+            .filterValues { it > 0L }
+        val leftoverTotal = totalTopUps - jointSpent
+        val leftoverByMember = if (excessByMember.isEmpty()) {
+            emptyMap()
+        } else {
+            allocateByWeights(leftoverTotal, excessByMember.mapKeys { it.key.toString() })
+                .mapKeys { Uuid.parse(it.key) }
+        }
+        val leftoverNet = HashMap<Pair<Uuid, Uuid>, Long>()
+        for ((member, rows) in topUpRows.groupBy { it.userId }) {
+            val memberLeftover = leftoverByMember[member] ?: 0L
+            val positiveRows = rows.filter { it.signedAmount > 0 }
+            val positiveSum = positiveRows.sumOf { it.signedAmount }
+            val targetPositive = maxOf(0L, positiveSum - memberLeftover)
+            val cappedPositives = if (memberLeftover == 0L || positiveRows.isEmpty()) {
+                positiveRows.associate { it.id.toString() to it.signedAmount }
+            } else if (targetPositive == 0L) {
+                emptyMap()
+            } else {
+                allocateByWeights(targetPositive, positiveRows.associate { it.id.toString() to it.signedAmount })
+            }
+            for (row in rows) {
+                val capped = if (row.signedAmount < 0) row.signedAmount else (cappedPositives[row.id.toString()] ?: 0L)
+                cappedAmounts[row.id] = capped
+                val diff = row.signedAmount - capped
+                if (diff != 0L) leftoverNet.merge(row.userId to row.jointAccountId, diff, Long::plus)
+            }
+        }
+        leftover += leftoverNet.filterValues { it != 0L }
+            .map { (key, amount) -> JointContribution(key.first.toString(), key.second.toString(), amount) }
+            .sortedWith(compareBy({ it.userId }, { it.accountId }))
+    } else {
+        for (row in topUpRows) cappedAmounts[row.id] = row.signedAmount
+    }
+    val entries = topUpRows.mapNotNull { row ->
+        val debts = book.debtsForTopUp(row.userId, cappedAmounts.getValue(row.id), row.date)
+        if (debts.isEmpty()) return@mapNotNull null
+        BalanceEntry(
+            kind = BalanceEntryKind.TOP_UP,
+            id = row.id.toString(),
+            date = row.date,
+            label = accountNames[row.jointAccountId].orEmpty(),
+            amountMinor = row.signedAmount,
+            debts = debts,
+        )
+    }
+    return entries to leftover
 }
 
 /**

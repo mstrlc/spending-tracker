@@ -29,6 +29,7 @@ import dev.spendingtracker.shared.api.CreateHouseholdRequest
 import dev.spendingtracker.shared.api.Household
 import dev.spendingtracker.shared.api.HouseholdRole
 import dev.spendingtracker.shared.api.HouseholdSettings
+import dev.spendingtracker.shared.api.JointFunding
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.MemberInput
 import io.github.smiley4.ktoropenapi.delete
@@ -74,6 +75,7 @@ fun Route.householdRoutes() = route("/households") {
                         currency = it[Households.currency],
                         role = roleFrom(it[HouseholdMembers.role]),
                         debtsFrom = it[Households.debtsFrom],
+                        jointFunding = jointFundingFrom(it[Households.jointFunding]),
                     )
                 }
         }
@@ -109,7 +111,10 @@ fun Route.householdRoutes() = route("/households") {
             }
             seedDefaultCategories(id)
         }
-        call.respond(HttpStatusCode.Created, Household(id.toString(), name, currency, HouseholdRole.OWNER, debtsFrom = null))
+        call.respond(
+            HttpStatusCode.Created,
+            Household(id.toString(), name, currency, HouseholdRole.OWNER, debtsFrom = null, jointFunding = JointFunding.POT),
+        )
     }
 
     route("/{householdId}", {
@@ -263,6 +268,7 @@ fun Route.householdRoutes() = route("/households") {
                 Households.update({ Households.id eq householdId }) {
                     it[autoMatch] = input.autoMatch
                     it[debtsFrom] = input.debtsFrom
+                    it[jointFunding] = input.jointFunding.dbValue()
                 }
                 loadSettings(householdId)
             }
@@ -288,8 +294,18 @@ fun Route.householdRoutes() = route("/households") {
 
 private fun loadSettings(householdId: Uuid) =
     Households.selectAll().where { Households.id eq householdId }.single().let {
-        HouseholdSettings(it[Households.autoMatch], it[Households.debtsFrom])
+        HouseholdSettings(it[Households.autoMatch], it[Households.debtsFrom], jointFundingFrom(it[Households.jointFunding]))
     }
+
+fun jointFundingFrom(raw: String): JointFunding = when (raw) {
+    "contributions" -> JointFunding.CONTRIBUTIONS
+    else -> JointFunding.POT
+}
+
+private fun JointFunding.dbValue(): String = when (this) {
+    JointFunding.POT -> "pot"
+    JointFunding.CONTRIBUTIONS -> "contributions"
+}
 
 /** [userId]'s membership of [householdId] joined with the user, or null. Call inside a transaction. */
 private fun memberRow(householdId: Uuid, userId: Uuid): ResultRow? =

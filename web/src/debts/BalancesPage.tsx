@@ -22,6 +22,7 @@ import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { EmptyState, ErrorText, Money, PageHeader, PageIntro, Sheet, SkeletonRows, Summary, Surface } from "../ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SettlementForm } from "./SettlementForm";
 import { SplitRuleForm } from "./SplitRuleForm";
@@ -62,10 +63,12 @@ export function BalancesPage() {
 
   const isOwner = household.role === "owner";
   const debtsFrom = settings.data?.debtsFrom ?? household.debtsFrom ?? null;
+  const jointFunding = settings.data?.jointFunding ?? household.jointFunding ?? "pot";
   const people = members.data ?? [];
   const owed = balances.data?.balances ?? [];
   const entries = (balances.data?.entries ?? []).filter((entry) => !debtsFrom || entry.date >= debtsFrom);
   const contributions = balances.data?.jointContributions ?? [];
+  const leftover = balances.data?.jointLeftover ?? [];
   const settle = () => setEditor({ mode: "settle", owed: owed[0] });
   useMonthShortcuts(month, goTo, settle);
 
@@ -91,11 +94,16 @@ export function BalancesPage() {
     );
   }
 
+  function saveJointFunding(next: "pot" | "contributions") {
+    if (!settings.data || next === jointFunding) return;
+    saveSettings.mutate({ ...settings.data, jointFunding: next });
+  }
+
   function open(entry: BalanceEntry) {
     if (entry.kind === "settlement") {
       const settlement = settlements.find((s) => s.id === entry.id);
       if (settlement) setEditor({ mode: "settlement", settlement });
-    } else {
+    } else if (entry.kind === "expense") {
       const expense = expenses.find((e) => e.id === entry.id);
       if (expense) setEditor({ mode: "expense", expense });
     }
@@ -165,6 +173,25 @@ export function BalancesPage() {
           </form>
         )}
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+        <span>
+          {jointFunding === "contributions"
+            ? "Top-ups into joint accounts count toward what each of you paid for joint spending."
+            : "Joint accounts act as a shared pot: only personal spending from them creates a debt."}
+        </span>
+        {isOwner && (
+          <NativeSelect
+            aria-label="How joint accounts work"
+            value={jointFunding}
+            onChange={(e) => saveJointFunding(e.target.value as "pot" | "contributions")}
+            disabled={!settings.data || saveSettings.isPending}
+            className="h-8 w-auto"
+          >
+            <NativeSelectOption value="pot">Shared pot</NativeSelectOption>
+            <NativeSelectOption value="contributions">Count top-ups</NativeSelectOption>
+          </NativeSelect>
+        )}
+      </div>
       <ErrorText error={saveSettings.error} />
 
       <ErrorText error={balances.error} />
@@ -199,27 +226,50 @@ export function BalancesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {entries.map((entry) => (
-                <TableRow key={`${entry.kind}-${entry.id}`} className="cursor-pointer" onClick={() => open(entry)}>
+              {entries.map((entry) => {
+                const clickable = entry.kind !== "top_up";
+                const title =
+                  entry.kind === "settlement"
+                    ? "Settlement"
+                    : entry.kind === "top_up"
+                      ? entry.amountMinor < 0
+                        ? "Joint withdrawal"
+                        : "Joint top-up"
+                      : entry.label || "Untitled expense";
+                const subtitle =
+                  entry.kind === "settlement"
+                    ? entry.label
+                    : entry.kind === "top_up"
+                      ? `${entry.label || "Joint account"} · ${formatAmount(Math.abs(entry.amountMinor), household.currency)}`
+                      : `Expense of ${formatAmount(entry.amountMinor, household.currency)}`;
+                return (
+                <TableRow
+                  key={`${entry.kind}-${entry.id}`}
+                  className={clickable ? "cursor-pointer" : undefined}
+                  onClick={clickable ? () => open(entry) : undefined}
+                >
                   <TableCell className="align-top text-muted-foreground max-md:hidden">{formatDay(entry.date)}</TableCell>
                   <TableCell className="whitespace-normal align-top">
                     <div className="flex items-center gap-2">
-                      <KindIcon kind={entry.kind === "settlement" ? "settlement" : "expense"} className="size-5 [&>svg]:size-3" />
-                      <button
-                        className="text-left font-medium outline-none hover:underline focus-visible:underline"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          open(entry);
-                        }}
-                      >
-                        {entry.kind === "settlement" ? "Settlement" : entry.label || "Untitled expense"}
-                      </button>
+                      <KindIcon
+                        kind={entry.kind === "settlement" ? "settlement" : entry.kind === "top_up" ? "transfer" : "expense"}
+                        className="size-5 [&>svg]:size-3"
+                      />
+                      {clickable ? (
+                        <button
+                          className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            open(entry);
+                          }}
+                        >
+                          {title}
+                        </button>
+                      ) : (
+                        <span className="font-medium">{title}</span>
+                      )}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {entry.kind === "settlement"
-                        ? entry.label
-                        : `Expense of ${formatAmount(entry.amountMinor, household.currency)}`}
-                    </div>
+                    <div className="text-xs text-muted-foreground">{subtitle}</div>
                     <div className="text-xs text-muted-foreground md:hidden">{formatDay(entry.date)}</div>
                   </TableCell>
                   <TableCell className="whitespace-normal align-top text-muted-foreground">
@@ -244,7 +294,8 @@ export function BalancesPage() {
                     ))}
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -287,6 +338,15 @@ export function BalancesPage() {
               </TableBody>
             </Table>
           </Surface>
+          {leftover.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              Still in joint accounts (not counted toward debts yet):{" "}
+              {leftover
+                .map((l) => `${memberName(people, l.userId)} ${formatAmount(l.amountMinor, household.currency)}`)
+                .join(", ")}
+              .
+            </p>
+          )}
         </section>
       )}
 
