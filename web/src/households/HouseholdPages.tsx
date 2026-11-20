@@ -181,7 +181,7 @@ export function HouseholdLayout() {
                 <Outlet />
               </div>
             </SheetSlot.Provider>
-            <div ref={setSheetSlot} className="flex flex-col empty:hidden md:w-[440px] md:shrink-0 md:border-l" />
+            <div ref={setSheetSlot} className="flex flex-col empty:hidden md:sticky md:top-0 md:h-svh md:w-[440px] md:shrink-0 md:self-start md:overflow-y-auto md:overscroll-contain md:border-l" />
           </div>
         </SidebarInset>
       </SidebarProvider>
