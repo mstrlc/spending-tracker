@@ -74,6 +74,7 @@ const expenses = spending
     person: person(r.who),
     notes: r.notes,
     trip: blank(r.trip),
+    createsDebt: false,
   }));
 
 // The old app recorded health and social insurance advances as negative income; here they're deductions.

@@ -1,4 +1,4 @@
-import type { BankConnection } from "../api/types";
+import type { BankConnection, BankFeed } from "../api/types";
 
 const EXPIRY_SOON_DAYS = 14;
 
@@ -23,4 +23,17 @@ export function connectionWarning(conn: BankConnection, now = Date.now()): strin
     }
   }
   return null;
+}
+
+/** The day after the newest row already read into [accountId], so a new feed doesn't bring that history in twice. */
+export function importFromAfter(feeds: BankFeed[], accountId: string): string {
+  const latest = feeds
+    .filter((f) => f.accountId === accountId && f.lastDate)
+    .map((f) => f.lastDate!)
+    .sort()
+    .at(-1);
+  if (!latest) return "";
+  const next = new Date(`${latest}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
 }

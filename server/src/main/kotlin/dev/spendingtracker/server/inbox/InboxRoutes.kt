@@ -398,17 +398,20 @@ private fun outcomeLabels(householdId: Uuid, rows: List<ResultRow>): Map<Uuid, S
             val to = accountNames[it[Transfers.toAccountId]].orEmpty()
             it[Transfers.id] to "$from → $to"
         }
-    val memberNames = if (settlementIds.isEmpty()) emptyMap() else Users
-        .select(Users.id, Users.displayName)
-        .associate { it[Users.id] to it[Users.displayName] }
-    val settlements = if (settlementIds.isEmpty()) emptyMap() else Settlements
+    val settlementRows = if (settlementIds.isEmpty()) emptyList() else Settlements
         .select(Settlements.id, Settlements.fromUserId, Settlements.toUserId)
         .where { (Settlements.householdId eq householdId) and (Settlements.id inList settlementIds) }
-        .associate {
-            val from = memberNames[it[Settlements.fromUserId]].orEmpty()
-            val to = memberNames[it[Settlements.toUserId]].orEmpty()
-            it[Settlements.id] to "$from → $to"
-        }
+        .toList()
+    val userIds = settlementRows.flatMap { listOf(it[Settlements.fromUserId], it[Settlements.toUserId]) }.distinct()
+    val memberNames = if (userIds.isEmpty()) emptyMap() else Users
+        .select(Users.id, Users.displayName)
+        .where { Users.id inList userIds }
+        .associate { it[Users.id] to it[Users.displayName] }
+    val settlements = settlementRows.associate {
+        val from = memberNames[it[Settlements.fromUserId]].orEmpty()
+        val to = memberNames[it[Settlements.toUserId]].orEmpty()
+        it[Settlements.id] to "$from → $to"
+    }
 
     return rows.mapNotNull { row ->
         val label = row[BankRows.expenseId]?.let(expenses::get)

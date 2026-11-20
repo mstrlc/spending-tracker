@@ -40,7 +40,11 @@ enum class BankConnectionStatus {
     @SerialName("failed") FAILED,
 }
 
-/** One of the bank's accounts under a connection. [feedId] is the feed made from it, once there is one. */
+/**
+ * One of the bank's accounts under a connection. [feedId] is the feed reading it, once there is one. Until then,
+ * [suggestedFeedId] is an existing feed it most likely continues (same IBAN and currency, not read live by another
+ * connection): attaching to it keeps the account's history in one feed after reconnecting or after statements.
+ */
 @Serializable
 data class BankConnectionAccount(
     val externalId: String,
@@ -51,6 +55,7 @@ data class BankConnectionAccount(
     val name: String,
     val ownerName: String,
     val feedId: String?,
+    val suggestedFeedId: String? = null,
 )
 
 /** A consent given at a bank. [consentExpiresAt] is an ISO timestamp, known once the connection is finished. */
@@ -73,13 +78,19 @@ data class BankConnections(
     val connections: List<BankConnection>,
 )
 
-/** One bank account to read into the ledger account [accountId]. [name] defaults to the ledger account's name. */
+/**
+ * One bank account to read. With [feedId] it attaches to that existing feed (an uploaded one, or one whose connection
+ * lapsed), which then syncs from a week before its newest row; [accountId] can be left out, and [name] and [importFrom]
+ * change the feed only when given. Without it a new feed is made, read into the ledger account [accountId];
+ * [name] defaults to the ledger account's name.
+ */
 @Serializable
 data class FeedFromAccount(
     val externalId: String,
-    val accountId: String,
+    val accountId: String? = null,
     val name: String? = null,
     val importFrom: LocalDate? = null,
+    val feedId: String? = null,
 )
 
 @Serializable

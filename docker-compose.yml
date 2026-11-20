@@ -21,8 +21,12 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+    env_file:
+      - path: .env
+        required: false
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/spending_tracker
+      APP_URL: ${APP_URL:-http://localhost:8000}
     depends_on:
       postgres:
         condition: service_healthy

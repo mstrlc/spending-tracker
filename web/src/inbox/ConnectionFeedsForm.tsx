@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { useAccounts, useCreateConnectionFeeds } from "../api/hooks";
+import { useAccounts, useBankConnections, useBankFeeds, useCreateConnectionFeeds } from "../api/hooks";
 import type { BankConnection, FeedFromAccount } from "../api/types";
+import { importFromAfter } from "./connections";
 import { useHousehold } from "../households/HouseholdPages";
 import { ErrorText } from "../ui";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,12 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 
 interface RowDraft {
   include: boolean;
+  /** An existing feed to continue, or "" for a new one. */
+  feedId: string;
   accountId: string;
   name: string;
-  importFrom: string;
+  /** Null until typed: then the day after the newest row already read into the ledger account. */
+  importFrom: string | null;
 }
 
 /**
@@ -30,8 +34,14 @@ export function ConnectionFeedsForm({
 }) {
   const household = useHousehold();
   const accounts = (useAccounts(household.id).data ?? []).filter((a) => a.status === "active");
+  const allFeeds = useBankFeeds(household.id).data ?? [];
   const createFeeds = useCreateConnectionFeeds(household.id);
   const unlinked = connection.accounts.filter((a) => !a.feedId);
+  // Feeds a bank account can continue: any not read through a live connection already.
+  const liveConnections = new Set(
+    (useBankConnections(household.id).data?.connections ?? []).filter((c) => c.status === "active").map((c) => c.id),
+  );
+  const attachable = allFeeds.filter((f) => !f.connectionId || !liveConnections.has(f.connectionId));
 
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>(() => {
     const initial: Record<string, RowDraft> = {};
@@ -41,9 +51,10 @@ export function ConnectionFeedsForm({
         accounts[0];
       initial[bankAcc.externalId] = {
         include: accounts.length > 0,
+        feedId: bankAcc.suggestedFeedId ?? "",
         accountId: matched?.id ?? "",
         name: bankAcc.name || matched?.name || connection.institutionName,
-        importFrom: "",
+        importFrom: null,
       };
     }
     return initial;
@@ -53,17 +64,22 @@ export function ConnectionFeedsForm({
     setDrafts((prev) => ({ ...prev, [externalId]: { ...prev[externalId], ...patch } }));
   }
 
+  const importFromOf = (d: RowDraft) => d.importFrom ?? importFromAfter(allFeeds, d.accountId);
+
+  const ready = (d: RowDraft | undefined) => !!d?.include && (!!d.feedId || !!d.accountId);
+
   function submit(e: FormEvent) {
     e.preventDefault();
     const feeds: FeedFromAccount[] = unlinked
-      .filter((a) => drafts[a.externalId]?.include && drafts[a.externalId]?.accountId)
+      .filter((a) => ready(drafts[a.externalId]))
       .map((a) => {
         const d = drafts[a.externalId];
+        if (d.feedId) return { externalId: a.externalId, feedId: d.feedId };
         return {
           externalId: a.externalId,
           accountId: d.accountId,
           name: d.name.trim() || null,
-          importFrom: d.importFrom || null,
+          importFrom: importFromOf(d) || null,
         };
       });
     if (feeds.length === 0) return;
@@ -83,7 +99,7 @@ export function ConnectionFeedsForm({
     );
   }
 
-  const chosenCount = unlinked.filter((a) => drafts[a.externalId]?.include && drafts[a.externalId]?.accountId).length;
+  const chosenCount = unlinked.filter((a) => ready(drafts[a.externalId])).length;
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
@@ -116,7 +132,31 @@ export function ConnectionFeedsForm({
                   </div>
                 </div>
               </label>
-              {draft.include && (
+              {draft.include && attachable.length > 0 && (
+                <div className="pl-6">
+                  <NativeSelect
+                    aria-label={`Feed for ${bankAcc.name || identifier}`}
+                    value={draft.feedId}
+                    onChange={(e) => update(bankAcc.externalId, { feedId: e.target.value })}
+                  >
+                    <NativeSelectOption value="">New feed</NativeSelectOption>
+                    {attachable
+                      .filter((f) => !bankAcc.currency || f.currency === bankAcc.currency)
+                      .map((f) => (
+                        <NativeSelectOption key={f.id} value={f.id}>
+                          Continue {f.name}
+                          {f.lastDate ? ` (rows to ${f.lastDate})` : ""}
+                        </NativeSelectOption>
+                      ))}
+                  </NativeSelect>
+                </div>
+              )}
+              {draft.include && draft.feedId && (
+                <p className="pl-6 text-xs text-muted-foreground">
+                  Its rows stay. Syncing starts a week before the newest one, and rows it already has aren't added again.
+                </p>
+              )}
+              {draft.include && !draft.feedId && (
                 <div className="grid gap-2 pl-6 sm:grid-cols-3">
                   <NativeSelect
                     aria-label={`Ledger account for ${bankAcc.name || identifier}`}
@@ -138,9 +178,9 @@ export function ConnectionFeedsForm({
                   <Input
                     type="date"
                     aria-label={`Import from for ${bankAcc.name || identifier}`}
-                    value={draft.importFrom}
+                    value={importFromOf(draft)}
                     onChange={(e) => update(bankAcc.externalId, { importFrom: e.target.value })}
-                    title="Import from (optional)"
+                    title="Import from: defaults to the day after the newest row this account already has"
                   />
                 </div>
               )}
@@ -154,7 +194,7 @@ export function ConnectionFeedsForm({
           {cancelLabel}
         </Button>
         <Button type="submit" disabled={chosenCount === 0 || createFeeds.isPending}>
-          {createFeeds.isPending ? "Creating…" : `Create ${chosenCount === 1 ? "feed" : `${chosenCount} feeds`}`}
+          {createFeeds.isPending ? "Saving…" : `Connect ${chosenCount === 1 ? "account" : `${chosenCount} accounts`}`}
         </Button>
       </div>
     </form>

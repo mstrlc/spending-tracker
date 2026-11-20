@@ -65,6 +65,9 @@ private const val SYNC_TRIGGER_SCHEDULED = "scheduled"
 class BankSync(private val data: BankData, private val market: Market, private val clock: Clock = Clock.System) {
     private fun dayStart(): Instant = startOfPragueDay(clock.now())
 
+    /** A feed's sync, and whether the bank said the connection's consent is gone (the other feeds then aren't asked). */
+    private class Outcome(val result: FeedSyncResult, val consentLapsed: Boolean = false)
+
     private class Plan(
         val feedId: Uuid,
         val feedName: String,
@@ -80,13 +83,18 @@ class BankSync(private val data: BankData, private val market: Market, private v
      * Syncs one feed. [userId] is who the rules act as: whoever pressed the button, or for the daily run the person who
      * made the connection.
      */
-    suspend fun syncFeed(householdId: Uuid, householdCurrency: String, feedId: Uuid, userId: Uuid, scheduled: Boolean = false): FeedSyncResult {
+    suspend fun syncFeed(householdId: Uuid, householdCurrency: String, feedId: Uuid, userId: Uuid, scheduled: Boolean = false): FeedSyncResult =
+        sync(householdId, householdCurrency, feedId, userId, scheduled).result
+
+    private suspend fun sync(householdId: Uuid, householdCurrency: String, feedId: Uuid, userId: Uuid, scheduled: Boolean): Outcome {
         var name = ""
         fun result(status: String, message: String, added: Int = 0, existing: Int = 0, filed: Int = 0) =
-            FeedSyncResult(feedId.toString(), name, status, added, existing, filed, message)
+            Outcome(FeedSyncResult(feedId.toString(), name, status, added, existing, filed, message))
 
+        val syncId = Uuid.random()
         val prepared = dbQuery {
-            val feed = BankFeeds.selectAll().where { (BankFeeds.id eq feedId) and (BankFeeds.householdId eq householdId) }.singleOrNull()
+            // Locked, so two syncs of one feed started together count each other against the daily limit.
+            val feed = BankFeeds.selectAll().where { (BankFeeds.id eq feedId) and (BankFeeds.householdId eq householdId) }.forUpdate().singleOrNull()
                 ?: return@dbQuery null to "Bank feed not found"
             name = feed[BankFeeds.name]
             val connectionId = feed[BankFeeds.connectionId]
@@ -120,15 +128,6 @@ class BankSync(private val data: BankData, private val market: Market, private v
                 newest == null -> importFrom
                 else -> (newest - DatePeriod(days = SYNC_OVERLAP_DAYS)).let { if (importFrom != null && it < importFrom) importFrom else it }
             }
-            Plan(
-                feedId, name, feed[BankFeeds.externalId]!!, feedShape(feed[BankFeeds.institution], feed[BankFeeds.accountId]),
-                feed[BankFeeds.currency], importFrom, connectionId, from,
-            ) to ""
-        }
-        val plan = prepared.first ?: return result("skipped", prepared.second)
-
-        val syncId = Uuid.random()
-        dbQuery {
             BankSyncs.insert {
                 it[id] = syncId
                 it[BankSyncs.householdId] = householdId
@@ -137,8 +136,14 @@ class BankSync(private val data: BankData, private val market: Market, private v
                 it[added] = 0
                 it[error] = ""
             }
+            Plan(
+                feedId, name, feed[BankFeeds.externalId]!!, feedShape(feed[BankFeeds.institution], feed[BankFeeds.accountId]),
+                feed[BankFeeds.currency], importFrom, connectionId, from,
+            ) to ""
         }
-        suspend fun fail(message: String): FeedSyncResult {
+        val plan = prepared.first ?: return result("skipped", prepared.second)
+
+        suspend fun fail(message: String): Outcome {
             dbQuery {
                 BankSyncs.update({ BankSyncs.id eq syncId }) { it[error] = message.take(500) }
                 BankConnections.update({ (BankConnections.id eq plan.connectionId) and (BankConnections.status eq "active") }) {
@@ -160,7 +165,7 @@ class BankSync(private val data: BankData, private val market: Market, private v
                     markConnection(plan.connectionId, status, message)
                     BankSyncs.update({ BankSyncs.id eq syncId }) { it[error] = message.take(500) }
                 }
-                return result("error", message)
+                return Outcome(result("error", message).result, consentLapsed = true)
             }
             log.warn("Bank sync of feed {} failed: {}", feedId, e.message)
             return fail(e.message ?: "The bank didn't answer")
@@ -230,10 +235,10 @@ class BankSync(private val data: BankData, private val market: Market, private v
         }
         val results = mutableListOf<FeedSyncResult>()
         for (feedId in feedIds) {
-            val result = syncFeed(householdId, householdCurrency, feedId, userId, scheduled)
-            results += result
+            val outcome = sync(householdId, householdCurrency, feedId, userId, scheduled)
+            results += outcome.result
             // Once one account says the consent is gone the rest will too: don't spend their calls.
-            if (result.status == "error" && result.message.startsWith("The bank no longer allows access")) break
+            if (outcome.consentLapsed) break
         }
         return results
     }

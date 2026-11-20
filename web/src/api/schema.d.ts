@@ -1010,7 +1010,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Owners only. Makes a feed (source gocardless) of each chosen bank account, read into the chosen ledger account. */
+        /** @description Owners only. Makes a feed (source gocardless) of each chosen bank account, read into the chosen ledger account, or with `feedId` attaches the bank account to an existing feed (statements uploaded before, or a feed whose connection lapsed). */
         post: operations["createConnectionFeeds"];
         delete?: never;
         options?: never;
@@ -2056,6 +2056,8 @@ export interface components {
             originalAmountMinor?: null | number;
             /** String */
             originalCurrency?: null | string;
+            /** Boolean */
+            createsDebt?: boolean;
         };
         /** ImportIncome */
         ImportIncome: {
@@ -2810,6 +2812,8 @@ export interface components {
             ownerName: string;
             /** String */
             feedId: null | string;
+            /** String */
+            suggestedFeedId?: null | string;
         };
         /** BankConnections */
         BankConnections: {
@@ -2835,11 +2839,13 @@ export interface components {
             /** String */
             externalId: string;
             /** String */
-            accountId: string;
+            accountId?: null | string;
             /** String */
             name?: null | string;
             /** LocalDate */
             importFrom?: null | string;
+            /** String */
+            feedId?: null | string;
         };
         /** CreateConnectionFeeds */
         CreateConnectionFeeds: {

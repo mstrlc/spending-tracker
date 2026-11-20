@@ -332,6 +332,7 @@ private class Importer(private val householdId: Uuid, private val householdCurre
                 it[tripId] = trip(expense.trip, "$path.trip")
                 it[originalAmountMinor] = expense.originalAmountMinor?.let { amount -> nonZeroAmount(amount, "$path.originalAmountMinor") }
                 it[Expenses.originalCurrency] = originalCurrency
+                it[createsDebt] = expense.createsDebt
                 it[externalRef] = expense.externalRef.trim()
                 it[version] = 1
                 it[createdBy] = userId

@@ -29,6 +29,7 @@ import dev.spendingtracker.shared.api.BankConnections as BankConnectionsResponse
 import dev.spendingtracker.shared.api.BankFeed
 import dev.spendingtracker.shared.api.ConnectableBank
 import dev.spendingtracker.shared.api.CreateConnectionFeeds
+import dev.spendingtracker.shared.api.FeedFromAccount
 import dev.spendingtracker.shared.api.StartBankConnection
 import dev.spendingtracker.shared.api.SyncResult
 import io.github.smiley4.ktoropenapi.delete
@@ -45,7 +46,8 @@ import kotlinx.serialization.encodeToString
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.isNotNull
+import org.jetbrains.exposed.v1.core.ResultRow
+import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
@@ -177,10 +179,22 @@ fun Route.bankRoutes() {
                         val agreementId = requisition.agreementId ?: row[BankConnections.agreementId]
                         val agreement = agreementId?.let { bank { setup.data.agreement(it) } }
                         val known = storedAccounts(row[BankConnections.accounts]).associateBy { it.id }
-                        // Details have a limit of their own: only the accounts not read before.
-                        val accounts = requisition.accountIds.map { accountId ->
-                            known[accountId] ?: bank { setup.data.account(accountId) }.let {
-                                StoredAccount(it.id, it.iban, it.maskedPan, it.currency, it.name, it.ownerName)
+                        // Details have a limit of their own: only the accounts not read before. When one fails, those
+                        // read so far are kept, so trying again doesn't spend their calls a second time.
+                        val accounts = mutableListOf<StoredAccount>()
+                        for (accountId in requisition.accountIds) {
+                            accounts += known[accountId] ?: try {
+                                bank { setup.data.account(accountId) }.let {
+                                    StoredAccount(it.id, it.iban, it.maskedPan, it.currency, it.name, it.ownerName)
+                                }
+                            } catch (e: ApiException) {
+                                val partial = known.values.filter { it.id !in accounts.map(StoredAccount::id) } + accounts
+                                dbQuery {
+                                    BankConnections.update({ BankConnections.id eq id }) {
+                                        it[BankConnections.accounts] = apiJson.encodeToString(partial)
+                                    }
+                                }
+                                throw e
                             }
                         }
                         val accepted = agreement?.accepted
@@ -207,7 +221,8 @@ fun Route.bankRoutes() {
 
         post("/{connectionId}/feeds", {
             operationId = "createConnectionFeeds"
-            description = "Owners only. Makes a feed (source gocardless) of each chosen bank account, read into the chosen ledger account."
+            description = "Owners only. Makes a feed (source gocardless) of each chosen bank account, read into the chosen ledger account, " +
+                "or with `feedId` attaches the bank account to an existing feed (statements uploaded before, or a feed whose connection lapsed)."
             request {
                 pathParameter<String>("connectionId")
                 body<CreateConnectionFeeds>()
@@ -237,10 +252,15 @@ fun Route.bankRoutes() {
                     val created = input.feeds.mapIndexed { index, wanted ->
                         val path = "feeds[$index]"
                         val account = stored[wanted.externalId] ?: throw badRequest("invalid_bank_account", "Unknown bank account", "$path.externalId")
+                        val existingId = parseId(wanted.feedId, "$path.feedId")
+                        if (existingId != null) {
+                            return@mapIndexed attachFeed(householdId, id, existingId, account, wanted, institution, path)
+                        }
                         val ledgerId = parseId(wanted.accountId, "$path.accountId") ?: throw badRequest("required", "Choose an account", "$path.accountId")
                         val ledger = Accounts.selectAll().where { (Accounts.id eq ledgerId) and (Accounts.householdId eq householdId) }.singleOrNull()
                             ?: throw badRequest("invalid_account", "Unknown account", "$path.accountId")
-                        val currency = account.currency.ifEmpty { "CZK" }.uppercase()
+                        // A bank that gave no details leaves the currency unknown: the household's is the likeliest.
+                        val currency = account.currency.ifEmpty { householdCurrency }.uppercase()
                         if (BankFeeds.selectAll().where { (BankFeeds.householdId eq householdId) and (BankFeeds.externalId eq account.id) }.any()) {
                             throw conflict("account_already_connected", "This bank account already has a feed", "$path.externalId")
                         }
@@ -354,8 +374,13 @@ private fun storedAccounts(json: String): List<StoredAccount> = apiJson.decodeFr
 
 /** The household's connections (or just [id]), newest first, with the feeds made from their accounts. Call inside a transaction. */
 private fun loadConnections(householdId: Uuid, id: Uuid? = null): List<BankConnection> {
-    val feedByAccount = BankFeeds.selectAll().where { (BankFeeds.householdId eq householdId) and BankFeeds.externalId.isNotNull() }
-        .associate { it[BankFeeds.externalId]!! to it[BankFeeds.id].toString() }
+    val feeds = BankFeeds.selectAll().where { BankFeeds.householdId eq householdId }.toList()
+    val feedByAccount = feeds.filter { it[BankFeeds.externalId] != null }.associate { it[BankFeeds.externalId]!! to it[BankFeeds.id].toString() }
+    val activeConnections = BankConnections.select(BankConnections.id)
+        .where { (BankConnections.householdId eq householdId) and (BankConnections.status eq "active") }
+        .map { it[BankConnections.id] }.toSet()
+    // A feed can take a new bank account unless a live connection already reads it.
+    val attachable = feeds.filter { feed -> feed[BankFeeds.connectionId].let { it == null || it !in activeConnections } }
     var query = BankConnections.selectAll().where { BankConnections.householdId eq householdId }
     if (id != null) query = BankConnections.selectAll().where { (BankConnections.householdId eq householdId) and (BankConnections.id eq id) }
     return query.orderBy(BankConnections.createdAt to SortOrder.DESC).map { row ->
@@ -367,11 +392,72 @@ private fun loadConnections(householdId: Uuid, id: Uuid? = null): List<BankConne
             consentExpiresAt = row[BankConnections.consentExpiresAt]?.toString(),
             lastError = row[BankConnections.lastError],
             version = row[BankConnections.version],
-            accounts = storedAccounts(row[BankConnections.accounts]).map {
-                BankConnectionAccount(it.id, it.iban, it.maskedPan, it.currency, it.name, it.ownerName, feedByAccount[it.id])
+            accounts = storedAccounts(row[BankConnections.accounts]).map { account ->
+                val feedId = feedByAccount[account.id]
+                BankConnectionAccount(
+                    account.id, account.iban, account.maskedPan, account.currency, account.name, account.ownerName, feedId,
+                    suggestedFeedId = if (feedId != null) null else suggestFeed(attachable, account)?.toString(),
+                )
             },
         )
     }
+}
+
+private fun normalizeIban(iban: String?) = iban?.replace(Regex("\\s+"), "")?.uppercase()?.takeIf { it.isNotEmpty() }
+
+/** The feed [account] most likely continues: the only attachable one with its IBAN (and currency, when known). */
+private fun suggestFeed(attachable: List<ResultRow>, account: StoredAccount): Uuid? {
+    val iban = normalizeIban(account.iban) ?: return null
+    val currency = account.currency.uppercase()
+    return attachable.singleOrNull {
+        normalizeIban(it[BankFeeds.iban]) == iban && (currency.isEmpty() || it[BankFeeds.currency] == currency)
+    }?.get(BankFeeds.id)
+}
+
+/**
+ * Points the existing feed [feedId] at the bank account [account] of [connectionId]. Its rows stay, so the first
+ * sync asks from a week before the newest one, and rows already brought in from statements are recognised as such.
+ * Call inside a transaction.
+ */
+private fun attachFeed(
+    householdId: Uuid,
+    connectionId: Uuid,
+    feedId: Uuid,
+    account: StoredAccount,
+    wanted: FeedFromAccount,
+    institution: BankInstitution,
+    path: String,
+): Uuid {
+    val feed = BankFeeds.selectAll().where { (BankFeeds.id eq feedId) and (BankFeeds.householdId eq householdId) }.forUpdate().singleOrNull()
+        ?: throw badRequest("invalid_feed", "Unknown bank feed", "$path.feedId")
+    val current = feed[BankFeeds.connectionId]
+    if (current != null && current != connectionId) {
+        val status = BankConnections.select(BankConnections.status).where { BankConnections.id eq current }.singleOrNull()?.get(BankConnections.status)
+        if (status == "active") throw conflict("feed_connected", "This feed is already read through another live connection", "$path.feedId")
+    }
+    parseId(wanted.accountId, "$path.accountId")?.let {
+        if (it != feed[BankFeeds.accountId]) throw badRequest("account_mismatch", "An attached feed keeps its own ledger account", "$path.accountId")
+    }
+    val currency = account.currency.uppercase()
+    if (currency.isNotEmpty() && currency != feed[BankFeeds.currency]) {
+        throw badRequest("currency_mismatch", "The bank account is in $currency, the feed in ${feed[BankFeeds.currency]}", "$path.feedId")
+    }
+    if (BankFeeds.selectAll().where { (BankFeeds.householdId eq householdId) and (BankFeeds.externalId eq account.id) and (BankFeeds.id neq feedId) }.any()) {
+        throw conflict("account_already_connected", "This bank account already has a feed", "$path.externalId")
+    }
+    val name = wanted.name?.trim()?.takeIf { it.isNotEmpty() }?.take(100)
+    BankFeeds.update({ BankFeeds.id eq feedId }) {
+        it[feedSource] = "gocardless"
+        it[externalId] = account.id
+        it[BankFeeds.connectionId] = connectionId
+        if (feed[BankFeeds.iban] == null && account.iban != null) it[iban] = account.iban
+        if (feed[BankFeeds.institution] == BankInstitution.OTHER.dbValue) it[BankFeeds.institution] = institution.dbValue
+        if (name != null) it[BankFeeds.name] = name
+        if (wanted.importFrom != null) it[importFrom] = wanted.importFrom
+        it[version] = feed[BankFeeds.version] + 1
+        it[updatedAt] = Clock.System.now()
+    }
+    return feedId
 }
 
 /** The reader a bank's rows need, guessed from the bank's name; anything else is read generically. */

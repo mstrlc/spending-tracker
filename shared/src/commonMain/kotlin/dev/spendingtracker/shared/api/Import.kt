@@ -74,6 +74,7 @@ data class ImportExpense(
     val trip: String? = null,
     val originalAmountMinor: Long? = null,
     val originalCurrency: String? = null,
+    val createsDebt: Boolean = true,
 )
 
 /** [earnedMonth] (YYYY-MM) defaults to the month of [date]; [recipient] null is joint. A deduction's amount is positive. */

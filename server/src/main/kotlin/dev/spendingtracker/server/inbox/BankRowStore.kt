@@ -58,12 +58,15 @@ fun feedShape(institution: String, accountId: Uuid): FeedShape {
 /** [addedIds]: the external ids of the rows added. */
 data class StoredCounts(val added: Int, val existing: Int, val beforeImportFrom: Int, val addedIds: Set<String>)
 
-/**
- * Adds [rows] to a feed, leaving out those it has already (same external id) and those booked before [importFrom].
- * [hints] can give a row a hint of its own (the old app's decision); otherwise the reader's applies. Call inside a transaction.
- */
 private data class ExistingRowKey(val bookingDate: LocalDate, val amountMinor: Long, val currency: String)
 private class ExistingRowRef(val externalId: String, val counterpartyIban: String?, val normalizedText: String)
+
+/**
+ * Adds [rows] to a feed, leaving out those it has already (same external id, or the same booking date, amount and
+ * currency with the same counterparty IBAN or text, as when a statement and the live feed both bring it) and those
+ * booked before [importFrom]. [hints] can give a row a hint of its own (the old app's decision); otherwise the
+ * reader's applies. Call inside a transaction.
+ */
 
 fun storeRows(
     householdId: Uuid,

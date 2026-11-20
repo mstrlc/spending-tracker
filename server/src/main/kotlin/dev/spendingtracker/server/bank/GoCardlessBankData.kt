@@ -3,6 +3,8 @@ package dev.spendingtracker.server.bank
 import dev.spendingtracker.server.inbox.toMinor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.accept
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -30,6 +32,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import java.io.IOException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -49,7 +52,7 @@ private const val BASE_URL = "https://bankaccountdata.gocardless.com/api/v2"
 class GoCardlessBankData(
     private val secretId: String,
     private val secretKey: String,
-    private val client: HttpClient = HttpClient(Java),
+    private val client: HttpClient = defaultClient(),
     private val baseUrl: String = BASE_URL,
     private val clock: Clock = Clock.System,
 ) : BankData {
@@ -87,14 +90,28 @@ class GoCardlessBankData(
         token
     }
 
-    private suspend fun post(path: String, body: JsonElement, token: String?): HttpResponse = client.post("$baseUrl$path") {
-        accept(ContentType.Application.Json)
-        contentType(ContentType.Application.Json)
-        if (token != null) header(HttpHeaders.Authorization, "Bearer $token")
-        setBody(body.toString())
+    private suspend fun post(path: String, body: JsonElement, token: String?): HttpResponse = network {
+        client.post("$baseUrl$path") {
+            accept(ContentType.Application.Json)
+            contentType(ContentType.Application.Json)
+            if (token != null) header(HttpHeaders.Authorization, "Bearer $token")
+            setBody(body.toString())
+        }
     }
 
-    /** Calls the API and returns its JSON; account-level calls that answer 401, 403 or 409 mean the consent is gone. */
+    /** Forgets [token] if it's still the one in use, so the next call signs in again. */
+    private suspend fun dropToken(token: String) = tokenLock.withLock {
+        if (access == token) {
+            access = null
+            accessUntil = Instant.DISTANT_PAST
+        }
+    }
+
+    /**
+     * Calls the API and returns its JSON. A 401 is first taken to be about our token (revoked, or the keys changed): it
+     * is dropped and the call made once more with a new one. Account-level calls that still answer 401, or 403 or 409,
+     * mean the consent is gone. A network failure or timeout is a [BankDataException] with status 504.
+     */
     private suspend fun call(
         path: String,
         method: String = "GET",
@@ -102,26 +119,37 @@ class GoCardlessBankData(
         query: Map<String, String> = emptyMap(),
         accountCall: Boolean = false,
     ): JsonElement {
-        val token = accessToken()
-        val response = when (method) {
-            "POST" -> post(path, body ?: JsonObject(emptyMap()), token)
-            "DELETE" -> client.delete("$baseUrl$path") {
-                accept(ContentType.Application.Json)
-                header(HttpHeaders.Authorization, "Bearer $token")
-            }
-            else -> client.get("$baseUrl$path") {
-                accept(ContentType.Application.Json)
-                header(HttpHeaders.Authorization, "Bearer $token")
-                query.forEach { (k, v) -> parameter(k, v) }
-            }
+        var response = send(path, method, body, query)
+        if (response.second.status.value == 401) {
+            dropToken(response.first)
+            response = send(path, method, body, query)
         }
-        val parsed = parse(response.bodyAsText())
-        if (!response.status.isSuccess()) {
-            val status = response.status.value
+        val parsed = parse(network { response.second.bodyAsText() })
+        if (!response.second.status.isSuccess()) {
+            val status = response.second.status.value
             // GoCardless explains itself in summary and detail ("EUA … has expired", "Rate limit exceeded").
             throw BankDataException(status, reason(parsed, status), consentLapsed = accountCall && status in setOf(401, 403, 409))
         }
         return parsed
+    }
+
+    /** One request with the current token; returns the token used and the response. */
+    private suspend fun send(path: String, method: String, body: JsonElement?, query: Map<String, String>): Pair<String, HttpResponse> {
+        val token = accessToken()
+        return token to network {
+            when (method) {
+                "POST" -> post(path, body ?: JsonObject(emptyMap()), token)
+                "DELETE" -> client.delete("$baseUrl$path") {
+                    accept(ContentType.Application.Json)
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                }
+                else -> client.get("$baseUrl$path") {
+                    accept(ContentType.Application.Json)
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                    query.forEach { (k, v) -> parameter(k, v) }
+                }
+            }
+        }
     }
 
     private fun parse(text: String): JsonObject =
@@ -244,6 +272,25 @@ class GoCardlessBankData(
         call("/requisitions/$requisitionId/", "DELETE")
     }
 }
+
+/** Requests give up after a minute (a bank can be slow to answer), connecting after 15 seconds. */
+private fun defaultClient() = HttpClient(Java) {
+    install(HttpTimeout) {
+        connectTimeoutMillis = 15_000
+        requestTimeoutMillis = 60_000
+        socketTimeoutMillis = 60_000
+    }
+}
+
+/** Runs a request, turning a network failure or timeout into a [BankDataException] the callers already handle. */
+private suspend fun <T> network(block: suspend () -> T): T =
+    try {
+        block()
+    } catch (e: HttpRequestTimeoutException) {
+        throw BankDataException(504, "GoCardless didn't answer in time")
+    } catch (e: IOException) {
+        throw BankDataException(504, "Couldn't reach GoCardless: ${e.message ?: e::class.simpleName}")
+    }
 
 /** Booked balances first (an "available" balance adds a card's credit line or an overdraft), the most current of each kind first. */
 private val BALANCE_PREFERENCE = listOf("interimBooked", "closingBooked", "expected", "interimAvailable", "closingAvailable")
