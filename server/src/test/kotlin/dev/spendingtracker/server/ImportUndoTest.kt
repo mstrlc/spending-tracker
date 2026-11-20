@@ -31,6 +31,7 @@ import dev.spendingtracker.shared.api.ImportSummary
 import dev.spendingtracker.shared.api.ImportTrip
 import dev.spendingtracker.shared.api.ImportUndoResult
 import dev.spendingtracker.shared.api.Income
+import dev.spendingtracker.shared.api.IncomeInput
 import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.Invite
 import dev.spendingtracker.shared.api.LinkBankRows
@@ -296,5 +297,50 @@ class ImportUndoTest {
         assertNull(stmtAfter.expenseId)
         val refundAfter = alice.get("$base/expenses").body<List<Expense>>().single { it.id == refund.id }
         assertNull(refundAfter.refundOfId)
+    }
+
+    @Test
+    fun undoKeepsDeductionLinkedByHandToImportedEarning() = apiTest {
+        val alice = newClient().also { it.signup() }
+        val base = "/api/households/${alice.createHousehold().id}"
+
+        alice.post("$base/import") {
+            setBody(
+                HouseholdImport(
+                    currency = "CZK",
+                    income = listOf(ImportIncome("ref:e1", LocalDate(2026, 9, 1), 50_000_00, "Employer", "2026-08")),
+                ),
+            )
+        }.body<ImportResult>()
+        val earning = alice.get("$base/income").body<List<Income>>().single()
+
+        val deduction = alice.post("$base/income") {
+            setBody(
+                IncomeInput(
+                    date = LocalDate(2026, 9, 1),
+                    amountMinor = 5_000_00,
+                    source = "Tax",
+                    kind = IncomeKind.DEDUCTION,
+                    deductedFromId = earning.id,
+                ),
+            )
+        }.also { assertEquals(HttpStatusCode.Created, it.status) }.body<Income>()
+
+        val imp = alice.get("$base/imports").body<List<ImportSummary>>().single()
+
+        val dry = alice.post("$base/imports/${imp.id}/undo?dryRun=true").body<ImportUndoResult>()
+        assertEquals(1, dry.deleted.income)
+        assertEquals(1, dry.kept.income)
+        assertTrue(dry.keptItems.any { it.kind == "income" && it.name == "Tax" && it.reason == "Was linked to an imported earning" })
+
+        val undo = alice.post("$base/imports/${imp.id}/undo").body<ImportUndoResult>()
+        assertEquals(1, undo.deleted.income)
+        assertEquals(1, undo.kept.income)
+        assertTrue(undo.keptItems.any { it.kind == "income" && it.name == "Tax" && it.reason == "Was linked to an imported earning" })
+
+        val remaining = alice.get("$base/income").body<List<Income>>().single()
+        assertEquals(deduction.id, remaining.id)
+        assertEquals(IncomeKind.DEDUCTION, remaining.kind)
+        assertNull(remaining.deductedFromId)
     }
 }

@@ -37,6 +37,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.neq
+import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.select
@@ -158,13 +159,6 @@ internal fun undoImport(householdId: Uuid, importId: Uuid, userId: Uuid, dryRun:
             .count().toInt()
     }
 
-    if (incomeIds.isNotEmpty()) {
-        Income.deleteWhere { (Income.householdId eq householdId) and (Income.importId eq importId) }
-    }
-    if (expenseIds.isNotEmpty()) {
-        Expenses.deleteWhere { (Expenses.householdId eq householdId) and (Expenses.importId eq importId) }
-    }
-
     // The import's rows are gone now, so a record no remaining row points at was made only from them.
     fun orphans(column: org.jetbrains.exposed.v1.core.Column<Uuid?>): Set<Uuid> {
         val made = autoMade.mapNotNull { it[column] }.toSet()
@@ -173,11 +167,43 @@ internal fun undoImport(householdId: Uuid, importId: Uuid, userId: Uuid, dryRun:
             .mapNotNull { it[column] }.toSet()
         return made - stillUsed
     }
-    orphans(BankRows.expenseId).takeIf { it.isNotEmpty() }?.let { gone ->
-        deleted.expenses += Expenses.deleteWhere { (Expenses.householdId eq householdId) and (Expenses.id inList gone) }
+    val orphanExpenses = orphans(BankRows.expenseId)
+    val orphanIncome = orphans(BankRows.incomeId)
+    val allDeletedIncomeIds = (incomeIds + orphanIncome).distinct()
+
+    if (allDeletedIncomeIds.isNotEmpty()) {
+        // V25 cascades deletes on deducted_from; unlink non-imported deductions first so they survive as ordinary deductions.
+        val keptDeductions = Income.select(Income.id, Income.sourceName)
+            .where {
+                (Income.householdId eq householdId) and
+                    (Income.deductedFrom inList allDeletedIncomeIds) and
+                    (Income.id notInList allDeletedIncomeIds)
+            }
+            .toList()
+        if (keptDeductions.isNotEmpty()) {
+            val keptDeductionIds = keptDeductions.map { it[Income.id] }
+            Income.update({ (Income.householdId eq householdId) and (Income.id inList keptDeductionIds) }) {
+                it[deductedFrom] = null
+            }
+            kept.income += keptDeductions.size
+            keptDeductions.forEach { row ->
+                keptItems += KeptImportItem("income", row[Income.sourceName].ifBlank { "Deduction" }, "Was linked to an imported earning")
+            }
+        }
     }
-    orphans(BankRows.incomeId).takeIf { it.isNotEmpty() }?.let { gone ->
-        deleted.income += Income.deleteWhere { (Income.householdId eq householdId) and (Income.id inList gone) }
+
+    if (incomeIds.isNotEmpty()) {
+        Income.deleteWhere { (Income.householdId eq householdId) and (Income.importId eq importId) }
+    }
+    if (expenseIds.isNotEmpty()) {
+        Expenses.deleteWhere { (Expenses.householdId eq householdId) and (Expenses.importId eq importId) }
+    }
+
+    if (orphanExpenses.isNotEmpty()) {
+        deleted.expenses += Expenses.deleteWhere { (Expenses.householdId eq householdId) and (Expenses.id inList orphanExpenses) }
+    }
+    if (orphanIncome.isNotEmpty()) {
+        deleted.income += Income.deleteWhere { (Income.householdId eq householdId) and (Income.id inList orphanIncome) }
     }
     orphans(BankRows.transferId).takeIf { it.isNotEmpty() }?.let { gone ->
         Transfers.deleteWhere { (Transfers.householdId eq householdId) and (Transfers.id inList gone) }
