@@ -26,6 +26,7 @@ export type ExpenseLineInput = Schemas["ExpenseLineInput"];
 export type Income = Schemas["Income"];
 export type IncomeInput = Schemas["IncomeInput"];
 export type IncomeKind = Schemas["IncomeKind"];
+export type PayslipDeduction = Schemas["PayslipDeduction"];
 export type Asset = Schemas["Asset"];
 export type AssetInput = Schemas["AssetInput"];
 export type AssetKind = Schemas["AssetKind"];

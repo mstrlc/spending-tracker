@@ -1,7 +1,8 @@
 import { useRef, useState, type FormEvent } from "react";
-import { useAccounts, useDeleteIncome, useMembers, useSaveIncome } from "../api/hooks";
-import type { BankRowRef, Income } from "../api/types";
-import { todayIso } from "../lib/dates";
+import { PlusIcon, XIcon } from "lucide-react";
+import { useAccounts, useDeleteIncome, useIncome, useMembers, useSaveIncome } from "../api/hooks";
+import type { BankRowRef, Income, PayslipDeduction } from "../api/types";
+import { monthRange, todayIso } from "../lib/dates";
 import { formatMoney, parseMoney, toInputValue } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
@@ -11,13 +12,18 @@ import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { payslipSummary, sortEarningsForPicker } from "./net";
 
 type Kind = Income["kind"];
 
-const FIELDS = ["kind", "date", "earnedMonth", "amountMinor", "source", "accountId", "recipientUserId", "notes"];
+const FIELDS = ["kind", "date", "earnedMonth", "amountMinor", "source", "accountId", "recipientUserId", "notes", "deductedFromId", "deductions"];
 
 /** What a new income line starts with, such as a bank row's suggestion. */
-export type IncomeDraft = Partial<Pick<Income, "date" | "amountMinor" | "source" | "accountId" | "recipientUserId" | "notes" | "kind" | "earnedMonth">>;
+export type IncomeDraft = Partial<
+  Pick<Income, "date" | "amountMinor" | "source" | "accountId" | "recipientUserId" | "notes" | "kind" | "earnedMonth" | "deductedFromId">
+>;
+
+type PayslipRow = { source: string; amount: string };
 
 /**
  * Adds income or a deduction (staying open for the next line) or edits [income]. Lives in a side sheet;
@@ -29,6 +35,7 @@ export function IncomeForm({
   draft,
   bankRows,
   defaultDate,
+  onEditIncome,
   onSaved,
   onDone,
 }: {
@@ -36,6 +43,7 @@ export function IncomeForm({
   draft?: IncomeDraft;
   bankRows?: BankRowRef[];
   defaultDate?: string;
+  onEditIncome?: (income: Income) => void;
   onSaved?: (income: Income) => void;
   onDone: () => void;
 }) {
@@ -60,11 +68,27 @@ export function IncomeForm({
   const [earnedMonth, setEarnedMonth] = useState<string | null>(
     start.earnedMonth && start.earnedMonth !== date.slice(0, 7) ? start.earnedMonth : null,
   );
+  const [deductedFromId, setDeductedFromId] = useState(start.deductedFromId ?? "");
+  const [payslipRows, setPayslipRows] = useState<PayslipRow[]>([]);
   const [amountError, setAmountError] = useState<string | null>(null);
+  const [deductionsError, setDeductionsError] = useState<string | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
+
+  const activeMonth = earnedMonth ?? date.slice(0, 7);
+  const { from, to } = monthRange(activeMonth);
+  const monthIncome = useIncome(household.id, from, to).data ?? [];
+  const earningOptions = sortEarningsForPicker(
+    monthIncome.filter((i) => i.id !== income?.id),
+    recipientUserId || null,
+  );
+  const linkedDeductions = income && !deduction ? monthIncome.filter((i) => i.deductedFromId === income.id) : [];
 
   // Closed accounts stay selectable only for rows that already use them.
   const accountOptions = accounts.filter((a) => a.status === "active" || a.id === income?.accountId);
+
+  const expectedNetMinor = !income && !deduction && draft?.amountMinor != null ? draft.amountMinor : null;
+  const parsedDeductionMinors = payslipRows.map((r) => parseMoney(r.amount, household.currency) ?? 0);
+  const summary = payslipSummary(parseMoney(amount, household.currency), parsedDeductionMinors, expectedNetMinor);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -79,6 +103,21 @@ export function IncomeForm({
       return;
     }
     setAmountError(null);
+
+    let deductions: PayslipDeduction[] = [];
+    if (!income && !deduction && payslipRows.length > 0) {
+      const nonEmpty = payslipRows.filter((r) => r.source.trim() !== "" || r.amount.trim() !== "");
+      for (const r of nonEmpty) {
+        const dAmount = parseMoney(r.amount, household.currency);
+        if (dAmount === null || dAmount === 0) {
+          setDeductionsError("Enter a non-zero amount for each deduction.");
+          return;
+        }
+        deductions.push({ source: r.source, amountMinor: dAmount, notes: "" });
+      }
+    }
+    setDeductionsError(null);
+
     save.mutate(
       {
         id: income?.id,
@@ -89,8 +128,10 @@ export function IncomeForm({
           source,
           accountId: accountId || null,
           recipientUserId: recipientUserId || null,
-          earnedMonth: earnedMonth ?? date.slice(0, 7),
+          earnedMonth: activeMonth,
           notes,
+          deductedFromId: deduction ? deductedFromId || null : null,
+          deductions,
           version: income?.version,
           bankRows: income ? [] : (bankRows ?? []),
         },
@@ -108,6 +149,8 @@ export function IncomeForm({
           setAmount("");
           setSource("");
           setNotes("");
+          setDeductedFromId("");
+          setPayslipRows([]);
           amountRef.current?.focus();
         },
       },
@@ -117,7 +160,15 @@ export function IncomeForm({
   async function confirmDelete() {
     if (!income) return;
     const what = income.source || (income.kind === "deduction" ? "this deduction" : "this income");
-    if (await confirm({ title: `Delete ${what}?`, description: "This can't be undone." })) {
+    // Only this month's linked deductions are loaded; deductedMinor also counts any from other months.
+    const linked = income.kind === "deduction" ? 0 : linkedDeductions.length;
+    const hasLinked = income.kind !== "deduction" && (linked > 0 || income.deductedMinor !== 0);
+    const description = !hasLinked
+      ? "This can't be undone."
+      : linked === 1 && income.deductedMinor === linkedDeductions[0].amountMinor
+        ? "Its deduction goes with it. This can't be undone."
+        : "Its deductions go with it. This can't be undone.";
+    if (await confirm({ title: `Delete ${what}?`, description })) {
       remove.mutate({ id: income.id, version: income.version }, { onSuccess: onDone });
     }
   }
@@ -216,6 +267,107 @@ export function IncomeForm({
               ))}
             </NativeSelect>
           </Field>
+        )}
+        {deduction && (
+          <Field label="Taken off" name="deductedFromId" error={save.error}>
+            <NativeSelect className="w-full" value={deductedFromId} onChange={(e) => setDeductedFromId(e.target.value)}>
+              <NativeSelectOption value="">None</NativeSelectOption>
+              {deductedFromId && !earningOptions.some((o) => o.id === deductedFromId) && (
+                <NativeSelectOption value={deductedFromId}>An earlier earning</NativeSelectOption>
+              )}
+              {earningOptions.map((o) => (
+                <NativeSelectOption key={o.id} value={o.id}>
+                  {(o.source || "Untitled income") + " · " + formatMoney(o.amountMinor, household.currency)}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </Field>
+        )}
+        {!income && !deduction && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Deductions</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPayslipRows((rows) => [...rows, { source: "", amount: "" }])}
+              >
+                <PlusIcon /> Add deduction
+              </Button>
+            </div>
+            {payslipRows.map((row, idx) => (
+              <div key={idx} className="grid grid-cols-[1fr_7.5rem_auto] items-center gap-2">
+                <Input
+                  aria-label={`Deduction ${idx + 1} source`}
+                  placeholder="Tax, health insurance"
+                  value={row.source}
+                  onChange={(e) =>
+                    setPayslipRows((rows) => rows.map((r, i) => (i === idx ? { ...r, source: e.target.value } : r)))
+                  }
+                />
+                <Input
+                  aria-label={`Deduction ${idx + 1} amount`}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="amount"
+                  value={row.amount}
+                  onChange={(e) =>
+                    setPayslipRows((rows) => rows.map((r, i) => (i === idx ? { ...r, amount: e.target.value } : r)))
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Remove deduction ${idx + 1}`}
+                  onClick={() => setPayslipRows((rows) => rows.filter((_, i) => i !== idx))}
+                >
+                  <XIcon />
+                </Button>
+              </div>
+            ))}
+            {payslipRows.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Gross <span className="amount">{summary.grossMinor !== null ? formatMoney(summary.grossMinor, household.currency) : "–"}</span>
+                {" · "}Deducted <span className="amount">{formatMoney(summary.deductedMinor, household.currency)}</span>
+                {" · "}Net <span className="amount">{summary.netMinor !== null ? formatMoney(summary.netMinor, household.currency) : "–"}</span>
+              </div>
+            )}
+            {summary.mismatch && summary.netMinor !== null && expectedNetMinor !== null && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Net ({formatMoney(summary.netMinor, household.currency)}) doesn&apos;t match the bank amount (
+                {formatMoney(expectedNetMinor, household.currency)}).
+              </p>
+            )}
+            {deductionsError && <p className="text-xs text-destructive">{deductionsError}</p>}
+          </div>
+        )}
+        {income && !deduction && (income.deductedMinor !== 0 || linkedDeductions.length > 0) && (
+          <div className="flex flex-col gap-1.5 rounded-md border p-3">
+            <div className="text-xs font-medium text-muted-foreground">Linked deductions</div>
+            <div className="text-xs text-muted-foreground">
+              Gross <span className="amount">{formatMoney(income.amountMinor, household.currency)}</span>
+              {" · "}Deducted <span className="amount">{formatMoney(income.deductedMinor, household.currency)}</span>
+              {" · "}Net <span className="amount">{formatMoney(income.amountMinor - income.deductedMinor, household.currency)}</span>
+            </div>
+            {linkedDeductions.length > 0 && (
+              <div className="mt-1 flex flex-col gap-1">
+                {linkedDeductions.map((d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    disabled={!onEditIncome}
+                    onClick={() => onEditIncome?.(d)}
+                    className="flex items-center justify-between rounded px-2 py-1 text-left text-sm hover:bg-muted disabled:pointer-events-none"
+                  >
+                    <span>{d.source || "Untitled deduction"}</span>
+                    <span className="amount text-muted-foreground">{formatMoney(d.amountMinor, household.currency)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         <Field label="Notes" name="notes" error={save.error}>
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} />

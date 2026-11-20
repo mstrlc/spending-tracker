@@ -1507,6 +1507,25 @@ export interface components {
             /** String */
             earnedMonth: string;
             kind: components["schemas"]["IncomeKind"];
+            /** String */
+            deductedFromId: null | string;
+            /**
+             * Long
+             * Format: int64
+             */
+            deductedMinor: number;
+        };
+        /** PayslipDeduction */
+        PayslipDeduction: {
+            /** String */
+            source?: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            notes?: string;
         };
         /**
          * IncomeKind
@@ -1538,6 +1557,10 @@ export interface components {
             /** String */
             earnedMonth?: null | string;
             kind?: components["schemas"]["IncomeKind"];
+            /** String */
+            deductedFromId?: null | string;
+            /** ArrayList<PayslipDeduction> */
+            deductions?: components["schemas"]["PayslipDeduction"][];
             /** ArrayList<BankRowRef> */
             bankRows?: components["schemas"]["BankRowRef"][];
         };

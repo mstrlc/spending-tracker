@@ -2,6 +2,7 @@ package dev.spendingtracker.server
 
 import dev.spendingtracker.shared.api.Account
 import dev.spendingtracker.shared.api.AccountInput
+import dev.spendingtracker.shared.api.ApiError
 import dev.spendingtracker.shared.api.CreateInviteRequest
 import dev.spendingtracker.shared.api.Income
 import dev.spendingtracker.shared.api.IncomeInput
@@ -9,6 +10,7 @@ import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.Invite
 import dev.spendingtracker.shared.api.NamedTotal
 import dev.spendingtracker.shared.api.Overview
+import dev.spendingtracker.shared.api.PayslipDeduction
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.delete
@@ -157,5 +159,154 @@ class IncomeTest {
             setBody(IncomeInput(health.date, health.amountMinor, "ZPMV", version = health.version))
         }.body<Income>()
         assertEquals(IncomeKind.EARNING, asEarning.kind)
+    }
+
+    @Test
+    fun linkingDeductionsToEarningsAndUnlinking() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+        val base = "$household/income"
+
+        val salary = client.add(base, IncomeInput(LocalDate(2026, 10, 10), 60_000_00, "Initech"))
+        val other = client.add(base, IncomeInput(LocalDate(2026, 10, 15), 10_000_00, "Bonus"))
+
+        // Only a deduction can link to an earning, and the target must be an earning.
+        client.post(base) {
+            setBody(IncomeInput(LocalDate(2026, 10, 10), 1_000_00, "Bad", deductedFromId = salary.id))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_deducted_from")
+
+        val tax = client.add(
+            base,
+            IncomeInput(LocalDate(2026, 10, 10), 8_500_00, "Tax", kind = IncomeKind.DEDUCTION, deductedFromId = salary.id),
+        )
+        assertEquals(salary.id, tax.deductedFromId)
+
+        client.post(base) {
+            setBody(IncomeInput(LocalDate(2026, 10, 10), 500_00, "Nested", kind = IncomeKind.DEDUCTION, deductedFromId = tax.id))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_deducted_from")
+
+        // Turning a linked earning into a deduction is refused while deductions point at it.
+        client.put("$base/${salary.id}") {
+            setBody(IncomeInput(salary.date, salary.amountMinor, salary.source, kind = IncomeKind.DEDUCTION, version = salary.version))
+        }.assertError(HttpStatusCode.Conflict, "income_has_deductions")
+
+        val listed = client.get(base).body<List<Income>>().associateBy { it.id }
+        assertEquals(8_500_00L, listed[salary.id]!!.deductedMinor)
+        assertEquals(0L, listed[other.id]!!.deductedMinor)
+
+        // Move deduction to another earning, then unlink it.
+        val moved = client.put("$base/${tax.id}") {
+            setBody(IncomeInput(tax.date, tax.amountMinor, tax.source, kind = IncomeKind.DEDUCTION, deductedFromId = other.id, version = tax.version))
+        }.body<Income>()
+        assertEquals(other.id, moved.deductedFromId)
+        val afterMove = client.get(base).body<List<Income>>().associateBy { it.id }
+        assertEquals(0L, afterMove[salary.id]!!.deductedMinor)
+        assertEquals(8_500_00L, afterMove[other.id]!!.deductedMinor)
+
+        // Deleting the earning deletes its deductions with it; unlinked ones stay.
+        val zpmv = client.add(base, IncomeInput(LocalDate(2026, 10, 8), 3_143_00, "ZPMV", kind = IncomeKind.DEDUCTION))
+        assertEquals(HttpStatusCode.NoContent, client.delete("$base/${other.id}?version=${other.version}").status)
+        val left = client.get(base).body<List<Income>>().map { it.id }.toSet()
+        assertEquals(false, tax.id in left)
+        assertEquals(true, zpmv.id in left)
+    }
+
+    @Test
+    fun movingAnEarningMovesItsPayslipDeductions() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+        val base = "$household/income"
+        val me = client.post("$household/members") { setBody(dev.spendingtracker.shared.api.MemberInput("Bob")) }
+            .body<dev.spendingtracker.shared.api.Member>().userId
+
+        // Paid on 2 November, entered as November, then corrected to October and to one member.
+        val salary = client.add(
+            base,
+            IncomeInput(
+                LocalDate(2026, 11, 2),
+                60_000_00,
+                "Initech",
+                deductions = listOf(PayslipDeduction("Income tax", 8_500_00), PayslipDeduction("Health", 3_143_00)),
+            ),
+        )
+        // A deduction linked by hand with a month of its own keeps it.
+        val own = client.add(
+            base,
+            IncomeInput(LocalDate(2026, 12, 5), 1_000_00, "Annual", earnedMonth = "2026-12", kind = IncomeKind.DEDUCTION, deductedFromId = salary.id),
+        )
+        client.put("$base/${salary.id}") {
+            setBody(IncomeInput(salary.date, salary.amountMinor, salary.source, recipientUserId = me, earnedMonth = "2026-10", version = salary.version))
+        }.body<Income>()
+
+        val all = client.get(base).body<List<Income>>()
+        val payslip = all.filter { it.deductedFromId == salary.id && it.id != own.id }
+        assertEquals(2, payslip.size)
+        payslip.forEach {
+            assertEquals("2026-10", it.earnedMonth)
+            assertEquals(me, it.recipientUserId)
+        }
+        val ownAfter = all.single { it.id == own.id }
+        assertEquals("2026-12", ownAfter.earnedMonth)
+        assertEquals(me, ownAfter.recipientUserId)
+    }
+
+    @Test
+    fun payslipCreatesEarningAndDeductionsInOneTransactionAndRollsBackOnError() = apiTest {
+        val client = newClient()
+        val me = client.signup()
+        val household = "/api/households/${client.createHousehold().id}"
+        val base = "$household/income"
+        val bank = client.post("$household/accounts") { setBody(AccountInput("Bank")) }.body<Account>()
+
+        // Bad second deduction rolls back the whole request and names the entry.
+        val bad = client.post(base) {
+            setBody(
+                IncomeInput(
+                    date = LocalDate(2026, 11, 2),
+                    amountMinor = 60_000_00,
+                    source = "Initech",
+                    accountId = bank.id,
+                    recipientUserId = me.id,
+                    earnedMonth = "2026-10",
+                    deductions = listOf(
+                        PayslipDeduction("Income tax", 8_500_00),
+                        PayslipDeduction("Health", 0),
+                    ),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.BadRequest, bad.status)
+        val err = bad.body<ApiError>()
+        assertEquals("invalid_amount", err.code)
+        assertEquals("deductions[1].amountMinor", err.field)
+        assertTrue(client.get(base).body<List<Income>>().isEmpty())
+
+        val salary = client.add(
+            base,
+            IncomeInput(
+                date = LocalDate(2026, 11, 2),
+                amountMinor = 60_000_00,
+                source = "Initech",
+                accountId = bank.id,
+                recipientUserId = me.id,
+                earnedMonth = "2026-10",
+                deductions = listOf(
+                    PayslipDeduction("Income tax", 8_500_00, "Advance"),
+                    PayslipDeduction("Health", 3_143_00),
+                ),
+            ),
+        )
+        assertEquals(11_643_00L, salary.deductedMinor)
+
+        val all = client.get(base).body<List<Income>>()
+        val deds = all.filter { it.kind == IncomeKind.DEDUCTION }
+        assertEquals(2, deds.size)
+        for (d in deds) {
+            assertEquals(salary.id, d.deductedFromId)
+            assertEquals(salary.date, d.date)
+            assertEquals("2026-10", d.earnedMonth)
+            assertEquals(me.id, d.recipientUserId)
+            assertEquals(null, d.accountId)
+        }
     }
 }
