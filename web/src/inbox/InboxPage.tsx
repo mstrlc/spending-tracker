@@ -9,9 +9,22 @@ import { useConfirm, usePrompt } from "../dialogs";
 import { EmptyState, ErrorText, PageHeader, PageIntro, RowMenu, Sheet, SkeletonRows, Surface } from "../ui";
 import { ExpenseForm, type ExpenseDraft } from "../expenses/ExpenseForm";
 import { IncomeForm, type IncomeDraft } from "../income/IncomeForm";
-import { Avatar, CategoryLabel, Chip, KindChip, signedAmountClass, type RecordKind } from "../chips";
-import { ZapIcon } from "lucide-react";
+import { Avatar, CategoryLabel, Chip, KindChip, RECORD_KINDS, signedAmountClass, type RecordKind } from "../chips";
+import { SearchIcon, ZapIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import type { Account, Category, Member } from "../api/types";
+import {
+  activeFilterCount,
+  decidedKind as decidedKindOf,
+  filterRows,
+  NO_FILTERS,
+  SORTS,
+  suggestedKind as suggestedKindOf,
+  type InboxFilters,
+  type InboxSort,
+} from "./filters";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,6 +33,7 @@ import { FeedsPanel } from "./FeedsPanel";
 import { connectionWarning } from "./connections";
 import { loadDecision } from "./decisions";
 import { draftExpense, draftIncome, oppositeSides, skipReason } from "./drafts";
+import { categoryTree } from "../categories/tree";
 import { RuleForm } from "./RuleForm";
 import { draftRule, type RuleDraft } from "./ruleDrafts";
 import { SettleForm } from "./SettleForm";
@@ -62,7 +76,12 @@ export function InboxPage() {
   const [ruleError, setRuleError] = useState<unknown>(null);
   const loaded = rows.data ?? [];
   const autoCount = tab === "decided" ? loaded.filter((r) => r.decidedAuto).length : 0;
-  const list = tab === "decided" && filter === "auto" ? loaded.filter((r) => r.decidedAuto) : loaded;
+  const [filters, setFilters] = useState<InboxFilters>(NO_FILTERS);
+  const tabRows = tab === "decided" && filter === "auto" ? loaded.filter((r) => r.decidedAuto) : loaded;
+  // Category only means something on pending rows; the Decided tab leaves it out.
+  const applied = tab === "decided" ? { ...filters, categoryId: "" } : filters;
+  const list = filterRows(tabRows, applied, accounts, categories);
+  const filtered = activeFilterCount(applied) > 0;
   const pendingCount = feeds.data?.reduce((sum, f) => sum + f.pendingCount, 0);
   const picked = list.filter((r) => selected.has(r.id));
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? "";
@@ -240,50 +259,18 @@ export function InboxPage() {
         )}
       </div>
 
-      {tab === "decided" && picked.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2" role="toolbar" aria-label="Selected rows">
-          <span className="text-sm">{picked.length} selected</span>
-          <span className="flex-1" />
-          <Button size="sm" onClick={() => undoMany(picked)} disabled={decide.isPending}>
-            Put back in the inbox
-          </Button>
-          <Button size="sm" variant="ghost" onClick={clear}>
-            Clear
-          </Button>
-        </div>
-      )}
-
-      {tab === "pending" && picked.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2" role="toolbar" aria-label="Selected rows">
-          <span className="text-sm">
-            {picked.length} selected
-            {new Set(picked.map((r) => r.currency)).size === 1 &&
-              ` · ${bankAmount({ amountMinor: picked.reduce((s, r) => s + r.amountMinor, 0), currency: picked[0].currency })}`}
-          </span>
-          <span className="flex-1" />
-          <Button size="sm" onClick={() => openExpense(picked)}>
-            One expense
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => openIncome(picked)}>
-            One income line
-          </Button>
-          {sides && (
-            <>
-              <Button size="sm" variant="outline" onClick={() => pairSelected(sides)} disabled={decide.isPending}>
-                Pair as transfer
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => openSettle(picked)}>
-                Settle
-              </Button>
-            </>
-          )}
-          <Button size="sm" variant="outline" onClick={() => skip(picked)}>
-            Skip
-          </Button>
-          <Button size="sm" variant="ghost" onClick={clear}>
-            Clear
-          </Button>
-        </div>
+      {rows.data && tabRows.length > 0 && (
+        <FilterBar
+          value={filters}
+          onChange={(f) => setFilters(f)}
+          tab={tab}
+          accounts={accounts}
+          members={members}
+          categories={categories}
+          shown={list.length}
+          total={tabRows.length}
+          active={activeFilterCount(applied)}
+        />
       )}
 
       <Surface>
@@ -295,6 +282,10 @@ export function InboxPage() {
           noFeeds ? (
             <EmptyState title="No bank feeds yet" action={<Button onClick={() => setEditor({ mode: "feeds" })}>Add a feed</Button>}>
               Add a feed for an account, then upload its bank statements. Their rows come here to be decided.
+            </EmptyState>
+          ) : filtered && tabRows.length > 0 ? (
+            <EmptyState title="Nothing matches" action={<Button variant="outline" onClick={() => setFilters({ ...NO_FILTERS, sort: filters.sort })}>Clear filters</Button>}>
+              No {tab === "pending" ? "waiting" : "decided"} row passes these filters.
             </EmptyState>
           ) : tab === "pending" ? (
             <EmptyState title="All decided">Nothing waits in the inbox. Upload a newer statement to bring in more rows.</EmptyState>
@@ -334,25 +325,8 @@ export function InboxPage() {
                 const isTransfer = s?.record === "transfer" && !isSkip;
                 const isExpense = s?.record !== "income";
                 const best = s?.transferCandidates[0];
-                const suggestedKind: RecordKind = isSkip
-                  ? "skip"
-                  : isSettlement
-                    ? "settlement"
-                    : isTransfer
-                      ? "transfer"
-                      : isExpense
-                        ? row.amountMinor > 0
-                          ? "refund"
-                          : "expense"
-                        : s?.incomeKind === "deduction"
-                          ? "deduction"
-                          : "income";
-                const decidedKind: RecordKind =
-                  row.outcome === "skipped" || row.outcome === "pending"
-                    ? "skip"
-                    : row.outcome === "expense" && row.amountMinor > 0
-                      ? "refund"
-                      : row.outcome;
+                const suggestedKind = suggestedKindOf(row);
+                const decidedKind = decidedKindOf(row);
                 const otherAccountId = best?.accountId ?? s?.transferAccountId ?? null;
                 const otherAccount = accountName(otherAccountId ?? "") || "another account";
                 const liabilityLabel = isTransfer
@@ -553,6 +527,53 @@ export function InboxPage() {
         )}
       </Surface>
 
+      {/* Sticks to the window's bottom while rows are selected, wherever the table is scrolled to. */}
+      {picked.length > 0 && (
+        <div
+          className="sticky bottom-4 z-10 flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80"
+          role="toolbar"
+          aria-label="Selected rows"
+        >
+          <span className="text-sm">
+            {picked.length} selected
+            {tab === "pending" &&
+              new Set(picked.map((r) => r.currency)).size === 1 &&
+              ` · ${bankAmount({ amountMinor: picked.reduce((s, r) => s + r.amountMinor, 0), currency: picked[0].currency })}`}
+          </span>
+          <span className="flex-1" />
+          {tab === "decided" ? (
+            <Button size="sm" onClick={() => undoMany(picked)} disabled={decide.isPending}>
+              Put back in the inbox
+            </Button>
+          ) : (
+            <>
+              <Button size="sm" onClick={() => openExpense(picked)}>
+                One expense
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => openIncome(picked)}>
+                One income line
+              </Button>
+              {sides && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => pairSelected(sides)} disabled={decide.isPending}>
+                    Pair as transfer
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => openSettle(picked)}>
+                    Settle
+                  </Button>
+                </>
+              )}
+              <Button size="sm" variant="outline" onClick={() => skip(picked)}>
+                Skip
+              </Button>
+            </>
+          )}
+          <Button size="sm" variant="ghost" onClick={clear}>
+            Clear
+          </Button>
+        </div>
+      )}
+
       <Sheet
         open={editor.mode !== "closed"}
         onClose={() => setEditor({ mode: "closed" })}
@@ -609,5 +630,142 @@ export function InboxPage() {
         {editor.mode === "rule" && <RuleForm key={editor.rowId} draft={editor.draft} onDone={() => setEditor({ mode: "closed" })} />}
       </Sheet>
     </>
+  );
+}
+
+const PENDING_KINDS: RecordKind[] = ["expense", "refund", "income", "deduction", "transfer", "settlement", "skip"];
+
+/** Search, date range, account, whose, kind, category, direction and sort for the inbox's rows. */
+function FilterBar({
+  value,
+  onChange,
+  tab,
+  accounts,
+  members,
+  categories,
+  shown,
+  total,
+  active,
+}: {
+  value: InboxFilters;
+  onChange: (f: InboxFilters) => void;
+  tab: "pending" | "decided";
+  accounts: Account[];
+  members: Member[];
+  categories: Category[];
+  shown: number;
+  total: number;
+  active: number;
+}) {
+  const set = <K extends keyof InboxFilters>(key: K, v: InboxFilters[K]) => onChange({ ...value, [key]: v });
+  const tree = categoryTree(categories.filter((c) => !c.archived));
+  return (
+    <div className="flex flex-col gap-2" role="search" aria-label="Filter bank rows">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-56">
+          <SearchIcon aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            aria-label="Search bank rows"
+            placeholder="Search"
+            className="h-8 pl-8"
+            value={value.query}
+            onChange={(e) => set("query", e.target.value)}
+          />
+        </div>
+        <Input
+          type="date"
+          aria-label="From day"
+          className="h-8 w-36"
+          value={value.from}
+          max={value.to || undefined}
+          onChange={(e) => set("from", e.target.value)}
+        />
+        <span className="text-sm text-muted-foreground">to</span>
+        <Input
+          type="date"
+          aria-label="To day"
+          className="h-8 w-36"
+          value={value.to}
+          min={value.from || undefined}
+          onChange={(e) => set("to", e.target.value)}
+        />
+        <NativeSelect aria-label="Account" value={value.accountId} onChange={(e) => set("accountId", e.target.value)} className="w-40">
+          <NativeSelectOption value="">All accounts</NativeSelectOption>
+          {accounts.map((a) => (
+            <NativeSelectOption key={a.id} value={a.id}>
+              {a.name}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        {members.length > 1 && (
+          <NativeSelect aria-label="Whose" value={value.person} onChange={(e) => set("person", e.target.value)} className="w-36">
+            <NativeSelectOption value="">Everyone</NativeSelectOption>
+            <NativeSelectOption value="joint">Joint</NativeSelectOption>
+            {members.map((m) => (
+              <NativeSelectOption key={m.userId} value={m.userId}>
+                {m.displayName}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        )}
+        <NativeSelect
+          aria-label={tab === "pending" ? "Suggested as" : "Became"}
+          value={value.kind}
+          onChange={(e) => set("kind", e.target.value as InboxFilters["kind"])}
+          className="w-36"
+        >
+          <NativeSelectOption value="">Any kind</NativeSelectOption>
+          {PENDING_KINDS.map((k) => (
+            <NativeSelectOption key={k} value={k}>
+              {k === "skip" && tab === "decided" ? "Skipped" : RECORD_KINDS[k].label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        {tab === "pending" && (
+          <NativeSelect aria-label="Category" value={value.categoryId} onChange={(e) => set("categoryId", e.target.value)} className="w-40">
+            <NativeSelectOption value="">Any category</NativeSelectOption>
+            <NativeSelectOption value="none">Uncategorised</NativeSelectOption>
+            {tree.map((parent) => (
+              <optgroup key={parent.id} label={parent.name}>
+                <NativeSelectOption value={parent.id}>All {parent.name}</NativeSelectOption>
+                {parent.children
+                  .filter((c) => !c.archived)
+                  .map((c) => (
+                    <NativeSelectOption key={c.id} value={c.id}>
+                      {c.name}
+                    </NativeSelectOption>
+                  ))}
+              </optgroup>
+            ))}
+          </NativeSelect>
+        )}
+        <NativeSelect
+          aria-label="Money in or out"
+          value={value.direction}
+          onChange={(e) => set("direction", e.target.value as InboxFilters["direction"])}
+          className="w-32"
+        >
+          <NativeSelectOption value="">In and out</NativeSelectOption>
+          <NativeSelectOption value="out">Money out</NativeSelectOption>
+          <NativeSelectOption value="in">Money in</NativeSelectOption>
+        </NativeSelect>
+        <NativeSelect aria-label="Sort" value={value.sort} onChange={(e) => set("sort", e.target.value as InboxSort)} className="w-44">
+          {SORTS.map((s) => (
+            <NativeSelectOption key={s.value} value={s.value}>
+              {s.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </div>
+      {active > 0 && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
+          Showing {shown} of {total}
+          <Button size="xs" variant="ghost" onClick={() => onChange({ ...NO_FILTERS, sort: value.sort })}>
+            Clear filters
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
