@@ -682,7 +682,7 @@ private suspend fun RoutingCall.book(assetId: Uuid? = null): Book {
     } else {
         (AssetContributions.householdId eq householdId) and (AssetContributions.assetId eq assetId)
     }
-    val (symbols, fxYears) = dbQuery {
+    val (symbols, fxYears, fxDates) = dbQuery {
         val assetRows = Assets.select(Assets.symbol, Assets.accountId).where(filter).toList()
         val symbols = assetRows.mapNotNull { it[Assets.symbol] }.distinct()
         val trackedAccountIds = assetRows.mapNotNull { it[Assets.accountId] }.distinct()
@@ -701,13 +701,15 @@ private suspend fun RoutingCall.book(assetId: Uuid? = null): Book {
                 .filter { it[BankBalances.currency] != currency }
                 .map { it[BankBalances.balanceDate] ?: it[BankBalances.readAt].toLocalDateTime(tz).date }
         }
-        val years = buildSet {
-            if (foreignSecurity && firstContribution != null) addAll(firstContribution.year..today.year)
-            balanceDates.forEach { add(it.year) }
-        }.sorted()
-        symbols to years
+        val years = if (foreignSecurity && firstContribution != null) (firstContribution.year..today.year).toList() else emptyList()
+        val fxDates = buildList {
+            if (foreignSecurity && firstContribution != null) add(firstContribution)
+            addAll(balanceDates)
+        }
+        Triple(symbols, years, fxDates)
     }
     application.market.refresh(symbols, fxYears)
+    application.market.refreshFx(fxDates)
     return dbQuery {
         val holdings = Assets.selectAll().where(filter)
             .orderBy(Assets.name to SortOrder.ASC, Assets.id to SortOrder.ASC)
@@ -801,7 +803,7 @@ private suspend fun ContributionInput.resolved(call: RoutingCall): ValidContribu
         }
         val householdCurrency = call.household.currency
         if (origCurrency != householdCurrency) {
-            call.application.market.refresh(emptyList(), listOf(date.year))
+            call.application.market.refreshFx(date)
         }
         val converted = dbQuery {
             loadPrices(householdCurrency, emptyList(), listOf(origCurrency)).convertMinor(origAmount, origCurrency, date)

@@ -59,7 +59,7 @@ fun Route.securityRoutes() = route("/securities") {
         val date = runCatching { LocalDate.parse(dateText) }.getOrNull()
             ?: throw badRequest("invalid_date", "Invalid date", "date")
         if (from != to) {
-            call.application.market.refresh(emptyList(), listOf(date.year))
+            call.application.market.refreshFx(date)
         }
         val rate = dbQuery {
             loadPrices(to, emptyList(), listOf(from)).rate(from, date)?.toDouble()

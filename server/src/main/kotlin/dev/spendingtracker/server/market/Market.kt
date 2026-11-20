@@ -12,8 +12,11 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.core.max
 import org.jetbrains.exposed.v1.jdbc.batchUpsert
 import org.jetbrains.exposed.v1.jdbc.select
@@ -65,6 +68,34 @@ class Market(private val data: MarketData, private val clock: Clock = Clock.Syst
                 if (history != null) dbQuery { storePrices(symbol, history.closes) }
             }
         }
+        refreshFxYears(fxYears, today)
+    }
+
+    /**
+     * Ensures ČNB fixings are available for each date in [dates]: refreshes `date.year`, and also
+     * `date.year - 1` whenever `date.year` has no fixing on or before `date` (e.g. January 1).
+     */
+    suspend fun refreshFx(dates: Collection<LocalDate>) {
+        if (dates.isEmpty()) return
+        val today = clock.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+        val earliestByYear = dates.groupBy { it.year }.mapValues { (_, ds) -> ds.min() }
+        refreshFxYears(earliestByYear.keys, today)
+        val fallbackYears = dbQuery {
+            earliestByYear.mapNotNull { (year, minDate) ->
+                val empty = FxRates.select(FxRates.date)
+                    .where { (FxRates.date greaterEq LocalDate(year, 1, 1)) and (FxRates.date lessEq minDate) }
+                    .limit(1)
+                    .empty()
+                if (empty) year - 1 else null
+            }
+        }
+        refreshFxYears(fallbackYears, today)
+    }
+
+    /** Convenience overload of [refreshFx] for a single [date]. */
+    suspend fun refreshFx(date: LocalDate) = refreshFx(listOf(date))
+
+    private suspend fun refreshFxYears(fxYears: Collection<Int>, today: LocalDate) {
         for (year in fxYears.distinct()) {
             val key = "fx:$year"
             // A past year is complete once fetched; only the current one keeps growing.
