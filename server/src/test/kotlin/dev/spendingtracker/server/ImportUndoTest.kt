@@ -176,8 +176,71 @@ class ImportUndoTest {
         val imp = alice.get("$base/imports").body<List<ImportSummary>>().single()
         val undo = alice.post("$base/imports/${imp.id}/undo").body<ImportUndoResult>()
         assertEquals(1, undo.deleted.expenses)
+        assertEquals(1, undo.deleted.merchants)
         assertEquals(emptyList(), alice.get("$base/expenses").body<List<Expense>>())
+        assertEquals(emptyList(), alice.get("$base/merchants").body<List<Merchant>>())
         assertEquals(emptyList(), alice.get("$base/accounts").body<List<Account>>())
+    }
+
+    @Test
+    fun undoRemovesRuleMadeMerchantAndKeepsPreExistingMerchant() = apiTest {
+        val alice = newClient().also { it.signup() }
+        val base = "/api/households/${alice.createHousehold().id}"
+        alice.post("$base/merchants") {
+            setBody(dev.spendingtracker.shared.api.MerchantInput("Albert"))
+        }.also { assertEquals(HttpStatusCode.Created, it.status) }
+        alice.post("$base/inbox-rules") {
+            setBody(
+                dev.spendingtracker.shared.api.InboxRuleInput(
+                    name = "Billa", textContains = "BILLA", outcome = dev.spendingtracker.shared.api.RuleOutcome.EXPENSE,
+                    merchant = "Billa", auto = true,
+                ),
+            )
+        }.also { assertEquals(HttpStatusCode.Created, it.status) }
+        alice.post("$base/inbox-rules") {
+            setBody(
+                dev.spendingtracker.shared.api.InboxRuleInput(
+                    name = "Albert", textContains = "ALBERT", outcome = dev.spendingtracker.shared.api.RuleOutcome.EXPENSE,
+                    merchant = "Albert", auto = true,
+                ),
+            )
+        }.also { assertEquals(HttpStatusCode.Created, it.status) }
+
+        val albertRaw = Json.parseToJsonElement(
+            """
+            {
+              "transactionId": "tx-import-2",
+              "bookingDate": "2026-08-06",
+              "transactionAmount": { "amount": "-180.00", "currency": "CZK" },
+              "creditorName": "Albert",
+              "remittanceInformationUnstructured": "CARD ALBERT"
+            }
+            """.trimIndent(),
+        ).jsonObject
+
+        alice.post("$base/import") {
+            setBody(
+                HouseholdImport(
+                    currency = "CZK",
+                    accounts = listOf(ImportAccount("Joint")),
+                    bankFeeds = listOf(ImportBankFeed("Joint feed", "Joint", "CZK", BankInstitution.OTHER)),
+                    bankRows = listOf(
+                        ImportBankRow("Joint feed", sampleRaw),
+                        ImportBankRow("Joint feed", albertRaw),
+                    ),
+                ),
+            )
+        }.body<ImportResult>()
+        assertEquals(2, alice.get("$base/expenses").body<List<Expense>>().size)
+        assertEquals(setOf("Albert", "Billa"), alice.get("$base/merchants").body<List<Merchant>>().map { it.name }.toSet())
+
+        val imp = alice.get("$base/imports").body<List<ImportSummary>>().single()
+        val undo = alice.post("$base/imports/${imp.id}/undo").body<ImportUndoResult>()
+        assertEquals(2, undo.deleted.expenses)
+        assertEquals(1, undo.deleted.merchants)
+        assertEquals(0, undo.kept.merchants)
+        assertEquals(emptyList(), alice.get("$base/expenses").body<List<Expense>>())
+        assertEquals(listOf("Albert"), alice.get("$base/merchants").body<List<Merchant>>().map { it.name })
     }
 
     @Test

@@ -197,11 +197,11 @@ fun Route.expenseRoutes() = route("/expenses") {
  * Validates [raw] and creates the expense (merchant found or created, split lines, own split): what the form and
  * the inbox rules both make. Returns its id; filing bank rows under it is up to the caller. Call inside a transaction.
  */
-fun createExpense(householdId: Uuid, userId: Uuid, raw: ExpenseInput): Uuid {
+fun createExpense(householdId: Uuid, userId: Uuid, raw: ExpenseInput, importId: Uuid? = null): Uuid {
     val input = raw.validated()
     val id = Uuid.random()
     input.checkReferences(householdId)
-    val merchantId = resolveMerchant(householdId, input.merchant, input.defaultCategoryId, userId)
+    val merchantId = resolveMerchant(householdId, input.merchant, input.defaultCategoryId, userId, importId)
     Expenses.insert {
         it[Expenses.id] = id
         it[Expenses.householdId] = householdId

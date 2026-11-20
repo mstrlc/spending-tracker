@@ -141,6 +141,7 @@ private class Engine(
                 originalAmountMinor = original,
                 originalCurrency = s.originalCurrency.takeIf { original != null },
             ),
+            importId = row[BankRows.importId],
         )
         fileBankRows(householdId, listOf(row.ref()), userId, expenseId = id, created = true, auto = true, ruleId = rule.id)
         done(row)
