@@ -14,7 +14,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { IncomeForm } from "./IncomeForm";
-import { incomeTotals, netAmount } from "./net";
+import { groupIncome, incomeTotals, netAmount } from "./net";
 
 /** The month's earnings by source, largest first; clawbacks net against their source, deductions aren't sources. */
 export function incomeBySource(income: Income[]): Slice[] {
@@ -116,43 +116,57 @@ export function IncomePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((i) => (
-                <TableRow
-                  key={i.id}
-                  className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
-                  onClick={() => setEditor({ mode: "edit", income: i })}
-                  onAnimationEnd={() => setFlashId(null)}
-                >
-                  <TableCell className="text-muted-foreground max-md:hidden">{formatDay(i.date)}</TableCell>
-                  <TableCell className="whitespace-normal">
-                    {/* The button makes the row reachable by keyboard; the row click is a larger mouse target. */}
-                    <button
-                      className="text-left font-medium outline-none hover:underline focus-visible:underline"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setEditor({ mode: "edit", income: i });
-                      }}
-                    >
-                      {i.source || "Untitled income"}
-                    </button>
-                    {i.kind === "deduction" && <div className="text-xs text-muted-foreground">Deduction</div>}
-                    {i.notes && <div className="text-xs text-muted-foreground">{i.notes}</div>}
-                    <div className="text-xs text-muted-foreground md:hidden">{formatDay(i.date)}</div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground max-md:hidden">
-                    {accounts.find((a) => a.id === i.accountId)?.name ?? ""}
-                  </TableCell>
-                  {showRecipient && (
-                    <TableCell className="text-muted-foreground max-md:hidden">
-                      {members.find((m) => m.userId === i.recipientUserId)?.displayName ?? "Shared"}
+              {groupIncome(rows).map(({ income: i, linkedDeductions }) => {
+                const renderRow = (item: Income, nested: boolean) => (
+                  <TableRow
+                    key={item.id}
+                    className={cn("cursor-pointer", item.id === flashId && "animate-flash", nested && "text-muted-foreground")}
+                    onClick={() => setEditor({ mode: "edit", income: item })}
+                    onAnimationEnd={() => setFlashId(null)}
+                  >
+                    <TableCell className="text-muted-foreground max-md:hidden">{nested ? "" : formatDay(item.date)}</TableCell>
+                    <TableCell className={cn("whitespace-normal", nested && "pl-6")}>
+                      {/* The button makes the row reachable by keyboard; the row click is a larger mouse target. */}
+                      <button
+                        className={cn(
+                          "text-left outline-none hover:underline focus-visible:underline",
+                          nested ? "font-normal" : "font-medium",
+                        )}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setEditor({ mode: "edit", income: item });
+                        }}
+                      >
+                        {item.source || (item.kind === "deduction" ? "Untitled deduction" : "Untitled income")}
+                      </button>
+                      {item.deductedMinor !== 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          Gross <span className="amount">{formatAmount(item.amountMinor, household.currency)}</span> → net{" "}
+                          <span className="amount">{formatAmount(item.amountMinor - item.deductedMinor, household.currency)}</span>
+                        </div>
+                      )}
+                      {item.kind === "deduction" && !nested && (
+                        <div className="text-xs text-muted-foreground">Deduction</div>
+                      )}
+                      {item.notes && <div className="text-xs text-muted-foreground">{item.notes}</div>}
+                      {!nested && <div className="text-xs text-muted-foreground md:hidden">{formatDay(item.date)}</div>}
                     </TableCell>
-                  )}
-                  <TableCell className={cn("amount text-right", i.kind === "deduction" && "text-muted-foreground")}>
-                    {netAmount(i) < 0 ? "−" : ""}
-                    {formatAmount(Math.abs(i.amountMinor), household.currency)}
-                  </TableCell>
-                </TableRow>
-              ))}
+                    <TableCell className="text-muted-foreground max-md:hidden">
+                      {accounts.find((a) => a.id === item.accountId)?.name ?? ""}
+                    </TableCell>
+                    {showRecipient && (
+                      <TableCell className="text-muted-foreground max-md:hidden">
+                        {members.find((m) => m.userId === item.recipientUserId)?.displayName ?? "Shared"}
+                      </TableCell>
+                    )}
+                    <TableCell className={cn("amount text-right", item.kind === "deduction" && "text-muted-foreground")}>
+                      {netAmount(item) < 0 ? "−" : ""}
+                      {formatAmount(Math.abs(item.amountMinor), household.currency)}
+                    </TableCell>
+                  </TableRow>
+                );
+                return [renderRow(i, false), ...linkedDeductions.map((d) => renderRow(d, true))];
+              })}
             </TableBody>
           </Table>
         )}
@@ -167,6 +181,7 @@ export function IncomePage() {
           key={editor.mode === "edit" ? editor.income.id : "new"}
           income={editor.mode === "edit" ? editor.income : undefined}
           defaultDate={defaultDate}
+          onEditIncome={(item) => setEditor({ mode: "edit", income: item })}
           onSaved={(saved) => setFlashId(saved.id)}
           onDone={() => setEditor({ mode: "closed" })}
         />

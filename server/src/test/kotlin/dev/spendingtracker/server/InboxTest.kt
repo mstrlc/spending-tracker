@@ -25,6 +25,7 @@ import dev.spendingtracker.shared.api.IncomeInput
 import dev.spendingtracker.shared.api.LinkBankRows
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.MemberInput
+import dev.spendingtracker.shared.api.PayslipDeduction
 import dev.spendingtracker.shared.api.SkipBankRows
 import dev.spendingtracker.shared.api.StatementResult
 import dev.spendingtracker.shared.api.StatementUpload
@@ -415,5 +416,89 @@ class InboxTest {
         // Bank rows appear in Activity
         val activity = client.get("$base/activity?entity=bank_row").body<ActivityPage>()
         assertTrue(activity.entries.any { it.entity == ActivityEntity.BANK_ROW && it.label == "Cafe" })
+    }
+
+    @Test
+    fun matchesPayslipEarningByNet() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.account(base, "Bank")
+        val feed = client.feed(base, BankFeedInput(account.id, "Bank", BankInstitution.OTHER, currency = "CZK"))
+
+        // Hand-entered payslip: 60,000 gross - 12,000 deductions = 48,000 net.
+        val salary = client.post("$base/income") {
+            setBody(
+                IncomeInput(
+                    date = LocalDate(2026, 9, 10),
+                    amountMinor = 60_000_00,
+                    source = "Acme",
+                    accountId = account.id,
+                    deductions = listOf(PayslipDeduction("Tax", 12_000_00)),
+                ),
+            )
+        }.body<Income>()
+
+        val gcJson = """
+            {
+              "transactions": {
+                "booked": [
+                  {
+                    "transactionId": "t-sal",
+                    "bookingDate": "2026-09-11",
+                    "transactionAmount": { "amount": "48000.00", "currency": "CZK" },
+                    "debtorName": "Acme s.r.o.",
+                    "remittanceInformationUnstructured": "Salary"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+        client.post("$base/bank-feeds/${feed.id}/statements") { setBody(StatementUpload(gcJson, "gc.json")) }
+
+        val row = client.pending(base).single()
+        assertEquals(listOf(salary.id), row.suggestion!!.duplicates.map { it.id })
+        assertEquals(48_000_00L, row.suggestion!!.duplicates.single().amountMinor)
+    }
+
+    @Test
+    fun puttingBackAPayslipRowDeletesItsDeductions() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.account(base, "Bank")
+        val feed = client.feed(base, BankFeedInput(account.id, "Bank", BankInstitution.OTHER, currency = "CZK"))
+        val gcJson = """
+            {
+              "transactions": {
+                "booked": [
+                  {
+                    "transactionId": "t-pay",
+                    "bookingDate": "2026-09-11",
+                    "transactionAmount": { "amount": "48000.00", "currency": "CZK" },
+                    "debtorName": "Acme s.r.o."
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+        client.post("$base/bank-feeds/${feed.id}/statements") { setBody(StatementUpload(gcJson, "gc.json")) }
+        val row = client.pending(base).single()
+
+        client.post("$base/income") {
+            setBody(
+                IncomeInput(
+                    date = row.bookingDate,
+                    amountMinor = 60_000_00,
+                    source = "Acme",
+                    accountId = account.id,
+                    deductions = listOf(PayslipDeduction("Tax", 8_000_00), PayslipDeduction("Health", 4_000_00)),
+                    bankRows = listOf(row.ref()),
+                ),
+            )
+        }.body<Income>()
+        assertEquals(3, client.get("$base/income").body<List<Income>>().size)
+
+        val decided = client.get("$base/bank-rows?status=decided").body<List<BankRow>>().single()
+        client.post("$base/bank-rows/undo") { setBody(UndoBankRows(listOf(decided.ref()))) }
+        assertEquals(emptyList(), client.get("$base/income").body<List<Income>>())
     }
 }

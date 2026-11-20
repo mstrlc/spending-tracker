@@ -9,6 +9,7 @@ import dev.spendingtracker.server.db.Income
 import dev.spendingtracker.server.db.Merchants
 import dev.spendingtracker.server.expense.loadRefundedMinor
 import dev.spendingtracker.server.income.dbValue
+import dev.spendingtracker.server.income.loadDeductedMinor
 import dev.spendingtracker.shared.api.BankRowSuggestion
 import dev.spendingtracker.shared.api.DuplicateCandidate
 import dev.spendingtracker.shared.api.IncomeKind
@@ -121,6 +122,10 @@ fun suggestFor(
     val incomeLines = Income.selectAll()
         .where { (Income.householdId eq householdId) and (Income.date greaterEq first) and (Income.date lessEq last) }
         .filter { it[Income.id] !in linkedIncome }
+    val deductedByEarning = loadDeductedMinor(
+        householdId,
+        incomeLines.filter { it[Income.kind] == IncomeKind.EARNING.dbValue }.map { it[Income.id] },
+    )
 
     // Money in may refund an expense of the past REFUND_DAYS: positive expenses that aren't refunds themselves, and the
     // ones some bank row with the same descriptor was made into.
@@ -176,14 +181,20 @@ fun suggestFor(
             }
             else -> incomeLines.filter { i ->
                 val gap = date.daysUntil(i[Income.date])
-                // A deduction is money out booked as a positive line; an earning is what came in.
+                // A deduction is money out booked as a positive line; an earning is what came in (net of linked deductions).
                 val target = if (forDeduction) converted?.let { -it } else converted
+                val gross = i[Income.amountMinor]
+                val deducted = if (i[Income.kind] == IncomeKind.EARNING.dbValue) deductedByEarning[i[Income.id]] ?: 0L else 0L
                 (i[Income.kind] == IncomeKind.DEDUCTION.dbValue) == forDeduction &&
                     (i[Income.accountId] == null || i[Income.accountId] == accountId) &&
                     (abs(gap) <= INCOME_DAYS || (i[Income.date].day == 1 && gap <= 0 && -gap <= INCOME_MONTH_DAYS)) &&
-                    target != null && closeEnough(i[Income.amountMinor], target, currency != householdCurrency)
+                    target != null && (
+                        closeEnough(gross, target, currency != householdCurrency) ||
+                            (deducted != 0L && closeEnough(gross - deducted, target, currency != householdCurrency))
+                        )
             }.sortedBy { abs(date.daysUntil(it[Income.date])) }.take(3).map { i ->
-                DuplicateCandidate(SuggestedRecord.INCOME, i[Income.id].toString(), i[Income.date], i[Income.amountMinor], i[Income.sourceName])
+                val deducted = if (i[Income.kind] == IncomeKind.EARNING.dbValue) deductedByEarning[i[Income.id]] ?: 0L else 0L
+                DuplicateCandidate(SuggestedRecord.INCOME, i[Income.id].toString(), i[Income.date], i[Income.amountMinor] - deducted, i[Income.sourceName])
             }
         }
 

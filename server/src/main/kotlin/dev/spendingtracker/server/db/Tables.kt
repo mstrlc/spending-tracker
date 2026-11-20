@@ -171,6 +171,8 @@ object Income : Table("income") {
     val earnedMonth = date("earned_month")
     /** earning or deduction (V17). */
     val kind = text("kind")
+    /** Earning this deduction was taken off (V25). */
+    val deductedFrom = uuid("deducted_from").nullable()
     val amountMinor = long("amount_minor")
     // Not `source`: that name is taken by Table.source.
     val sourceName = text("source")
