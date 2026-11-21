@@ -3,6 +3,10 @@ package dev.spendingtracker.server
 import dev.spendingtracker.server.market.CzkRate
 import dev.spendingtracker.shared.api.Account
 import dev.spendingtracker.shared.api.AccountInput
+import dev.spendingtracker.shared.api.AccountKind
+import dev.spendingtracker.shared.api.Asset
+import dev.spendingtracker.shared.api.AssetInput
+import dev.spendingtracker.shared.api.AssetKind
 import dev.spendingtracker.shared.api.Balances
 import dev.spendingtracker.shared.api.BankFeed
 import dev.spendingtracker.shared.api.BankFeedInput
@@ -10,25 +14,32 @@ import dev.spendingtracker.shared.api.BankInstitution
 import dev.spendingtracker.shared.api.BankRow
 import dev.spendingtracker.shared.api.BankRowOutcome
 import dev.spendingtracker.shared.api.BankRowRef
+import dev.spendingtracker.shared.api.Contribution
+import dev.spendingtracker.shared.api.ContributionInput
 import dev.spendingtracker.shared.api.HouseholdImport
 import dev.spendingtracker.shared.api.ImportAccount
 import dev.spendingtracker.shared.api.ImportBankFeed
 import dev.spendingtracker.shared.api.ImportBankRow
+import dev.spendingtracker.shared.api.InboxRule
+import dev.spendingtracker.shared.api.InboxRuleInput
 import dev.spendingtracker.shared.api.JointContribution
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.MemberInput
+import dev.spendingtracker.shared.api.RuleOutcome
 import dev.spendingtracker.shared.api.Settlement
 import dev.spendingtracker.shared.api.SettleBankRows
 import dev.spendingtracker.shared.api.StatementUpload
 import dev.spendingtracker.shared.api.SuggestedRecord
 import dev.spendingtracker.shared.api.Transfer
 import dev.spendingtracker.shared.api.TransferBankRows
+import dev.spendingtracker.shared.api.TransferInput
 import dev.spendingtracker.shared.api.UndoBankRows
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.HttpStatusCode
 import kotlinx.datetime.LocalDate
@@ -338,5 +349,217 @@ class TransferTest {
             september2.jointContributions.toSet(),
         )
         assertEquals(emptyList(), client.get("$base/balances?from=2027-01-01").body<Balances>().jointContributions)
+    }
+
+    @Test
+    fun manualTransferCreateEditFilterDelete() = apiTest {
+        val client = newClient().also { it.signup() }
+        val home = client.createHousehold("Home")
+        val base = "/api/households/${home.id}"
+        val otherHome = client.createHousehold("Other")
+        val otherAccount = client.account("/api/households/${otherHome.id}", "Stranger")
+
+        val alice = client.get("$base/members").body<List<Member>>().single().userId
+        val personal = client.account(base, "Personal", alice)
+        val cash = client.account(base, "Cash", alice)
+        val joint = client.account(base, "Joint")
+
+        // Validation errors.
+        client.post("$base/transfers") {
+            setBody(TransferInput(LocalDate(2026, 9, 10), 0, personal.id, cash.id))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_amount")
+        client.post("$base/transfers") {
+            setBody(TransferInput(LocalDate(2026, 9, 10), 10_000, personal.id, personal.id))
+        }.assertError(HttpStatusCode.BadRequest, "same_account")
+        client.post("$base/transfers") {
+            setBody(TransferInput(LocalDate(2026, 9, 10), 10_000, personal.id, otherAccount.id))
+        }.assertError(HttpStatusCode.BadRequest, "invalid_account")
+
+        // Create two hand-entered transfers; one tops up the joint account.
+        val created = client.post("$base/transfers") {
+            setBody(TransferInput(LocalDate(2026, 9, 10), 50_000, personal.id, joint.id, "  monthly top-up "))
+        }.let {
+            assertEquals(HttpStatusCode.Created, it.status)
+            it.body<Transfer>()
+        }
+        assertEquals(1, created.version)
+        assertEquals("monthly top-up", created.notes)
+        assertEquals(emptyList(), created.rowIds)
+        assertEquals(emptyList(), created.bankAccountIds)
+
+        val second = client.post("$base/transfers") {
+            setBody(TransferInput(LocalDate(2026, 9, 12), 20_000, personal.id, cash.id, "ATM"))
+        }.body<Transfer>()
+
+        // Filter by accountId.
+        assertEquals(listOf(second.id), client.get("$base/transfers?accountId=${cash.id}").body<List<Transfer>>().map { it.id })
+        assertEquals(listOf(created.id), client.get("$base/transfers?accountId=${joint.id}").body<List<Transfer>>().map { it.id })
+
+        // Joint top-up counts in Balances.
+        val balances = client.get("$base/balances").body<Balances>()
+        assertEquals(listOf(JointContribution(alice, joint.id, 50_000)), balances.jointContributions)
+
+        // Edit requires version and rejects stale version.
+        client.put("$base/transfers/${created.id}") {
+            setBody(TransferInput(LocalDate(2026, 9, 11), 60_000, personal.id, joint.id, "updated"))
+        }.assertError(HttpStatusCode.BadRequest, "version_required")
+        client.put("$base/transfers/${created.id}") {
+            setBody(TransferInput(LocalDate(2026, 9, 11), 60_000, personal.id, joint.id, "updated", version = 99))
+        }.assertError(HttpStatusCode.Conflict, "version_conflict")
+
+        val updated = client.put("$base/transfers/${created.id}") {
+            setBody(TransferInput(LocalDate(2026, 9, 11), 60_000, personal.id, joint.id, "updated", version = 1))
+        }.body<Transfer>()
+        assertEquals(2, updated.version)
+        assertEquals(LocalDate(2026, 9, 11), updated.date)
+        assertEquals(60_000L, updated.amountMinor)
+        assertEquals("updated", updated.notes)
+
+        // Delete works for a transfer without bank rows.
+        val del = client.delete("$base/transfers/${created.id}?version=${updated.version}")
+        assertEquals(HttpStatusCode.NoContent, del.status)
+        assertEquals(listOf(second.id), client.transfers(base).map { it.id })
+    }
+
+    @Test
+    fun bankRowTransferEditingIsRestricted() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val current = client.account(base, "Current")
+        val savings = client.account(base, "Savings")
+        val cash = client.account(base, "Cash")
+        val currentFeed = client.feed(base, current.id, "Current")
+        val savingsFeed = client.feed(base, savings.id, "Savings")
+
+        client.upload(base, currentFeed.id, revolut("Transfer", 1, "To Savings", "-1000.00"), revolut("Transfer", 2, "ATM", "-500.00"))
+        client.upload(base, savingsFeed.id, revolut("Transfer", 1, "From Current", "1000.00"))
+        val rows = client.pending(base)
+        val pairOut = rows.first { it.text == "Savings" }
+        val pairIn = rows.first { it.text == "Current" }
+        val atm = rows.first { it.text == "ATM" }
+
+        client.post("$base/bank-rows/transfer") { setBody(TransferBankRows(listOf(pairOut.ref(), pairIn.ref()), notes = "pair")) }
+        client.post("$base/bank-rows/transfer") { setBody(TransferBankRows(listOf(atm.ref()), otherAccountId = cash.id, notes = "atm")) }
+
+        val transfers = client.transfers(base)
+        val paired = transfers.first { it.rowIds.size == 2 }
+        val oneRow = transfers.first { it.rowIds.size == 1 }
+        assertEquals(listOf(current.id, savings.id).toSet(), paired.bankAccountIds.toSet())
+        assertEquals(listOf(current.id), oneRow.bankAccountIds)
+
+        // Two-row transfer: only notes can change.
+        client.put("$base/transfers/${paired.id}") {
+            setBody(TransferInput(paired.date, paired.amountMinor + 1, paired.fromAccountId, paired.toAccountId, "x", paired.version))
+        }.assertError(HttpStatusCode.Conflict, "transfer_from_bank_rows")
+        client.put("$base/transfers/${paired.id}") {
+            setBody(TransferInput(paired.date, paired.amountMinor, paired.fromAccountId, cash.id, "x", paired.version))
+        }.assertError(HttpStatusCode.Conflict, "transfer_from_bank_rows")
+        val pairedEdited = client.put("$base/transfers/${paired.id}") {
+            setBody(TransferInput(paired.date, paired.amountMinor, paired.fromAccountId, paired.toAccountId, "edited", paired.version))
+        }.body<Transfer>()
+        assertEquals("edited", pairedEdited.notes)
+
+        // One-row outgoing transfer: date, amount, and fromAccountId are fixed; notes and toAccountId can change.
+        client.put("$base/transfers/${oneRow.id}") {
+            setBody(TransferInput(LocalDate(2026, 9, 3), oneRow.amountMinor, oneRow.fromAccountId, oneRow.toAccountId, "x", oneRow.version))
+        }.assertError(HttpStatusCode.Conflict, "transfer_from_bank_rows")
+        client.put("$base/transfers/${oneRow.id}") {
+            setBody(TransferInput(oneRow.date, oneRow.amountMinor, savings.id, cash.id, "x", oneRow.version))
+        }.assertError(HttpStatusCode.Conflict, "transfer_from_bank_rows")
+        val oneRowEdited = client.put("$base/transfers/${oneRow.id}") {
+            setBody(TransferInput(oneRow.date, oneRow.amountMinor, oneRow.fromAccountId, savings.id, "moved", oneRow.version))
+        }.body<Transfer>()
+        assertEquals(savings.id, oneRowEdited.toAccountId)
+        assertEquals("moved", oneRowEdited.notes)
+    }
+
+    @Test
+    fun transfersSyncLiabilityContributionsAndBlockDirectEdits() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val current = client.account(base, "Current")
+        val loanAccount = client.post("$base/accounts") {
+            setBody(AccountInput("Car loan account", kind = AccountKind.OTHER))
+        }.body<Account>()
+        val loan = client.post("$base/assets") {
+            setBody(AssetInput("Car loan", kind = AssetKind.LOAN, accountId = loanAccount.id))
+        }.body<Asset>()
+
+        // 1. Hand-entered transfer into liability account -> repayment (positive contribution, accountId = current).
+        val repay = client.post("$base/transfers") {
+            setBody(TransferInput(LocalDate(2026, 9, 10), 500_00, current.id, loanAccount.id, "Monthly payment"))
+        }.body<Transfer>()
+        val afterRepay = client.get("$base/assets/${loan.id}/contributions").body<List<Contribution>>()
+        assertEquals(1, afterRepay.size)
+        assertEquals(500_00L, afterRepay[0].amountMinor)
+        assertEquals(current.id, afterRepay[0].accountId)
+        assertEquals(repay.id, afterRepay[0].transferId)
+        assertEquals("Monthly payment", afterRepay[0].notes)
+
+        // Direct edit or delete of a transfer-backed contribution is refused.
+        client.put("$base/assets/${loan.id}/contributions/${afterRepay[0].id}") {
+            setBody(ContributionInput(LocalDate(2026, 9, 10), amountMinor = 100_00, version = afterRepay[0].version))
+        }.assertError(HttpStatusCode.Conflict, "contribution_from_transfer")
+        client.delete("$base/assets/${loan.id}/contributions/${afterRepay[0].id}?version=${afterRepay[0].version}")
+            .assertError(HttpStatusCode.Conflict, "contribution_from_transfer")
+
+        // Editing the transfer updates the contribution.
+        val editedRepay = client.put("$base/transfers/${repay.id}") {
+            setBody(TransferInput(LocalDate(2026, 9, 12), 650_00, current.id, loanAccount.id, "Extra payment", repay.version))
+        }.body<Transfer>()
+        val afterEdit = client.get("$base/assets/${loan.id}/contributions").body<List<Contribution>>()
+        assertEquals(1, afterEdit.size)
+        assertEquals(LocalDate(2026, 9, 12), afterEdit[0].date)
+        assertEquals(650_00L, afterEdit[0].amountMinor)
+        assertEquals("Extra payment", afterEdit[0].notes)
+
+        // Transfer out of liability account -> borrowing (negative contribution).
+        val borrow = client.post("$base/transfers") {
+            setBody(TransferInput(LocalDate(2026, 9, 15), 200_00, loanAccount.id, current.id, "Drawdown"))
+        }.body<Transfer>()
+        val afterBorrow = client.get("$base/assets/${loan.id}/contributions").body<List<Contribution>>()
+        assertEquals(2, afterBorrow.size)
+        val borrowEntry = afterBorrow.first { it.transferId == borrow.id }
+        assertEquals(-200_00L, borrowEntry.amountMinor)
+        assertEquals(current.id, borrowEntry.accountId)
+
+        // Deleting a transfer cascades to its contribution.
+        assertEquals(HttpStatusCode.NoContent, client.delete("$base/transfers/${editedRepay.id}?version=${editedRepay.version}").status)
+        assertEquals(HttpStatusCode.NoContent, client.delete("$base/transfers/${borrow.id}?version=${borrow.version}").status)
+        assertEquals(emptyList(), client.get("$base/assets/${loan.id}/contributions").body<List<Contribution>>())
+
+        // 2. Bank-row transfer + undo via /bank-rows/undo.
+        val feed = client.feed(base, current.id, "Current")
+        client.upload(base, feed.id, revolut("Transfer", 1, "Loan payment", "-400.00"))
+        val row = client.pending(base).single()
+        client.post("$base/bank-rows/transfer") {
+            setBody(TransferBankRows(listOf(row.ref()), otherAccountId = loanAccount.id, notes = "Bank repayment"))
+        }
+        val fromRow = client.get("$base/assets/${loan.id}/contributions").body<List<Contribution>>()
+        assertEquals(1, fromRow.size)
+        assertEquals(400_00L, fromRow[0].amountMinor)
+        assertEquals(current.id, fromRow[0].accountId)
+
+        val decidedRow = client.get("$base/bank-rows?status=decided").body<List<BankRow>>().single()
+        client.post("$base/bank-rows/undo") { setBody(UndoBankRows(listOf(decidedRow.ref()))) }
+        assertEquals(emptyList(), client.get("$base/assets/${loan.id}/contributions").body<List<Contribution>>())
+
+        // 3. Auto-filed transfer rule also creates the liability contribution.
+        client.post("$base/inbox-rules") {
+            setBody(
+                InboxRuleInput(
+                    name = "Auto loan repayment",
+                    textContains = "loan payment",
+                    outcome = RuleOutcome.TRANSFER,
+                    otherAccountId = loanAccount.id,
+                    auto = true,
+                ),
+            )
+        }.body<InboxRule>()
+        client.upload(base, feed.id, revolut("Transfer", 2, "Loan payment", "-400.00"))
+        val fromAuto = client.get("$base/assets/${loan.id}/contributions").body<List<Contribution>>()
+        assertEquals(1, fromAuto.size)
+        assertEquals(400_00L, fromAuto[0].amountMinor)
+        assertEquals(current.id, fromAuto[0].accountId)
     }
 }

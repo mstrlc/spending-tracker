@@ -2,6 +2,7 @@ package dev.spendingtracker.server.activity
 
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.parseId
+import dev.spendingtracker.server.db.Accounts
 import dev.spendingtracker.server.db.AuditLog
 import dev.spendingtracker.server.db.Assets
 import dev.spendingtracker.server.db.Expenses
@@ -43,7 +44,7 @@ private const val MAX_LIMIT = 200
 private val HIDDEN_FIELDS = setOf(
     "id", "household_id", "user_id", "version", "created_at", "updated_at", "joined_at",
     "created_by", "external_ref", "invited_by", "accepted_by", "asset_id", "rule_id", "expense_id",
-    "import_id",
+    "import_id", "transfer_id",
 )
 
 /** Must be inside a HouseholdAccess scope. */
@@ -89,10 +90,11 @@ fun Route.activityRoutes() = route("/activity") {
             val shown = rows.take(limit)
             val names = userNames(shown)
             val holdings = assetNames(shown)
+            val accounts = accountNames(shown)
             val merchants = merchantNames(householdId)
             val expenseMerchants = expenseMerchants(shown)
             ActivityPage(
-                entries = shown.map { it.toEntry(names, holdings, merchants, expenseMerchants) },
+                entries = shown.map { it.toEntry(names, holdings, accounts, merchants, expenseMerchants) },
                 nextBefore = if (rows.size > limit) shown.last()[AuditLog.id] else null,
             )
         }
@@ -144,9 +146,23 @@ private fun expenseMerchants(rows: List<ResultRow>): Map<Uuid, Uuid> {
         .toMap()
 }
 
+/** Current names of the accounts that transfer entries are between; deleted ones are missing. */
+private fun accountNames(rows: List<ResultRow>): Map<Uuid, String> {
+    val ids = rows.filter { it[AuditLog.entity] == "transfer" }
+        .flatMap { row ->
+            val record = (row[AuditLog.after] ?: row[AuditLog.before])?.let(::parseRow).orEmpty()
+            listOf("from_account_id", "to_account_id").mapNotNull { record.text(it)?.let(Uuid::parse) }
+        }
+        .distinct()
+    if (ids.isEmpty()) return emptyMap()
+    return Accounts.select(Accounts.id, Accounts.name).where { Accounts.id inList ids }
+        .associate { it[Accounts.id] to it[Accounts.name] }
+}
+
 private fun ResultRow.toEntry(
     names: Map<Uuid, String>,
     holdings: Map<String, String>,
+    accounts: Map<Uuid, String>,
     merchants: Map<Uuid, String>,
     expenseMerchants: Map<Uuid, Uuid>,
 ): ActivityEntry {
@@ -176,6 +192,10 @@ private fun ResultRow.toEntry(
         ActivityEntity.SETTLEMENT -> listOfNotNull(
             current.text("from_user_id")?.let(Uuid::parse)?.let(names::get),
             current.text("to_user_id")?.let(Uuid::parse)?.let(names::get),
+        ).joinToString(" → ")
+        ActivityEntity.TRANSFER -> listOfNotNull(
+            current.text("from_account_id")?.let(Uuid::parse)?.let(accounts::get),
+            current.text("to_account_id")?.let(Uuid::parse)?.let(accounts::get),
         ).joinToString(" → ")
         ActivityEntity.BANK_ROW -> current.text("text")?.takeIf { it.isNotBlank() }
             ?: current.text("counterparty_name")?.takeIf { it.isNotBlank() }

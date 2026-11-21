@@ -6,6 +6,7 @@ export type RuleDecision =
   | { outcome: "income"; source: string; recipientUserId: string | null }
   | { outcome: "deduction"; source: string; recipientUserId: string | null; monthOffset: number }
   | { outcome: "transfer"; otherAccountId: string | null }
+  | { outcome: "settlement"; fromUserId: string; toUserId: string }
   | { outcome: "skip"; reason: string };
 
 /** The starting point of the rule form: any input field, the rest left to the form's defaults. */
@@ -46,6 +47,8 @@ export function draftRule(row: BankRow, decision: RuleDecision | null): RuleDraf
       return { ...draft, outcome, incomeSource: decision.source, personUserId: decision.recipientUserId, monthOffset: decision.monthOffset };
     case "transfer":
       return { ...draft, outcome, otherAccountId: decision.otherAccountId };
+    case "settlement":
+      return { ...draft, outcome, settleFromUserId: decision.fromUserId, settleToUserId: decision.toUserId };
     case "skip":
       return { ...draft, outcome, skipReason: decision.reason };
   }

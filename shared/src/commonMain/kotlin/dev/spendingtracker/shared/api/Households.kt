@@ -1,5 +1,6 @@
 package dev.spendingtracker.shared.api
 
+import kotlinx.datetime.LocalDate
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -10,10 +11,23 @@ enum class HouseholdRole {
 }
 
 @Serializable
+enum class JointFunding {
+    @SerialName("pot") POT,
+    @SerialName("contributions") CONTRIBUTIONS,
+}
+
+@Serializable
 data class CreateHouseholdRequest(val name: String, val currency: String)
 
 @Serializable
-data class Household(val id: String, val name: String, val currency: String, val role: HouseholdRole)
+data class Household(
+    val id: String,
+    val name: String,
+    val currency: String,
+    val role: HouseholdRole,
+    val debtsFrom: LocalDate?,
+    val jointFunding: JointFunding,
+)
 
 /**
  * A household member. One without a login ([hasLogin] false) can't sign in: things can belong to them, and an invite

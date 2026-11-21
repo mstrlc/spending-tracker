@@ -183,8 +183,17 @@ const people = all("SELECT * FROM people WHERE kind = 'person' ORDER BY sort_ord
   email: p.email,
 }));
 
+function nextDay(iso) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+const newestExpense = expenses.reduce((max, e) => (e.date > max ? e.date : max), "");
+const debtsFrom = newestExpense ? nextDay(newestExpense) : null;
+
 const file = {
   currency: "CZK",
+  ...(debtsFrom ? { debtsFrom } : {}),
   people,
   accounts,
   categories,

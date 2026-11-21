@@ -180,6 +180,8 @@ private data class ValidRule(
     val personUserId: Uuid?,
     val incomeSource: String,
     val otherAccountId: Uuid?,
+    val settleFromUserId: Uuid?,
+    val settleToUserId: Uuid?,
     val skipReason: String,
     val monthOffset: Int,
     val auto: Boolean,
@@ -206,6 +208,19 @@ private fun InboxRuleInput.validated(): ValidRule {
         throw badRequest("invalid_month_offset", "The month offset must be between -$MAX_MONTH_OFFSET and $MAX_MONTH_OFFSET", "monthOffset")
     }
     val person = parseId(personUserId, "personUserId")
+    val settleFrom = if (outcome == RuleOutcome.SETTLEMENT) {
+        parseId(settleFromUserId, "settleFromUserId") ?: throw badRequest("required", "Say who paid", "settleFromUserId")
+    } else {
+        null
+    }
+    val settleTo = if (outcome == RuleOutcome.SETTLEMENT) {
+        parseId(settleToUserId, "settleToUserId") ?: throw badRequest("required", "Say who was paid", "settleToUserId")
+    } else {
+        null
+    }
+    if (settleFrom != null && settleFrom == settleTo) {
+        throw badRequest("same_member", "Someone can't pay themselves back", "settleToUserId")
+    }
     return ValidRule(
         name = requiredText(name, "name", max = 100),
         counterpartyIban = iban,
@@ -225,6 +240,8 @@ private fun InboxRuleInput.validated(): ValidRule {
         } else {
             null
         },
+        settleFromUserId = settleFrom,
+        settleToUserId = settleTo,
         skipReason = if (outcome == RuleOutcome.SKIP) requiredText(skipReason, "skipReason", max = 200) else "",
         monthOffset = if (outcome == RuleOutcome.DEDUCTION) monthOffset else DEFAULT_MONTH_OFFSET,
         auto = auto,
@@ -245,8 +262,10 @@ private fun ValidRule.checkReferences(householdId: Uuid) {
     if (categoryId != null && Categories.selectAll().where { (Categories.id eq categoryId) and (Categories.householdId eq householdId) }.empty()) {
         throw badRequest("invalid_category", "Unknown category", "categoryId")
     }
-    if (personUserId != null && !isMember(householdId, personUserId)) {
-        throw badRequest("invalid_member", "Must be a member of the household", "personUserId")
+    for ((id, field) in listOf(personUserId to "personUserId", settleFromUserId to "settleFromUserId", settleToUserId to "settleToUserId")) {
+        if (id != null && !isMember(householdId, id)) {
+            throw badRequest("invalid_member", "Must be a member of the household", field)
+        }
     }
 }
 
@@ -264,6 +283,8 @@ private fun org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>.write(inpu
     this[InboxRules.personUserId] = input.personUserId
     this[InboxRules.incomeSource] = input.incomeSource
     this[InboxRules.otherAccountId] = input.otherAccountId
+    this[InboxRules.settleFromUserId] = input.settleFromUserId
+    this[InboxRules.settleToUserId] = input.settleToUserId
     this[InboxRules.skipReason] = input.skipReason
     this[InboxRules.monthOffset] = input.monthOffset
     this[InboxRules.auto] = input.auto
@@ -297,6 +318,8 @@ private fun loadInboxRules(householdId: Uuid, id: Uuid? = null): List<InboxRule>
             personUserId = rule.personUserId?.toString(),
             incomeSource = rule.incomeSource,
             otherAccountId = rule.otherAccountId?.toString(),
+            settleFromUserId = rule.settleFromUserId?.toString(),
+            settleToUserId = rule.settleToUserId?.toString(),
             skipReason = rule.skipReason,
             monthOffset = rule.monthOffset,
             auto = rule.auto,

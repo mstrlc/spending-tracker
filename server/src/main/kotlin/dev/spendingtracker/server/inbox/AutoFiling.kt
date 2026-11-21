@@ -105,6 +105,7 @@ private class Engine(
                 RuleOutcome.INCOME -> income(row, rule, suggestion)
                 RuleOutcome.DEDUCTION -> income(row, rule, suggestion)
                 RuleOutcome.TRANSFER -> transfer(row, rule, suggestion)
+                RuleOutcome.SETTLEMENT -> settlement(row, rule, suggestion)
             }
         } catch (e: ApiException) {
             // Something about this row or rule doesn't fit (no rate, an unknown reference): it stays in the inbox for a person.
@@ -184,6 +185,19 @@ private class Engine(
         val rows = listOfNotNull(row, partner)
         val id = createTransfer(householdId, userId, currency, rows, rule.otherAccountId.takeIf { partner == null }, "")
         fileBankRows(householdId, rows.map { it.ref() }, userId, transferId = id, created = true, auto = true, ruleId = rule.id)
+        done(*rows.toTypedArray())
+    }
+
+    /** With exactly one pending row that is the other side, both become the settlement; otherwise this row alone. */
+    private fun settlement(row: ResultRow, rule: RuleDef, s: BankRowSuggestion) {
+        val from = rule.settleFromUserId ?: return
+        val to = rule.settleToUserId ?: return
+        val partner = s.transferCandidates.singleOrNull()
+            ?.let { pending[Uuid.parse(it.rowId)] }
+            ?.takeIf { it[BankRows.id] !in filed && ruleOf[it[BankRows.id]].let { r -> r == null || r.outcome == RuleOutcome.SETTLEMENT } }
+        val rows = listOfNotNull(row, partner)
+        val id = createSettlement(householdId, userId, currency, rows, from, to, "")
+        fileBankRows(householdId, rows.map { it.ref() }, userId, settlementId = id, created = true, auto = true, ruleId = rule.id)
         done(*rows.toTypedArray())
     }
 

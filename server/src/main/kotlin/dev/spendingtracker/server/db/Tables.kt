@@ -31,6 +31,10 @@ object Households : Table("households") {
     val currency = text("currency")
     /** V21: whether the inbox matcher files transfer pairs and duplicates without asking. */
     val autoMatch = bool("auto_match").default(false)
+    /** V30: expenses and settlements before this date don't count toward balances. */
+    val debtsFrom = date("debts_from").nullable()
+    /** V31: whether joint accounts act as a pot or count top-ups toward debts. */
+    val jointFunding = text("joint_funding").default("pot")
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(id)
 }
@@ -219,6 +223,7 @@ object AssetContributions : Table("asset_contributions") {
     val originalCurrency = text("original_currency").nullable()
     val quantity = decimal("quantity", 30, 10).nullable()
     val accountId = uuid("account_id").nullable()
+    val transferId = uuid("transfer_id").nullable()
     val notes = text("notes")
     val importId = uuid("import_id").nullable()
     val version = integer("version")
@@ -446,6 +451,8 @@ object InboxRules : Table("inbox_rules") {
     val personUserId = uuid("person_user_id").nullable()
     val incomeSource = text("income_source")
     val otherAccountId = uuid("other_account_id").nullable()
+    val settleFromUserId = uuid("settle_from_user_id").nullable()
+    val settleToUserId = uuid("settle_to_user_id").nullable()
     val skipReason = text("skip_reason")
     val monthOffset = integer("month_offset").default(-1)
     val auto = bool("auto").default(false)

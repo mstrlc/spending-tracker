@@ -937,10 +937,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Transfers newest first, filtered by inclusive date range, with the bank rows they were made from. */
+        /** @description Transfers newest first, filtered by inclusive date range and optional account, with the bank rows they were made from. */
         get: operations["listTransfers"];
         put?: never;
-        post?: never;
+        /** @description Records a transfer between two distinct accounts of the household by hand. */
+        post: operations["createTransfer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -955,7 +956,8 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /** @description Updates a transfer. On a transfer made from bank rows, only notes (and, for a one-row transfer, the unread side's account) can change; anything else returns 409 transfer_from_bank_rows. */
+        put: operations["updateTransfer"];
         post?: never;
         /** @description Deletes a transfer. The bank rows it was made from go back to the inbox. */
         delete: operations["deleteTransfer"];
@@ -1235,6 +1237,8 @@ export interface components {
             /** String */
             claimName?: null | string;
         };
+        /** JointFunding */
+        JointFunding: "pot" | "contributions";
         /** Household */
         Household: {
             /** String */
@@ -1244,6 +1248,9 @@ export interface components {
             /** String */
             currency: string;
             role: components["schemas"]["HouseholdRole"];
+            /** LocalDate */
+            debtsFrom: null | string;
+            jointFunding: components["schemas"]["JointFunding"];
         };
         /** CreateHouseholdRequest */
         CreateHouseholdRequest: {
@@ -1275,6 +1282,9 @@ export interface components {
         HouseholdSettings: {
             /** Boolean */
             autoMatch: boolean;
+            /** LocalDate */
+            debtsFrom: null | string;
+            jointFunding: components["schemas"]["JointFunding"];
         };
         /** Invite */
         Invite: {
@@ -1834,6 +1844,8 @@ export interface components {
             /** String */
             accountId: null | string;
             /** String */
+            transferId: null | string;
+            /** String */
             notes: string;
             /**
              * Int
@@ -2087,7 +2099,7 @@ export interface components {
          * BalanceEntryKind
          * @enum {string}
          */
-        BalanceEntryKind: "expense" | "settlement";
+        BalanceEntryKind: "expense" | "settlement" | "top_up";
         /** JointContribution */
         JointContribution: {
             /** String */
@@ -2108,6 +2120,8 @@ export interface components {
             entries: components["schemas"]["BalanceEntry"][];
             /** ArrayList<JointContribution> */
             jointContributions: components["schemas"]["JointContribution"][];
+            /** ArrayList<JointContribution> */
+            jointLeftover: components["schemas"]["JointContribution"][];
         };
         /** Merchant */
         Merchant: {
@@ -2338,6 +2352,8 @@ export interface components {
             bankFeeds?: components["schemas"]["ImportBankFeed"][];
             /** ArrayList<ImportBankRow> */
             bankRows?: components["schemas"]["ImportBankRow"][];
+            /** LocalDate */
+            debtsFrom?: null | string;
         };
         /** ImportCounts */
         ImportCounts: {
@@ -2403,6 +2419,8 @@ export interface components {
             dryRun: boolean;
             created: components["schemas"]["ImportCounts"];
             existing: components["schemas"]["ImportCounts"];
+            /** LocalDate */
+            debtsFrom: null | string;
         };
         /** ImportSummary */
         ImportSummary: {
@@ -2688,6 +2706,10 @@ export interface components {
             /** String */
             transferAccountId: null | string;
             /** String */
+            settleFromUserId: null | string;
+            /** String */
+            settleToUserId: null | string;
+            /** String */
             ruleId: null | string;
             /** String */
             ruleName: null | string;
@@ -2703,7 +2725,7 @@ export interface components {
          * SuggestedRecord
          * @enum {string}
          */
-        SuggestedRecord: "expense" | "income" | "transfer";
+        SuggestedRecord: "expense" | "income" | "transfer" | "settlement";
         /** DuplicateCandidate */
         DuplicateCandidate: {
             record: components["schemas"]["SuggestedRecord"];
@@ -2854,6 +2876,29 @@ export interface components {
             version: number;
             /** ArrayList<String> */
             rowIds: string[];
+            /** ArrayList<String> */
+            bankAccountIds: string[];
+        };
+        /** TransferInput */
+        TransferInput: {
+            /** LocalDate */
+            date: string;
+            /**
+             * Long
+             * Format: int64
+             */
+            amountMinor: number;
+            /** String */
+            fromAccountId: string;
+            /** String */
+            toAccountId: string;
+            /** String */
+            notes?: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            version?: null | number;
         };
         /** InboxRule */
         InboxRule: {
@@ -2883,6 +2928,10 @@ export interface components {
             incomeSource: string;
             /** String */
             otherAccountId: null | string;
+            /** String */
+            settleFromUserId: null | string;
+            /** String */
+            settleToUserId: null | string;
             /** String */
             skipReason: string;
             /**
@@ -2917,7 +2966,7 @@ export interface components {
          * RuleOutcome
          * @enum {string}
          */
-        RuleOutcome: "expense" | "income" | "deduction" | "transfer" | "skip";
+        RuleOutcome: "expense" | "income" | "deduction" | "transfer" | "settlement" | "skip";
         /** InboxRuleInput */
         InboxRuleInput: {
             /** String */
@@ -2944,6 +2993,10 @@ export interface components {
             incomeSource?: string;
             /** String */
             otherAccountId?: null | string;
+            /** String */
+            settleFromUserId?: null | string;
+            /** String */
+            settleToUserId?: null | string;
             /** String */
             skipReason?: string;
             /**
@@ -3069,7 +3122,7 @@ export interface components {
          * ActivityEntity
          * @enum {string}
          */
-        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement" | "bank_row" | "import";
+        ActivityEntity: "household" | "member" | "invite" | "account" | "category" | "expense" | "expense_line" | "income" | "asset" | "asset_contribution" | "asset_valuation" | "asset_fee" | "trip" | "merchant" | "split_rule" | "split_share" | "settlement" | "transfer" | "bank_row" | "import";
         /** ActivityEntry */
         ActivityEntry: {
             /**
@@ -6781,6 +6834,8 @@ export interface operations {
                 from?: string;
                 /** @description Inclusive end date, YYYY-MM-DD */
                 to?: string;
+                /** @description Matches transfers from or to this account */
+                accountId?: string;
             };
             header?: never;
             path: {
@@ -6812,6 +6867,96 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    createTransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TransferInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transfer"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateTransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                transferId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TransferInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transfer"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
             };
         };
     };

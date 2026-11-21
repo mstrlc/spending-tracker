@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useAccounts, useBankConnections, useBankFeeds, useBankRows, useCategories, useDecideBankRows, useInboxRules, useMembers } from "../api/hooks";
+import { useAccounts, useAssets, useBankConnections, useBankFeeds, useBankRows, useCategories, useDecideBankRows, useInboxRules, useMembers } from "../api/hooks";
+import { transferLiabilityLabel } from "../assets/holdings";
 import type { BankRow, BankRowRef, DuplicateCandidate, TransferCandidate } from "../api/types";
 import { formatDay, formatMonth } from "../lib/dates";
 import { formatMoney } from "../lib/money";
@@ -48,6 +49,7 @@ export function InboxPage() {
   const connections = useBankConnections(household.id);
   const rows = useBankRows(household.id, tab);
   const accounts = useAccounts(household.id).data ?? [];
+  const assets = useAssets(household.id).data ?? [];
   const members = useMembers(household.id).data ?? [];
   const categories = useCategories(household.id).data ?? [];
   const rules = useInboxRules(household.id).data ?? [];
@@ -85,6 +87,37 @@ export function InboxPage() {
   const openTransfer = (row: BankRow) =>
     setEditor({ mode: "transfer", row, otherAccountId: row.suggestion?.transferAccountId ?? null });
   const openSettle = (picks: BankRow[]) => setEditor({ mode: "settle", rows: picks });
+  const candidateRow = (c: TransferCandidate): BankRow =>
+    (rows.data ?? []).find((r) => r.id === c.rowId) ?? {
+      id: c.rowId,
+      feedId: "",
+      accountId: c.accountId,
+      date: c.date,
+      bookingDate: c.date,
+      amountMinor: c.amountMinor,
+      currency: c.currency,
+      counterpartyName: "",
+      counterpartyIban: null,
+      counterpartyAccount: "",
+      text: c.text,
+      message: "",
+      code: "",
+      hint: "",
+      merchantKey: "",
+      outcome: "pending",
+      expenseId: null,
+      incomeId: null,
+      transferId: null,
+      settlementId: null,
+      skipReason: null,
+      decidedByUserId: null,
+      decidedAuto: false,
+      ruleId: null,
+      decidedAt: null,
+      version: c.version,
+      suggestion: null,
+      outcomeLabel: null,
+    };
 
   /** Files [row] and [other] as the two sides of one transfer. */
   const pair = (row: BankRow, other: TransferCandidate) =>
@@ -297,28 +330,38 @@ export function InboxPage() {
               {list.map((row) => {
                 const s = row.suggestion;
                 const isSkip = s?.skipReason != null;
+                const isSettlement = s?.record === "settlement" && !isSkip;
                 const isTransfer = s?.record === "transfer" && !isSkip;
                 const isExpense = s?.record !== "income";
                 const best = s?.transferCandidates[0];
                 const suggestedKind: RecordKind = isSkip
                   ? "skip"
-                  : isTransfer
-                    ? "transfer"
-                    : isExpense
-                      ? row.amountMinor > 0
-                        ? "refund"
-                        : "expense"
-                      : s?.incomeKind === "deduction"
-                        ? "deduction"
-                        : "income";
+                  : isSettlement
+                    ? "settlement"
+                    : isTransfer
+                      ? "transfer"
+                      : isExpense
+                        ? row.amountMinor > 0
+                          ? "refund"
+                          : "expense"
+                        : s?.incomeKind === "deduction"
+                          ? "deduction"
+                          : "income";
                 const decidedKind: RecordKind =
                   row.outcome === "skipped" || row.outcome === "pending"
                     ? "skip"
                     : row.outcome === "expense" && row.amountMinor > 0
                       ? "refund"
                       : row.outcome;
-                const otherAccount =
-                  accountName(best?.accountId ?? s?.transferAccountId ?? "") || "another account";
+                const otherAccountId = best?.accountId ?? s?.transferAccountId ?? null;
+                const otherAccount = accountName(otherAccountId ?? "") || "another account";
+                const liabilityLabel = isTransfer
+                  ? transferLiabilityLabel(
+                      assets,
+                      row.amountMinor < 0 ? row.accountId : otherAccountId,
+                      row.amountMinor < 0 ? otherAccountId : row.accountId,
+                    )
+                  : null;
                 // What the row probably is (or became), in its own column on a wide table, under the row on a narrow one.
                 const became = (
                   <>
@@ -329,16 +372,18 @@ export function InboxPage() {
                           <span>
                             {s.skipReason != null
                               ? s.skipReason
-                              : isTransfer
-                                ? `${row.amountMinor < 0 ? "To" : "From"} ${otherAccount}`
-                                : isExpense
-                                  ? s.merchant || ""
-                                  : s.incomeSource || ""}
+                              : isSettlement
+                                ? `${memberName(s.settleFromUserId)} → ${memberName(s.settleToUserId)}`
+                                : isTransfer
+                                  ? `${row.amountMinor < 0 ? "To" : "From"} ${otherAccount}`
+                                  : isExpense
+                                    ? s.merchant || ""
+                                    : s.incomeSource || ""}
                           </span>
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          {s.skipReason != null || isTransfer ? (
-                            "Not spending or income"
+                          {s.skipReason != null || isTransfer || isSettlement ? (
+                            liabilityLabel ?? "Not spending or income"
                           ) : isExpense ? (
                             <>
                               <CategoryLabel categories={categories} id={s.categoryId} short />
@@ -419,7 +464,7 @@ export function InboxPage() {
                           </Button>
                         </div>
                       ))}
-                      {tab === "pending" && isExpense && !isTransfer && s?.refundCandidates[0] && (
+                      {tab === "pending" && isExpense && !isTransfer && !isSettlement && s?.refundCandidates[0] && (
                         <div className="mt-1.5 text-xs text-muted-foreground">
                           May refund {s.refundCandidates[0].label || "an expense"} · {formatDay(s.refundCandidates[0].date)} ·{" "}
                           <span className="amount">{formatMoney(s.refundCandidates[0].amountMinor, household.currency)}</span>
@@ -452,27 +497,31 @@ export function InboxPage() {
                             onClick={() =>
                               isSkip
                                 ? skip([row])
-                                : isTransfer
-                                  ? best
-                                    ? pair(row, best)
-                                    : openTransfer(row)
-                                  : isExpense
-                                    ? openExpense([row])
-                                    : openIncome([row])
+                                : isSettlement
+                                  ? openSettle(best ? [row, candidateRow(best)] : [row])
+                                  : isTransfer
+                                    ? best
+                                      ? pair(row, best)
+                                      : openTransfer(row)
+                                    : isExpense
+                                      ? openExpense([row])
+                                      : openIncome([row])
                             }
                             disabled={isTransfer && decide.isPending}
                           >
                             {isSkip
                               ? "Skip"
-                              : isTransfer
-                                ? "Transfer"
-                                : isExpense
-                                  ? s?.refundCandidates[0] && row.amountMinor > 0
-                                    ? "Add refund"
-                                    : "Add expense"
-                                  : s?.incomeKind === "deduction"
-                                    ? "Add deduction"
-                                    : "Add income"}
+                              : isSettlement
+                                ? "Settle"
+                                : isTransfer
+                                  ? "Transfer"
+                                  : isExpense
+                                    ? s?.refundCandidates[0] && row.amountMinor > 0
+                                      ? "Add refund"
+                                      : "Add expense"
+                                    : s?.incomeKind === "deduction"
+                                      ? "Add deduction"
+                                      : "Add income"}
                           </Button>
                         )}
                         <RowMenu
@@ -484,12 +533,12 @@ export function InboxPage() {
                                   { label: "Add as income", onSelect: () => openIncome([row]) },
                                   ...(best ? [{ label: "Pair with the other side", onSelect: () => pair(row, best) }] : []),
                                   { label: "Transfer…", onSelect: () => openTransfer(row) },
-                                  { label: "Settle between members…", onSelect: () => openSettle([row]) },
+                                  { label: "Settle between members…", onSelect: () => openSettle(isSettlement && best ? [row, candidateRow(best)] : [row]) },
                                   { label: "Skip…", onSelect: () => skip([row]) },
                                 ]
                               : [
                                   { label: "Put back in the inbox", onSelect: () => undo(row) },
-                                  ...(row.outcome !== "settlement" ? [{ label: "Make a rule…", onSelect: () => makeRule(row) }] : []),
+                                  { label: "Make a rule…", onSelect: () => makeRule(row) },
                                 ]
                           }
                         />

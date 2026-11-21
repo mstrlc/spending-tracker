@@ -1,5 +1,6 @@
 package dev.spendingtracker.shared.api
 
+import kotlinx.datetime.LocalDate
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -10,6 +11,7 @@ enum class RuleOutcome {
     @SerialName("income") INCOME,
     @SerialName("deduction") DEDUCTION,
     @SerialName("transfer") TRANSFER,
+    @SerialName("settlement") SETTLEMENT,
     @SerialName("skip") SKIP,
 }
 
@@ -50,6 +52,8 @@ data class InboxRule(
     val personUserId: String?,
     val incomeSource: String,
     val otherAccountId: String?,
+    val settleFromUserId: String?,
+    val settleToUserId: String?,
     val skipReason: String,
     val monthOffset: Int,
     val auto: Boolean,
@@ -74,6 +78,8 @@ data class InboxRuleInput(
     val personUserId: String? = null,
     val incomeSource: String = "",
     val otherAccountId: String? = null,
+    val settleFromUserId: String? = null,
+    val settleToUserId: String? = null,
     val skipReason: String = "",
     val monthOffset: Int = -1,
     val auto: Boolean = false,
@@ -96,6 +102,6 @@ data class ApplyRulesResult(
     val duplicatesByMatcher: Int,
 )
 
-/** Household settings owners can change. [autoMatch]: the inbox matcher files transfer pairs and duplicates without asking. */
+/** Household settings owners can change. [autoMatch]: the inbox matcher files transfer pairs and duplicates without asking. [debtsFrom]: expenses and settlements before this date don't count toward balances. [jointFunding]: whether joint accounts act as a pot or count top-ups toward debts. */
 @Serializable
-data class HouseholdSettings(val autoMatch: Boolean)
+data class HouseholdSettings(val autoMatch: Boolean, val debtsFrom: LocalDate?, val jointFunding: JointFunding)

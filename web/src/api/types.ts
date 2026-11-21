@@ -77,6 +77,7 @@ export type BankRowRef = Schemas["BankRowRef"];
 export type BankRowSuggestion = Schemas["BankRowSuggestion"];
 export type TransferCandidate = Schemas["TransferCandidate"];
 export type Transfer = Schemas["Transfer"];
+export type TransferInput = Schemas["TransferInput"];
 export type JointContribution = Schemas["JointContribution"];
 export type DuplicateCandidate = Schemas["DuplicateCandidate"];
 export type RefundCandidate = Schemas["RefundCandidate"];

@@ -14,6 +14,7 @@ const FILTERS: { value: ActivityEntity | ""; label: string }[] = [
   { value: "expense", label: "Expenses" },
   { value: "expense_line", label: "Expense lines" },
   { value: "income", label: "Income" },
+  { value: "transfer", label: "Transfers" },
   { value: "asset", label: "Assets" },
   { value: "asset_contribution", label: "Contributions" },
   { value: "asset_valuation", label: "Asset values" },

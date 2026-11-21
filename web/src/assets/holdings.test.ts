@@ -49,7 +49,7 @@ describe("portfolioTotals", () => {
 describe("historyEntries", () => {
   it("is newest first, with a day's valuation above that day's contribution", () => {
     const contribution = (id: string, date: string): Contribution =>
-      ({ id, assetId: "f", date, amountMinor: 100, originalAmountMinor: null, originalCurrency: null, quantity: null, accountId: null, notes: "", version: 1 });
+      ({ id, assetId: "f", date, amountMinor: 100, originalAmountMinor: null, originalCurrency: null, quantity: null, accountId: null, transferId: null, notes: "", version: 1 });
     const valuation = (id: string, date: string): Valuation => ({ id, assetId: "f", date, valueMinor: 100, notes: "", version: 1 });
 
     const order = historyEntries(

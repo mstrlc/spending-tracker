@@ -77,6 +77,8 @@ export function RulesPage() {
         return [rule.incomeSource, memberName(rule.personUserId), monthLabel(rule.monthOffset)].filter(Boolean).join(" · ");
       case "transfer":
         return `With ${accountName(rule.otherAccountId) || "another account"}`;
+      case "settlement":
+        return [memberName(rule.settleFromUserId), memberName(rule.settleToUserId)].filter(Boolean).join(" → ");
       case "skip":
         return rule.skipReason;
     }
@@ -121,7 +123,13 @@ export function RulesPage() {
             className="mt-0.5"
             checked={settings.data?.autoMatch ?? false}
             disabled={!isOwner || !settings.data || saveSettings.isPending}
-            onCheckedChange={(c) => saveSettings.mutate({ autoMatch: c === true })}
+            onCheckedChange={(c) =>
+              saveSettings.mutate({
+                autoMatch: c === true,
+                debtsFrom: settings.data?.debtsFrom ?? null,
+                jointFunding: settings.data?.jointFunding ?? household.jointFunding ?? "pot",
+              })
+            }
           />
           <Label htmlFor="auto-match" className="flex-col items-start gap-0.5 font-normal">
             File transfers and duplicates automatically

@@ -231,7 +231,14 @@ fun Route.inviteLinkRoutes() = route("/invites/{token}", {
                 val role = HouseholdMembers.selectAll()
                     .where { (HouseholdMembers.householdId eq householdId) and (HouseholdMembers.userId eq userId) }
                     .single()[HouseholdMembers.role]
-                Household(householdId.toString(), row[Households.name], row[Households.currency], roleFrom(role))
+                Household(
+                    householdId.toString(),
+                    row[Households.name],
+                    row[Households.currency],
+                    roleFrom(role),
+                    row[Households.debtsFrom],
+                    jointFundingFrom(row[Households.jointFunding]),
+                )
             }
             call.respond(household)
         }

@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
+import { Link } from "react-router";
 import {
   useAccounts,
   useDeleteContribution,
@@ -103,6 +104,7 @@ export function EntryForm({
   const foreignCurrency =
     isContribution && security?.currency && security.currency !== household.currency ? security.currency : null;
   const existingContribution = target.type === "contribution" ? target.contribution : undefined;
+  const fromTransfer = isContribution && existingContribution?.transferId != null;
   const initialCurrency = existingContribution
     ? (existingContribution.originalCurrency ?? household.currency)
     : (foreignCurrency ?? household.currency);
@@ -216,17 +218,27 @@ export function EntryForm({
     onDone();
   }
 
-  const title = existing ? `Edit ${kind.noun}` : kind.add;
+  const title = fromTransfer ? `View ${kind.noun}` : existing ? `Edit ${kind.noun}` : kind.add;
   return (
     <form onSubmit={submit} className="flex flex-col gap-4 rounded-lg border p-4" aria-label={title}>
       <h3 className="font-medium">{title}</h3>
+      {fromTransfer && (
+        <p className="text-xs text-muted-foreground">
+          This entry came from a transfer and is read-only.{" "}
+          <Link to={`/households/${household.id}/transfers`} className="font-medium text-foreground underline">
+            Edit or delete the transfer
+          </Link>{" "}
+          instead.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label={`${kind.amountLabel} (${entryCurrency})`} name={kind.amountField} error={save.error} hint={amountError}>
           <Input
             ref={amountRef}
-            autoFocus
+            autoFocus={!fromTransfer}
             inputMode="decimal"
             required
+            disabled={fromTransfer}
             placeholder="0.00"
             className="amount h-11 text-lg md:text-lg"
             value={amount}
@@ -235,7 +247,7 @@ export function EntryForm({
           />
         </Field>
         <Field label={target.type === "valuation" ? "On" : "Date"} name="date" error={save.error}>
-          <Input type="date" required className="h-11" value={date} onChange={(e) => setDate(e.target.value)} />
+          <Input type="date" required disabled={fromTransfer} className="h-11" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
       </div>
       {foreignCurrency && (
@@ -272,7 +284,7 @@ export function EntryForm({
       )}
       {isContribution && (
         <Field label="From account" name="accountId" error={save.error}>
-          <NativeSelect className="w-full" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <NativeSelect className="w-full" disabled={fromTransfer} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <NativeSelectOption value="">None</NativeSelectOption>
             {accountOptions.map((a) => (
               <NativeSelectOption key={a.id} value={a.id}>
@@ -283,23 +295,25 @@ export function EntryForm({
         </Field>
       )}
       <Field label="Notes" name="notes" error={save.error}>
-        <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <Input disabled={fromTransfer} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
       <FormError error={save.error} fields={[kind.amountField, "date", "quantity", "accountId", "notes"]} />
       <ErrorText error={remove.error} />
       <div className="flex items-center gap-2">
-        {existing && (
+        {existing && !fromTransfer && (
           <Button type="button" variant="ghost" className="text-destructive" onClick={handleDelete} disabled={remove.isPending}>
             Delete
           </Button>
         )}
         <span className="flex-1" />
         <Button type="button" variant="outline" onClick={onDone}>
-          Cancel
+          {fromTransfer ? "Close" : "Cancel"}
         </Button>
-        <Button type="submit" disabled={save.isPending}>
-          {existing ? "Save" : target.type === "valuation" ? `Save ${kind.noun}` : kind.add}
-        </Button>
+        {!fromTransfer && (
+          <Button type="submit" disabled={save.isPending}>
+            {existing ? "Save" : target.type === "valuation" ? `Save ${kind.noun}` : kind.add}
+          </Button>
+        )}
       </div>
     </form>
   );

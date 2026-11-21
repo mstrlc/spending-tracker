@@ -1,5 +1,7 @@
 package dev.spendingtracker.server
 
+import dev.spendingtracker.shared.api.Account
+import dev.spendingtracker.shared.api.AccountInput
 import dev.spendingtracker.shared.api.ActivityAction
 import dev.spendingtracker.shared.api.ActivityEntity
 import dev.spendingtracker.shared.api.ActivityPage
@@ -8,6 +10,8 @@ import dev.spendingtracker.shared.api.Expense
 import dev.spendingtracker.shared.api.ExpenseInput
 import dev.spendingtracker.shared.api.FieldChange
 import dev.spendingtracker.shared.api.Invite
+import dev.spendingtracker.shared.api.Transfer
+import dev.spendingtracker.shared.api.TransferInput
 import io.ktor.client.call.body
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -80,5 +84,27 @@ class ActivityTest {
         mallory.get("/api/households/${home.id}/activity").assertError(HttpStatusCode.NotFound, "not_found")
         alice.get("/api/households/${home.id}/activity?entity=nope").assertError(HttpStatusCode.BadRequest, "invalid_entity")
         alice.get("/api/households/${home.id}/activity?limit=0").assertError(HttpStatusCode.BadRequest, "invalid_limit")
+    }
+
+    @Test
+    fun logsTransferChanges() = apiTest {
+        val alice = newClient().also { it.signup() }
+        val home = alice.createHousehold()
+        val base = "/api/households/${home.id}"
+        val current = alice.post("$base/accounts") { setBody(AccountInput("Current")) }.body<Account>()
+        val savings = alice.post("$base/accounts") { setBody(AccountInput("Savings")) }.body<Account>()
+
+        val created = alice.post("$base/transfers") {
+            setBody(TransferInput(LocalDate(2026, 9, 10), 100_000, current.id, savings.id, "save"))
+        }.body<Transfer>()
+        val updated = alice.put("$base/transfers/${created.id}") {
+            setBody(TransferInput(LocalDate(2026, 9, 10), 120_000, current.id, savings.id, "more", created.version))
+        }.body<Transfer>()
+        alice.delete("$base/transfers/${created.id}?version=${updated.version}")
+
+        val history = alice.get("$base/activity?entity=transfer").body<ActivityPage>()
+        assertEquals(3, history.entries.size)
+        assertEquals(listOf(ActivityAction.DELETE, ActivityAction.UPDATE, ActivityAction.CREATE), history.entries.map { it.action })
+        assertTrue(history.entries.all { it.entity == ActivityEntity.TRANSFER && it.label == "Current → Savings" })
     }
 }
