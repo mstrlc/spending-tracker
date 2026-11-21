@@ -78,6 +78,10 @@ data class Asset(
     val accountId: String?,
     val valueSource: ValueSource,
     val contributedMinor: Long,
+    /** Principal repaid so far; null for non-liabilities. */
+    val repaidMinor: Long?,
+    /** Total borrowed so far (positive); null for non-liabilities. */
+    val borrowedMinor: Long?,
     val valueMinor: Long,
     val valuedOn: LocalDate?,
     val gainMinor: Long,

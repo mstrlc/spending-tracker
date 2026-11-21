@@ -247,7 +247,7 @@ export function AssetsPage() {
                         <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
                       </TableCell>
                     )}
-                    <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>
+                    <TableCell className="amount text-right max-md:hidden">{formatAsset(i.repaidMinor ?? 0, currency)}</TableCell>
                     <TableCell className="amount text-right">{formatAsset(-i.valueMinor, currency)}</TableCell>
                   </TableRow>
                 ))}
@@ -319,8 +319,14 @@ function HoldingDetail({ asset, onEdit }: { asset: Asset; onEdit: () => void }) 
           </div>
           <div className="flex flex-col gap-1">
             <dt className="text-sm text-muted-foreground">{isLiability ? "Repaid" : "Put in"}</dt>
-            <dd className="amount">{formatAsset(asset.contributedMinor, currency)}</dd>
+            <dd className="amount">{formatAsset(isLiability ? (asset.repaidMinor ?? 0) : asset.contributedMinor, currency)}</dd>
           </div>
+          {isLiability && (
+            <div className="flex flex-col gap-1">
+              <dt className="text-sm text-muted-foreground">Borrowed</dt>
+              <dd className="amount">{formatAsset(asset.borrowedMinor ?? 0, currency)}</dd>
+            </div>
+          )}
           {!isLiability && (
             <div className="flex flex-col gap-1">
               <dt className="text-sm text-muted-foreground">Gain{ratio !== null && ` · ${formatPercent(ratio)}`}</dt>

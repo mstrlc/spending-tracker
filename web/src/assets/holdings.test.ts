@@ -15,6 +15,8 @@ const holding = (contributedMinor: number, valueMinor: number): Asset => ({
   accountId: null,
   valueSource: "cost",
   contributedMinor,
+  repaidMinor: null,
+  borrowedMinor: null,
   valueMinor,
   valuedOn: null,
   gainMinor: valueMinor - contributedMinor,

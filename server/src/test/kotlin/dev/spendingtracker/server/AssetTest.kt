@@ -193,6 +193,8 @@ class AssetTest {
         val unvalued = standing(borrowed, emptyList(), liability = true)
         assertEquals(-90_000, unvalued.valueMinor)
         assertEquals(0L, unvalued.gainMinor)
+        assertEquals(10_000L, unvalued.repaidMinor)
+        assertEquals(100_000L, unvalued.borrowedMinor)
 
         val valued = standing(
             borrowed + Dated(LocalDate(2026, 3, 1), 10_000),
@@ -201,6 +203,31 @@ class AssetTest {
         )
         assertEquals(-82_000, valued.valueMinor)
         assertEquals(0L, valued.gainMinor)
+        assertEquals(20_000L, valued.repaidMinor)
+        assertEquals(100_000L, valued.borrowedMinor)
+    }
+
+    @Test
+    fun loanWithBorrowingAndRepaymentShowsRepaidAsRepaymentOnly() = apiTest {
+        val client = newClient().also { it.signup() }
+        val household = "/api/households/${client.createHousehold().id}"
+
+        val savings = client.post("$household/assets") { setBody(AssetInput("Savings", kind = AssetKind.SAVINGS)) }.body<Asset>()
+        client.post("$household/assets/${savings.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 1, 1), 50_000)) }
+
+        val loan = client.post("$household/assets") { setBody(AssetInput("Home loan", kind = AssetKind.LOAN)) }.body<Asset>()
+        client.post("$household/assets/${loan.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 1, 1), -200_000)) }
+        client.post("$household/assets/${loan.id}/contributions") { setBody(ContributionInput(LocalDate(2026, 2, 1), 25_000)) }
+
+        val listed = client.get("$household/assets").body<List<Asset>>().associateBy { it.id }
+        val gotLoan = listed.getValue(loan.id)
+        assertEquals(25_000L, gotLoan.repaidMinor)
+        assertEquals(200_000L, gotLoan.borrowedMinor)
+        assertEquals(-175_000L, gotLoan.contributedMinor)
+
+        val gotSavings = listed.getValue(savings.id)
+        assertEquals(null, gotSavings.repaidMinor)
+        assertEquals(null, gotSavings.borrowedMinor)
     }
 
     @Test
