@@ -209,6 +209,8 @@ data class BankRowSuggestion(
     val withheldTaxMinor: Long? = null,
     /** For [SuggestedRecord.CONTRIBUTION]: the asset. */
     val assetId: String? = null,
+    /** For income: the notes of the last earning or deduction (whichever this is) made of a row with this descriptor. */
+    val notes: String? = null,
 )
 
 /** A recent expense a money-in row may refund; [amountMinor] is the original's, [refundedMinor] what its refunds already returned. */

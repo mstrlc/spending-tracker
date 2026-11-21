@@ -64,8 +64,8 @@ function withSplitDraft(base: ExpenseDraft, draft: SplitDraft): ExpenseDraft {
 
 /**
  * The income line [rows] become together: their amounts added up, from the first row's payer, for the account's owner
- * (or whoever a matching rule names). A deduction rule makes it a deduction (money out, a positive amount) for the
- * month the rule says.
+ * (or whoever a matching rule names). A deduction rule, or a past deduction with the same descriptor, makes it a
+ * deduction (money out, a positive amount) for the month the suggestion says, with the past one's notes.
  */
 export function draftIncome(rows: BankRow[], accountOwner: string | null): IncomeDraft {
   const s = rows.find((r) => r.suggestion)?.suggestion;
@@ -79,9 +79,11 @@ export function draftIncome(rows: BankRow[], accountOwner: string | null): Incom
     source: s?.incomeSource,
     categoryId: deduction ? undefined : s?.categoryId,
     accountId: sameAccount(rows),
-    recipientUserId: s?.ruleId ? s.paidByUserId : accountOwner,
+    // A rule names whose it is, and so does the deduction a past row with this descriptor became.
+    recipientUserId: s && (s.ruleId || deduction) ? s.paidByUserId : accountOwner,
     kind: deduction ? "deduction" : undefined,
     earnedMonth: deduction ? (s?.earnedMonth ?? undefined) : undefined,
+    notes: s?.notes ?? undefined,
     ...(tax !== null && total !== undefined
       ? { deductions: [{ source: "Tax on interest", amountMinor: tax }], expectedNetMinor: total }
       : {}),

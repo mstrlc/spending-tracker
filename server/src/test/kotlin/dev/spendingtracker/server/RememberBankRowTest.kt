@@ -8,8 +8,11 @@ import dev.spendingtracker.shared.api.BankInstitution
 import dev.spendingtracker.shared.api.BankRow
 import dev.spendingtracker.shared.api.BankRowRef
 import dev.spendingtracker.shared.api.ExpenseInput
+import dev.spendingtracker.shared.api.IncomeInput
+import dev.spendingtracker.shared.api.IncomeKind
 import dev.spendingtracker.shared.api.RememberBankRows
 import dev.spendingtracker.shared.api.StatementUpload
+import dev.spendingtracker.shared.api.SuggestedRecord
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -68,5 +71,71 @@ class RememberBankRowTest {
         client.post("$base/bank-rows/remember") {
             setBody(RememberBankRows(listOf(BankRowRef(filed.id, filed.version)), remember = true))
         }.assertError(HttpStatusCode.Conflict, "version_conflict")
+    }
+
+    @Test
+    fun anAdvanceFiledAsADeductionIsSuggestedAsOneNextMonth() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.post("$base/accounts") { setBody(AccountInput("Business")) }.body<Account>()
+        val feed = client.post("$base/bank-feeds") {
+            setBody(BankFeedInput(account.id, "Business", BankInstitution.REVOLUT, currency = "CZK"))
+        }.body<BankFeed>()
+
+        // October's social insurance advance, filed by hand as a deduction for October with a note.
+        client.upload(base, feed.id, revolut(10, "Zaloha OSVC", "-3200.00"))
+        val october = client.pending(base).single()
+        assertEquals(SuggestedRecord.EXPENSE, october.suggestion!!.record)
+        client.post("$base/income") {
+            setBody(
+                IncomeInput(
+                    october.date, 3_200_00, source = "OSSZ", accountId = account.id, notes = "social advance",
+                    earnedMonth = "2026-10", kind = IncomeKind.DEDUCTION, bankRows = listOf(BankRowRef(october.id, october.version)),
+                ),
+            )
+        }.also { assertEquals(HttpStatusCode.Created, it.status) }
+
+        // November's is suggested as the same deduction: source, notes, and paid in the month it is for.
+        client.upload(base, feed.id, revolut(11, "Zaloha OSVC", "-3200.00"))
+        val s = client.pending(base).single().suggestion!!
+        assertEquals(SuggestedRecord.INCOME, s.record)
+        assertEquals(IncomeKind.DEDUCTION, s.incomeKind)
+        assertEquals(3_200_00, s.amountMinor)
+        assertEquals("OSSZ", s.incomeSource)
+        assertEquals("social advance", s.notes)
+        assertEquals("2026-11", s.earnedMonth)
+        assertEquals(null, s.categoryId)
+    }
+
+    @Test
+    fun anEarningTakesTheNotesOfTheLastOneFromThePayer() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.post("$base/accounts") { setBody(AccountInput("Current")) }.body<Account>()
+        val feed = client.post("$base/bank-feeds") {
+            setBody(BankFeedInput(account.id, "Current", BankInstitution.REVOLUT, currency = "CZK"))
+        }.body<BankFeed>()
+
+        // A payment for cleaning, filed with what the work was.
+        client.upload(base, feed.id, revolut(10, "Jan Novak", "1600.00"))
+        val october = client.pending(base).single()
+        assertEquals(null, october.suggestion!!.notes)
+        client.post("$base/income") {
+            setBody(
+                IncomeInput(
+                    october.date, 1_600_00, source = "Jan Novak", accountId = account.id, notes = "cleaning",
+                    bankRows = listOf(BankRowRef(october.id, october.version)),
+                ),
+            )
+        }.also { assertEquals(HttpStatusCode.Created, it.status) }
+
+        // The next one from him comes with the same note; money out to him (not income) doesn't.
+        client.upload(base, feed.id, revolut(11, "Jan Novak", "1000.00"))
+        val next = client.pending(base).single().suggestion!!
+        assertEquals(IncomeKind.EARNING, next.incomeKind)
+        assertEquals("cleaning", next.notes)
+        client.upload(base, feed.id, revolut(12, "Jan Novak", "-200.00"))
+        val out = client.pending(base).single { it.amountMinor < 0 }.suggestion!!
+        assertEquals(null, out.notes)
     }
 }

@@ -165,6 +165,20 @@ describe("bank row drafts", () => {
     expect(skipReason([skipping])).toBe("Top-up by rule");
   });
 
+  it("drafts a deduction learned from a past row with its source, whose, month and notes", () => {
+    const advance = row({
+      amountMinor: -338_500,
+      suggestion: suggestion({
+        record: "income", incomeKind: "deduction", amountMinor: 338_500, incomeSource: "OSSZ",
+        paidByUserId: "u3", earnedMonth: "2026-11", notes: "zaloha socialni",
+      }),
+    });
+    expect(draftIncome([advance], "u2")).toMatchObject({
+      kind: "deduction", amountMinor: 338_500, source: "OSSZ", recipientUserId: "u3", earnedMonth: "2026-11", notes: "zaloha socialni",
+      categoryId: undefined,
+    });
+  });
+
   it("finds two opposite rows to pair", () => {
     const out = row({ id: "o", amountMinor: -100 });
     const incoming = row({ id: "i", amountMinor: 100 });

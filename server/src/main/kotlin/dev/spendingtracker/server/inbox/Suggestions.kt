@@ -134,7 +134,10 @@ fun suggestFor(
         .orderBy(Expenses.date to SortOrder.DESC)
         .groupBy { it[BankRows.merchantKey] }.mapValues { it.value.first() }
     val pastIncome = BankRows.join(Income, JoinType.INNER, BankRows.incomeId, Income.id)
-        .select(BankRows.merchantKey, Income.sourceName, Income.categoryId, Income.recipientUserId, Income.date)
+        .select(
+            BankRows.merchantKey, Income.sourceName, Income.categoryId, Income.recipientUserId, Income.date,
+            Income.kind, Income.earnedMonth, Income.notes,
+        )
         .where { (BankRows.householdId eq householdId) and BankRows.incomeId.isNotNull() and BankRows.remember }
         .orderBy(Income.date to SortOrder.DESC)
         .groupBy { it[BankRows.merchantKey] }.mapValues { it.value.first() }
@@ -205,20 +208,26 @@ fun suggestFor(
                 (!movement && (accountId in cards || (key in pastExpenses && key !in pastIncome)))
             )
         val rule = rules.firstMatch(row)
+        val past = pastExpenses[key]
+        val pastSource = pastIncome[key]
+        // Without a rule, money out whose descriptor last became a deduction (an insurance advance filed by hand) is
+        // one again: its source, whose, notes and how far its month was from the payment's carry over.
+        val pastDeduction = pastSource?.takeIf { p ->
+            rule == null && native < 0 && key.isNotEmpty() && p[Income.kind] == IncomeKind.DEDUCTION.dbValue &&
+                (past == null || past[Expenses.date] <= p[Income.date])
+        }
         // A rule can say the row is the other kind than the guess: money in as an expense (a refund), or out as income.
         val expenseOrIncome = when (rule?.outcome) {
             RuleOutcome.EXPENSE -> SuggestedRecord.EXPENSE
             RuleOutcome.INCOME, RuleOutcome.DEDUCTION -> SuggestedRecord.INCOME
-            else -> if (native < 0 || refund) SuggestedRecord.EXPENSE else SuggestedRecord.INCOME
+            else -> if (pastDeduction == null && (native < 0 || refund)) SuggestedRecord.EXPENSE else SuggestedRecord.INCOME
         }
-        val forDeduction = rule?.outcome == RuleOutcome.DEDUCTION
+        val forDeduction = rule?.outcome == RuleOutcome.DEDUCTION || pastDeduction != null
         val text = row[BankRows.text]
         val owner = owners[accountId]
 
-        val past = pastExpenses[key]
         val guessName = cleanDescriptor(text).ifEmpty { text }
         val known = merchantsByName[guessName.lowercase()]
-        val pastSource = pastIncome[key]
         val candidates = otherSides[row[BankRows.id]].orEmpty().map { other ->
             TransferCandidate(
                 other[BankRows.id].toString(), other[BankRows.version], other[BankFeeds.accountId].toString(),
@@ -264,7 +273,7 @@ fun suggestFor(
         // A record entered by hand is the same one only if its merchant or source has a name in common with the row:
         // the same amount a few days apart isn't enough.
         val rowWords = words(listOf(text, row[BankRows.counterpartyName], row[BankRows.message]).joinToString(" "))
-        val incomeSource = (if (forIncome || forDeduction) rule!!.incomeSource.ifBlank { null } else null)
+        val incomeSource = (if (forIncome || forDeduction) rule?.incomeSource?.ifBlank { null } else null)
             ?: pastSource?.get(Income.sourceName) ?: (if (interest) "Interest" else null) ?: row[BankRows.counterpartyName].ifEmpty { text }
         // Else an earning takes the category its payer's last one had, and interest the household's interest category.
         val incomeCategory = if (forDeduction || (rule != null && !forIncome) || expenseOrIncome != SuggestedRecord.INCOME) null else {
@@ -338,6 +347,7 @@ fun suggestFor(
             RuleOutcome.CONTRIBUTION -> SuggestedRecord.CONTRIBUTION
             RuleOutcome.EXPENSE, RuleOutcome.INCOME, RuleOutcome.DEDUCTION, RuleOutcome.SKIP -> expenseOrIncome
             else -> when {
+                pastDeduction != null -> expenseOrIncome
                 pastContribution != null -> SuggestedRecord.CONTRIBUTION
                 owner != null && settlementOther != null -> SuggestedRecord.SETTLEMENT
                 candidates.isNotEmpty() || ownAccount != null || isMovement -> SuggestedRecord.TRANSFER
@@ -367,7 +377,12 @@ fun suggestFor(
             originalCurrency = if (currency == householdCurrency) null else currency,
             merchant = merchant,
             categoryId = (category ?: incomeCategory)?.toString(),
-            paidByUserId = (if (forExpense || forIncome || forDeduction) rule!!.personUserId ?: owner else if (past != null) past[Expenses.paidByUserId] else owner)?.toString(),
+            paidByUserId = when {
+                pastDeduction != null -> pastDeduction[Income.recipientUserId] ?: owner
+                forExpense || forIncome || forDeduction -> rule!!.personUserId ?: owner
+                past != null -> past[Expenses.paidByUserId]
+                else -> owner
+            }?.toString(),
             incomeSource = incomeSource,
             duplicates = duplicates,
             transferCandidates = candidates,
@@ -379,7 +394,20 @@ fun suggestFor(
             ruleName = rule?.name,
             skipReason = rule?.takeIf { it.outcome == RuleOutcome.SKIP }?.skipReason,
             incomeKind = if (forDeduction) IncomeKind.DEDUCTION else IncomeKind.EARNING,
-            earnedMonth = if (forDeduction) date.yearMonth.plus(rule!!.monthOffset, DateTimeUnit.MONTH).toString() else null,
+            earnedMonth = when {
+                pastDeduction != null -> {
+                    val pastDate = pastDeduction[Income.date].yearMonth
+                    val pastMonth = pastDeduction[Income.earnedMonth].yearMonth
+                    val offset = (pastMonth.year - pastDate.year) * 12 + (pastMonth.month.ordinal - pastDate.month.ordinal)
+                    date.yearMonth.plus(offset, DateTimeUnit.MONTH).toString()
+                }
+                forDeduction -> date.yearMonth.plus(rule!!.monthOffset, DateTimeUnit.MONTH).toString()
+                else -> null
+            },
+            // An income line takes the notes of the last one of the same kind made from this descriptor (what the work was).
+            notes = pastSource?.takeIf { p ->
+                record == SuggestedRecord.INCOME && (p[Income.kind] == IncomeKind.DEDUCTION.dbValue) == forDeduction
+            }?.get(Income.notes)?.ifBlank { null },
             refundCandidates = refundCandidates,
             withheldTaxMinor = withheldTax,
             assetId = when {
@@ -412,6 +440,7 @@ private fun otherSides(
      */
     fun order(row: ResultRow) = compareBy<ResultRow>(
         { -evidence.strength(row, it) },
+        { abs(row[BankRows.date].daysUntil(it[BankRows.date])) },
         { !candidateBalanceMatches(row, it, owners, owes) },
         { it[BankRows.id].toString() },
     )
@@ -437,9 +466,9 @@ private fun otherSides(
     pairs.sortedWith(
         compareBy<Pair<ResultRow, ResultRow>>(
             { (out, inn) -> -evidence.strength(out, inn) },
+            { (out, inn) -> abs(out[BankRows.date].daysUntil(inn[BankRows.date])) },
             { (out, inn) -> !candidateBalanceMatches(out, inn, owners, owes) },
             { (out, _) -> out[BankRows.date] },
-        { abs(row[BankRows.date].daysUntil(it[BankRows.date])) },
             { (out, inn) -> out[BankRows.id].toString() + inn[BankRows.id].toString() },
         ),
     ).forEach { (out, inn) ->
@@ -466,7 +495,6 @@ private val FILLER_WORDS = setOf(
 /** The telling words of [text], without diacritics: at least three letters, no digits, no filler. */
 private fun words(text: String): Set<String> =
     normalizeText(text).split(' ').filter { it.length >= 3 && it.none(Char::isDigit) && it !in FILLER_WORDS }.toSet()
-            { (out, inn) -> abs(out[BankRows.date].daysUntil(inn[BankRows.date])) },
 
 /** A record's [name] has a word in common with the bank row ([rowWords]) or is the merchant or source it suggests ([suggested]). */
 private fun alike(name: String, suggested: String, rowWords: Set<String>): Boolean =
