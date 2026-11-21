@@ -101,6 +101,27 @@ class MatcherEvidenceTest {
     }
 
     @Test
+    fun strongerEvidenceBeatsANearerDate() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val walletIban = CzechAccount("", "1234567890", "0800").iban
+        val wallet = client.account(base, "Wallet", walletIban)
+        val walletFeed = client.feed(base, wallet.id, "Wallet")
+        val sameDay = client.account(base, "Card bank")
+        val sameDayFeed = client.feed(base, sameDay.id, "Card bank")
+        val byIban = client.account(base, "Transfer bank")
+        val byIbanFeed = client.feed(base, byIban.id, "Transfer bank")
+        // A 300 top-up of the wallet from a card nobody has on file. One bank paid Revolut 300 by card the same day:
+        // only both rows' "top-up" hints back that. The other sent 300 to the wallet's own IBAN two days before.
+        client.csv(base, walletFeed.id, revolut("Topup", 11, "Apple Pay Top-Up by *4321", "300.00"))
+        client.csv(base, sameDayFeed.id, revolut("Card Payment", 11, "Revolut**7816* Dublin", "-300.00"))
+        client.upload(base, byIbanFeed.id, goCardlessOut("to-wallet", 9, "-300.00", walletIban, "Wallet"))
+
+        val topUp = client.pending(base).single { it.amountMinor > 0 }
+        assertEquals(byIban.id, topUp.suggestion!!.transferCandidates.first().accountId)
+    }
+
+    @Test
     fun aHandEnteredRecordIsADuplicateOnlyWithANameInCommon() = apiTest {
         val client = newClient().also { it.signup() }
         val base = "/api/households/${client.createHousehold().id}"

@@ -393,9 +393,9 @@ fun suggestFor(
 
 /**
  * The other sides of [rows]' transfers among [pool]: pending rows on another feed, opposite in sign, within
- * [TRANSFER_DAYS], the same money, and backed by [evidence]. Rows are paired one to one, nearest in time first, so ten
- * identical top-ups pair with ten identical card payments rather than all with the same one. A row lists its partner
- * first, then the candidates nobody took.
+ * [TRANSFER_DAYS], the same money, and backed by [evidence]. Rows are paired one to one, the best-evidenced pairs
+ * first and then the nearest in time, so ten identical top-ups pair with ten identical card payments rather than all
+ * with the same one. A row lists its partner first, then the candidates nobody took.
  */
 private fun otherSides(
     rows: List<ResultRow>,
@@ -406,9 +406,11 @@ private fun otherSides(
     owners: Map<Uuid, Uuid?>,
     owes: Map<Pair<String, String>, Long>,
 ): Map<Uuid, List<ResultRow>> {
-    /** How [row] ranks [other]: nearest first, then the stronger evidence, then a debt it would settle, then by id. */
+    /**
+     * How [row] ranks [other]: the stronger evidence first (an IBAN or a known card outweighs a day or two, as every
+     * candidate is within [TRANSFER_DAYS] anyway), then the nearest, then a debt it would settle, then by id.
+     */
     fun order(row: ResultRow) = compareBy<ResultRow>(
-        { abs(row[BankRows.date].daysUntil(it[BankRows.date])) },
         { -evidence.strength(row, it) },
         { !candidateBalanceMatches(row, it, owners, owes) },
         { it[BankRows.id].toString() },
@@ -434,10 +436,10 @@ private fun otherSides(
     }.distinctBy { (out, inn) -> out[BankRows.id] to inn[BankRows.id] }
     pairs.sortedWith(
         compareBy<Pair<ResultRow, ResultRow>>(
-            { (out, inn) -> abs(out[BankRows.date].daysUntil(inn[BankRows.date])) },
             { (out, inn) -> -evidence.strength(out, inn) },
             { (out, inn) -> !candidateBalanceMatches(out, inn, owners, owes) },
             { (out, _) -> out[BankRows.date] },
+        { abs(row[BankRows.date].daysUntil(it[BankRows.date])) },
             { (out, inn) -> out[BankRows.id].toString() + inn[BankRows.id].toString() },
         ),
     ).forEach { (out, inn) ->
@@ -464,6 +466,7 @@ private val FILLER_WORDS = setOf(
 /** The telling words of [text], without diacritics: at least three letters, no digits, no filler. */
 private fun words(text: String): Set<String> =
     normalizeText(text).split(' ').filter { it.length >= 3 && it.none(Char::isDigit) && it !in FILLER_WORDS }.toSet()
+            { (out, inn) -> abs(out[BankRows.date].daysUntil(inn[BankRows.date])) },
 
 /** A record's [name] has a word in common with the bank row ([rowWords]) or is the merchant or source it suggests ([suggested]). */
 private fun alike(name: String, suggested: String, rowWords: Set<String>): Boolean =
