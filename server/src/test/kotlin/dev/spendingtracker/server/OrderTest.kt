@@ -193,6 +193,38 @@ class OrderTest {
     }
 
     @Test
+    fun anAutoRuleLeavesARowWithAnOrderDraftForAPerson() = apiTest {
+        val client = newClient().also { it.signup() }
+        val base = "/api/households/${client.createHousehold().id}"
+        val account = client.post("$base/accounts") { setBody(AccountInput("Current")) }.body<Account>()
+        val feed = client.post("$base/bank-feeds") {
+            setBody(BankFeedInput(account.id, "Current", BankInstitution.REVOLUT, currency = "CZK"))
+        }.body<BankFeed>()
+        val tech = client.post("$base/categories") { setBody(CategoryInput("Electronics")) }.body<Category>()
+        client.post("$base/inbox-rules") {
+            setBody(
+                dev.spendingtracker.shared.api.InboxRuleInput(
+                    name = "Alza", textContains = "alza", outcome = dev.spendingtracker.shared.api.RuleOutcome.EXPENSE,
+                    merchant = "Alza", categoryId = tech.id, auto = true,
+                ),
+            )
+        }
+        client.post("$base/orders") { setBody(headphonesOrder) }
+        client.post("$base/bank-feeds/${feed.id}/statements") {
+            setBody(
+                StatementUpload(
+                    "$HEADER\n" + statementRow("2026-11-05", "Alza.cz", "-1500.00") + "\n" +
+                        statementRow("2026-11-20", "Alza.cz", "-99.00"),
+                ),
+            )
+        }
+        // The order's payment waits with its split; another Alza payment is filed by the rule.
+        val pending = client.pending(base)
+        assertEquals(listOf(-1_500_00L), pending.map { it.amountMinor })
+        assertEquals("Alza order 1001", pending.single().draft!!.source)
+    }
+
+    @Test
     fun ordersAreReadFromEmailsByTheFirstParserThatKnowsThem() = apiTest(orderParsers = listOf(TestShopParser)) {
         val client = newClient().also { it.signup() }
         val base = "/api/households/${client.createHousehold().id}"

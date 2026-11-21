@@ -47,7 +47,7 @@ private val PROCESSING_ORDER = compareBy<ResultRow>({ it[BankRows.date] }, { it[
 /**
  * Files what can be filed without asking: pending rows matching a rule with auto go where the rule says, and, when the
  * household allows it (`auto_match`), the matcher files transfer pairs and duplicates of hand-entered expenses it is sure
- * of. Works on the pending rows among [onlyRowIds], or on all pending rows when it is null. Rows it can't file
+ * of. Rows with a split draft (see [matchOrders], run first) aren't filed by rules. Works on the pending rows among [onlyRowIds], or on all pending rows when it is null. Rows it can't file
  * (no exchange rate yet, an account that no longer fits) stay in the inbox. Call inside a transaction, after the
  * exchange rates of the rows' years are fresh; whoever made the request is the audit actor.
  */
@@ -63,7 +63,8 @@ fun applyRules(householdId: Uuid, householdCurrency: String, userId: Uuid, onlyR
     val ruleOf = pending.associate { it[BankRows.id] to rules.firstMatch(it) }
     val engine = Engine(householdId, householdCurrency, userId, pending.associateBy { it[BankRows.id] }, ruleOf)
     if (rules.any { it.auto }) {
-        val autoRows = subject.filter { ruleOf[it[BankRows.id]]?.auto == true }
+        // A row with a prepared split (an order's, or a person's) waits for someone to file it from the draft.
+        val autoRows = subject.filter { ruleOf[it[BankRows.id]]?.auto == true && it[BankRows.splitDraft] == null }
         val suggestions = suggestFor(householdId, householdCurrency, autoRows, rules)
         for (row in autoRows) {
             if (row[BankRows.id] in engine.filed) continue
