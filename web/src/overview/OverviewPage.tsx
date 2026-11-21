@@ -7,12 +7,15 @@ import { useHousehold } from "../households/HouseholdPages";
 import { formatDate, formatMonth, shiftDays, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
+import { monthPeriod, writePeriod } from "../reports/period";
 import { rankSlices, ShareBar } from "../shares";
 import { ErrorText, Money, PageHeader, SkeletonRows, Summary, Surface } from "../ui";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { MoneyFlow } from "./MoneyFlow";
+import { buildFlow } from "./sankey";
 
 /** "Mar" for "2026-03", in the user's locale. */
 function shortMonth(month: string): string {
@@ -77,7 +80,8 @@ export function OverviewPage() {
           currency={household.currency}
           inboxPath={`/h/${household.id}/inbox`}
           recurringPath={`/h/${household.id}/recurring`}
-          filtered={whose !== undefined}
+          reportsPath={`/h/${household.id}/reports`}
+          whose={whose}
         />
       )}
     </>
@@ -144,16 +148,19 @@ function OverviewBody({
   currency,
   inboxPath,
   recurringPath,
-  filtered,
+  reportsPath,
+  whose,
 }: {
   data: Overview;
   categories: Category[];
   currency: string;
   inboxPath: string;
   recurringPath: string;
-  /** Showing joint or one member's figures: net worth and bank data stay the household's. */
-  filtered: boolean;
+  reportsPath: string;
+  /** Joint or one member's figures (net worth and bank data stay the household's); undefined for everyone. */
+  whose: string | undefined;
 }) {
+  const filtered = whose !== undefined;
   const { thisMonth, typicalMonth } = data;
   const inProgress = data.daysElapsed > 0 && data.daysElapsed < data.daysInMonth;
   const pace = inProgress ? Math.round((thisMonth.spendingMinor / data.daysElapsed) * data.daysInMonth) : null;
@@ -162,6 +169,21 @@ function OverviewBody({
     new Map(data.topCategories.map((c) => [categoryName(categories, c.categoryId), c.amountMinor])),
     new Map(data.topCategories.map((c) => [categoryName(categories, c.categoryId), categoryTone(categories, c.categoryId)])),
   );
+  const flow = buildFlow(
+    { ...data, investedMinor: thisMonth.investedMinor },
+    (id) => categoryName(categories, id),
+    (id) => {
+      const tone = categoryTone(categories, id);
+      return tone === "neutral" ? "chart-3" : tone;
+    },
+  );
+  const categoryHref = (categoryId: string) => {
+    const params = new URLSearchParams();
+    writePeriod(params, monthPeriod(data.month));
+    params.set("category", categoryId || "none");
+    if (whose) params.set("whose", whose);
+    return `${reportsPath}?${params}`;
+  };
   const subscriptionTotal = data.subscriptions.reduce((sum, s) => sum + s.monthlyMinor, 0);
 
   return (
@@ -204,6 +226,16 @@ function OverviewBody({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        {flow.totalMinor > 0 && (
+          <OverviewCard
+            title="Where the money went"
+            subtitle={`${formatMonth(data.month)}'s income by source, and what it paid for`}
+            className="lg:col-span-2 2xl:col-span-3"
+          >
+            <MoneyFlow flow={flow} currency={currency} categoryHref={categoryHref} />
+          </OverviewCard>
+        )}
+
         <OverviewCard title="Income and spending" className="lg:col-span-2 2xl:col-span-3">
           <FlowChart history={data.history} currency={currency} />
         </OverviewCard>

@@ -176,6 +176,18 @@ fun topMerchants(spends: List<Spend>, month: YearMonth): List<NamedTotal> =
 fun topSources(earnings: List<Earning>, month: YearMonth): List<NamedTotal> =
     ranked(earnings.filter { !it.deduction && it.date.yearMonth == month }.map { it.source to it.amountMinor })
 
+/** Every source's gross earnings in [month] (clawbacks netted), positive ones only, largest first; blank names kept as "". */
+fun incomeSources(earnings: List<Earning>, month: YearMonth): List<NamedTotal> =
+    earnings.filter { !it.deduction && it.date.yearMonth == month }
+        .groupBy { it.source.trim().lowercase() }
+        .map { (_, group) -> NamedTotal(group.first().source.trim(), group.sumOf { it.amountMinor }) }
+        .filter { it.amountMinor > 0 }
+        .sortedByDescending { it.amountMinor }
+
+/** [month]'s deductions as a positive amount. */
+fun deductions(earnings: List<Earning>, month: YearMonth): Long =
+    -earnings.filter { it.deduction && it.date.yearMonth == month }.sumOf { it.amountMinor }
+
 /** Sums by name (ignoring case, blank names left out), largest [TOP_LIMIT] first, named as most recently written. */
 private fun ranked(rows: List<Pair<String, Long>>): List<NamedTotal> =
     rows.filter { it.first.isNotBlank() }

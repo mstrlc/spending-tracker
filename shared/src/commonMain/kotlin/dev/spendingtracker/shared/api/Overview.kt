@@ -30,6 +30,13 @@ data class Overview(
     val topCategories: List<CategoryTotal>,
     val topMerchants: List<NamedTotal>,
     val topSources: List<NamedTotal>,
+    /**
+     * [month]'s gross earnings by source, every source, largest first; a blank name is an empty string. With
+     * [deductionsMinor] they add up to [thisMonth]'s income.
+     */
+    val incomeSources: List<NamedTotal>,
+    /** [month]'s deductions (insurance advances, withheld tax) as a positive amount. */
+    val deductionsMinor: Long,
     val netWorth: NetWorth,
     val freshness: Freshness,
 )

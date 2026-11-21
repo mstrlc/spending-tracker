@@ -162,6 +162,8 @@ class IncomeTest {
         val overview = client.get("$household/overview?month=2026-10").body<Overview>()
         assertEquals(60_000_00L - 3_000_00L, overview.history.single { it.month == "2026-10" }.incomeMinor)
         assertEquals(listOf(NamedTotal("Initech", 60_000_00)), overview.topSources)
+        assertEquals(listOf(NamedTotal("Initech", 60_000_00)), overview.incomeSources)
+        assertEquals(3_000_00L, overview.deductionsMinor)
 
         val asEarning = client.put("$base/${health.id}") {
             setBody(IncomeInput(health.date, health.amountMinor, "ZPMV", version = health.version))

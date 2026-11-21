@@ -4022,6 +4022,13 @@ export interface components {
             topMerchants: components["schemas"]["NamedTotal"][];
             /** ArrayList<NamedTotal> */
             topSources: components["schemas"]["NamedTotal"][];
+            /** ArrayList<NamedTotal> */
+            incomeSources: components["schemas"]["NamedTotal"][];
+            /**
+             * Long
+             * Format: int64
+             */
+            deductionsMinor: number;
             netWorth: components["schemas"]["NetWorth"];
             freshness: components["schemas"]["Freshness"];
         };
