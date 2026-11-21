@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from "react";
+import { Chip, Dot, categoryTone } from "../chips";
+import { ArchiveIcon, TrendingUpIcon } from "lucide-react";
 import { useCategories, useDeleteCategory, useSaveCategory } from "../api/hooks";
 import type { Category, CategoryInput, CategoryKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
 import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -60,14 +61,15 @@ export function CategoriesPage() {
       )}
     >
       <span className={cn("flex items-center gap-2", isChild ? "text-muted-foreground" : "font-medium")}>
+        <Dot tone={categoryTone(categories.data ?? [], category.id)} className={cn(isChild && "size-1.5", category.archived && "opacity-40")} />
         <InlineRename
           name={category.name}
           editing={renaming === category.id}
           onSave={(newName) => update(category, { name: newName })}
           onDone={() => setRenaming(null)}
         />
-        {!isChild && category.kind === "investment" && <Badge variant="outline">Investing</Badge>}
-        {category.archived && <Badge variant="secondary">Archived</Badge>}
+        {!isChild && category.kind === "investment" && <Chip tone="transfer" icon={TrendingUpIcon}>Investing</Chip>}
+        {category.archived && <Chip icon={ArchiveIcon}>Archived</Chip>}
       </span>
       <RowMenu
         label={category.name}

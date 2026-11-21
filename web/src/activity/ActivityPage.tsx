@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useAccounts, useActivity, useCategories, useMembers, useMerchants, useTrips } from "../api/hooks";
 import type { ActivityEntity, ActivityEntry } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
@@ -101,9 +102,10 @@ function ActivityRow({ entry, lookups }: { entry: ActivityEntry; lookups: Lookup
   const time = new Date(entry.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   return (
     <li className="flex gap-4 px-4 py-3 text-sm">
-      <time className="amount w-12 shrink-0 text-muted-foreground" dateTime={entry.at}>
+      <time className="amount w-16 shrink-0 text-muted-foreground" dateTime={entry.at}>
         {time}
       </time>
+      <ActionIcon action={entry.action} />
       <div className="flex min-w-0 flex-col gap-1">
         <p className={cn(entry.action === "delete" && "text-muted-foreground")}>
           {lead && `${lead} `}
@@ -128,4 +130,16 @@ function ActivityRow({ entry, lookups }: { entry: ActivityEntry; lookups: Lookup
       </div>
     </li>
   );
+}
+
+const ACTIONS = {
+  create: { icon: PlusIcon, label: "Added", className: "text-(--tone-income)" },
+  update: { icon: PencilIcon, label: "Changed", className: "text-muted-foreground" },
+  delete: { icon: Trash2Icon, label: "Deleted", className: "text-destructive" },
+} as const;
+
+/** Added, changed or deleted at a glance, beside the time. */
+function ActionIcon({ action }: { action: ActivityEntry["action"] }) {
+  const a = ACTIONS[action];
+  return <a.icon role="img" aria-label={a.label} className={cn("mt-0.5 size-3.5 shrink-0", a.className)} />;
 }

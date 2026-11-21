@@ -69,7 +69,8 @@ test("lists rules with what they match and become, and lets owners turn the matc
 
   // Narrow and wide layouts each have their own copy.
   expect((await screen.findAllByText("Text contains BAKERY · Money out")).length).toBeGreaterThan(0);
-  expect(screen.getAllByText("Expense · Corner Bakery").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Corner Bakery").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Expense").length).toBeGreaterThan(0);
   expect(screen.getByText("Automatic")).toBeTruthy();
 
   const toggle = await screen.findByLabelText(/File transfers and duplicates automatically/);

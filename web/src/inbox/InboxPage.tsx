@@ -8,8 +8,10 @@ import { useConfirm, usePrompt } from "../dialogs";
 import { EmptyState, ErrorText, PageHeader, PageIntro, RowMenu, Sheet, SkeletonRows, Surface } from "../ui";
 import { ExpenseForm, type ExpenseDraft } from "../expenses/ExpenseForm";
 import { IncomeForm, type IncomeDraft } from "../income/IncomeForm";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, CategoryLabel, Chip, KindChip, signedAmountClass, type RecordKind } from "../chips";
+import { ZapIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -64,7 +66,6 @@ export function InboxPage() {
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? "";
   const ownerOf = (accountId: string) => accounts.find((a) => a.id === accountId)?.ownerUserId ?? null;
   const ruleName = (id: string | null) => rules.find((r) => r.id === id)?.name;
-  const categoryName = (id?: string | null) => categories.find((c) => c.id === id)?.name;
   const memberName = (id?: string | null) => (id ? members.find((m) => m.userId === id)?.displayName : "Joint");
 
   function toggle(id: string, on: boolean) {
@@ -299,6 +300,23 @@ export function InboxPage() {
                 const isTransfer = s?.record === "transfer" && !isSkip;
                 const isExpense = s?.record !== "income";
                 const best = s?.transferCandidates[0];
+                const suggestedKind: RecordKind = isSkip
+                  ? "skip"
+                  : isTransfer
+                    ? "transfer"
+                    : isExpense
+                      ? row.amountMinor > 0
+                        ? "refund"
+                        : "expense"
+                      : s?.incomeKind === "deduction"
+                        ? "deduction"
+                        : "income";
+                const decidedKind: RecordKind =
+                  row.outcome === "skipped" || row.outcome === "pending"
+                    ? "skip"
+                    : row.outcome === "expense" && row.amountMinor > 0
+                      ? "refund"
+                      : row.outcome;
                 const otherAccount =
                   accountName(best?.accountId ?? s?.transferAccountId ?? "") || "another account";
                 // What the row probably is (or became), in its own column on a wide table, under the row on a narrow one.
@@ -306,58 +324,57 @@ export function InboxPage() {
                   <>
                     {tab === "pending" && s && (
                       <>
-                        <div>
-                          {s.skipReason != null
-                            ? `Skip: ${s.skipReason}`
-                            : isTransfer
-                              ? `Transfer ${row.amountMinor < 0 ? "to" : "from"} ${otherAccount}`
-                              : isExpense
-                                ? s.merchant || "Expense"
-                                : s.incomeKind === "deduction"
-                                  ? `Deduction${s.incomeSource ? ` · ${s.incomeSource}` : ""}`
-                                  : s.incomeSource || "Income"}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <KindChip kind={suggestedKind} />
+                          <span>
+                            {s.skipReason != null
+                              ? s.skipReason
+                              : isTransfer
+                                ? `${row.amountMinor < 0 ? "To" : "From"} ${otherAccount}`
+                                : isExpense
+                                  ? s.merchant || ""
+                                  : s.incomeSource || ""}
+                          </span>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {s.skipReason != null
-                            ? "Not spending or income"
-                            : isTransfer
-                              ? "Not spending or income"
-                              : isExpense
-                                ? [categoryName(s.categoryId) ?? "Uncategorized", members.length > 1 && memberName(s.paidByUserId)]
-                                    .filter(Boolean)
-                                    .join(" · ")
-                                : s.incomeKind === "deduction" && s.earnedMonth
-                                  ? `Taken off ${formatMonth(s.earnedMonth)}`
-                                  : "Income"}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          {s.skipReason != null || isTransfer ? (
+                            "Not spending or income"
+                          ) : isExpense ? (
+                            <>
+                              <CategoryLabel categories={categories} id={s.categoryId} short />
+                              {members.length > 1 && (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <Avatar members={members} userId={s.paidByUserId} />
+                                  {memberName(s.paidByUserId)}
+                                </span>
+                              )}
+                            </>
+                          ) : s.incomeKind === "deduction" && s.earnedMonth ? (
+                            `Taken off ${formatMonth(s.earnedMonth)}`
+                          ) : members.length > 1 ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Avatar members={members} userId={s.paidByUserId} />
+                              {memberName(s.paidByUserId)}
+                            </span>
+                          ) : null}
                         </div>
-                        {s.ruleName && <div className="text-xs text-muted-foreground">Rule: {s.ruleName}</div>}
+                        {s.ruleName && (
+                          <div className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <ZapIcon aria-hidden="true" className="size-3" /> Rule: {s.ruleName}
+                          </div>
+                        )}
                       </>
                     )}
                     {tab === "decided" && (
                       <>
-                        <div>
-                          {row.outcome === "expense"
-                            ? row.outcomeLabel
-                              ? `Expense · ${row.outcomeLabel}`
-                              : "Expense"
-                            : row.outcome === "income"
-                              ? row.outcomeLabel
-                                ? `Income · ${row.outcomeLabel}`
-                                : "Income"
-                              : row.outcome === "transfer"
-                                ? row.outcomeLabel
-                                  ? `Transfer · ${row.outcomeLabel}`
-                                  : "Transfer"
-                                : row.outcome === "settlement"
-                                  ? row.outcomeLabel
-                                    ? `Settlement · ${row.outcomeLabel}`
-                                    : "Settlement"
-                                  : `Skipped: ${row.skipReason}`}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <KindChip kind={decidedKind}>{row.outcome === "skipped" ? "Skipped" : undefined}</KindChip>
+                          <span>{row.outcome === "skipped" ? row.skipReason : row.outcomeLabel}</span>
                         </div>
                         {row.decidedAuto && (
-                          <div className="text-xs text-muted-foreground">
-                            {ruleName(row.ruleId) ? `Filed by rule: ${ruleName(row.ruleId)}` : "Filed automatically"}
-                          </div>
+                          <Chip icon={ZapIcon} className="mt-1" title="Filed without asking">
+                            {ruleName(row.ruleId) ? `Rule: ${ruleName(row.ruleId)}` : "Automatic"}
+                          </Chip>
                         )}
                       </>
                     )}
@@ -376,7 +393,7 @@ export function InboxPage() {
                     <TableCell className="whitespace-normal align-top">
                       <div className="flex flex-wrap items-baseline justify-between gap-x-2">
                         <span className="font-medium">{row.text || row.counterpartyAccount || "Bank row"}</span>
-                        <span className="amount shrink-0 @sm:hidden">{bankAmount(row)}</span>
+                        <span className={cn("amount shrink-0 @sm:hidden", signedAmountClass(row.amountMinor))}>{bankAmount(row)}</span>
                       </div>
                       <div className="text-xs text-muted-foreground">
                         <span className="@xl:hidden">{formatDay(row.date)} · </span>
@@ -385,9 +402,11 @@ export function InboxPage() {
                       </div>
                       <div className="mt-1 border-l-2 pl-2 text-sm @3xl:hidden">{became}</div>
                       {row.hint && (
-                        <Badge variant="secondary" className="mt-1 h-auto whitespace-normal">
-                          {row.hint}
-                        </Badge>
+                        <div className="mt-1 text-xs">
+                          <Chip tone="warning" className="h-auto max-w-full py-0.5 whitespace-normal">
+                            {row.hint}
+                          </Chip>
+                        </div>
                       )}
                       {s?.duplicates.map((d) => (
                         <div key={d.id} className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
@@ -422,7 +441,7 @@ export function InboxPage() {
                     <TableCell className="whitespace-normal align-top text-sm @max-3xl:hidden">
                       {became}
                     </TableCell>
-                    <TableCell className="amount text-right align-top @max-sm:hidden">{bankAmount(row)}</TableCell>
+                    <TableCell className={cn("amount text-right align-top @max-sm:hidden", signedAmountClass(row.amountMinor))}>{bankAmount(row)}</TableCell>
                     <TableCell className="text-right align-top">
                       <div className="flex items-center justify-end gap-1">
                         {tab === "pending" && (

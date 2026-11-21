@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AssetIcon, PersonLabel, gainClass } from "../chips";
 import {
   useAccounts,
   useAssetHistory,
@@ -158,29 +159,34 @@ export function AssetsPage() {
                       onAnimationEnd={() => setFlashId(null)}
                     >
                       <TableCell className="whitespace-normal">
-                        <button
-                          className="text-left font-medium outline-none hover:underline focus-visible:underline"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setEditor({ mode: "view", id: i.id });
-                          }}
-                        >
-                          {i.name}
-                        </button>
-                        <div className="text-xs text-muted-foreground">
-                          {kindLabel(i.kind)} · {valuedBy(i)}
+                        <div className="flex items-center gap-3">
+                          <AssetIcon kind={i.kind} />
+                          <div className="min-w-0">
+                            <button
+                              className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setEditor({ mode: "view", id: i.id });
+                              }}
+                            >
+                              {i.name}
+                            </button>
+                            <div className="text-xs text-muted-foreground">
+                              {kindLabel(i.kind)} · {valuedBy(i)}
+                            </div>
+                          </div>
                         </div>
                       </TableCell>
                       {showOwner && (
                         <TableCell className="text-muted-foreground max-md:hidden">
-                          {members.find((m) => m.userId === i.ownerUserId)?.displayName ?? "Shared"}
+                          <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
                         </TableCell>
                       )}
                       <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>
                       <TableCell className="amount text-right">{formatAsset(i.valueMinor, currency)}</TableCell>
-                      <TableCell className="amount text-right max-md:hidden">{formatSigned(i.gainMinor, currency)}</TableCell>
+                      <TableCell className={cn("amount text-right max-md:hidden", gainClass(i.gainMinor))}>{formatSigned(i.gainMinor, currency)}</TableCell>
                       <TableCell className="amount text-right">
-                        <div>{r === null ? "–" : formatPercent(r)}</div>
+                        <div className={cn(r !== null && gainClass(r))}>{r === null ? "–" : formatPercent(r)}</div>
                         {i.annualReturn !== null && (
                           <div className="text-xs text-muted-foreground" title="Yearly return (money-weighted)">
                             {formatPercent(i.annualReturn)}/yr
@@ -218,22 +224,27 @@ export function AssetsPage() {
                     onAnimationEnd={() => setFlashId(null)}
                   >
                     <TableCell className="whitespace-normal">
-                      <button
-                        className="text-left font-medium outline-none hover:underline focus-visible:underline"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setEditor({ mode: "view", id: i.id });
-                        }}
-                      >
-                        {i.name}
-                      </button>
-                      <div className="text-xs text-muted-foreground">
-                        {kindLabel(i.kind)} · {valuedBy(i)}
+                      <div className="flex items-center gap-3">
+                        <AssetIcon kind={i.kind} />
+                        <div className="min-w-0">
+                          <button
+                            className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setEditor({ mode: "view", id: i.id });
+                            }}
+                          >
+                            {i.name}
+                          </button>
+                          <div className="text-xs text-muted-foreground">
+                            {kindLabel(i.kind)} · {valuedBy(i)}
+                          </div>
+                        </div>
                       </div>
                     </TableCell>
                     {showOwner && (
                       <TableCell className="text-muted-foreground max-md:hidden">
-                        {members.find((m) => m.userId === i.ownerUserId)?.displayName ?? "Shared"}
+                        <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
                       </TableCell>
                     )}
                     <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>

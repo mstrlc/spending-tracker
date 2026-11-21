@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
+import { Avatar, Chip } from "../chips";
+import { ClockAlertIcon, CrownIcon, UserRoundXIcon } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useAddMember, useCreateInvite, useInvites, useMe, useMembers, useRemoveMember, useRevokeInvite, useUpdateMember } from "../api/hooks";
 import type { HouseholdRole, Invite, Member } from "../api/types";
 import { useConfirm, usePrompt } from "../dialogs";
 import { ErrorText, Field, FormError, PageHeader, PageIntro, SkeletonRows, Surface } from "../ui";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -99,9 +100,10 @@ export function MembersPage() {
                 <TableRow key={m.userId}>
                   <TableCell className="font-medium">
                     <span className="flex items-center gap-2">
+                      <Avatar members={members.data} userId={m.userId} className="size-6 text-[0.65rem]" />
                       {m.displayName}
                       {m.userId === me?.id && <span className="font-normal text-muted-foreground">(you)</span>}
-                      {!m.hasLogin && <Badge variant="secondary">No login</Badge>}
+                      {!m.hasLogin && <Chip icon={UserRoundXIcon}>No login</Chip>}
                     </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
@@ -117,7 +119,9 @@ export function MembersPage() {
                       m.legalName || "—"
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{ROLE_LABEL[m.role]}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {m.role === "owner" ? <Chip tone="settlement" icon={CrownIcon}>{ROLE_LABEL[m.role]}</Chip> : ROLE_LABEL[m.role]}
+                  </TableCell>
                   <TableCell className="text-right">
                     {(m.userId === me?.id || isOwner) && (
                       <Button variant="ghost" size="sm" className="text-destructive" onClick={() => removeMember(m)}>
@@ -279,7 +283,7 @@ function PendingInvites({ invites }: { invites: Invite[] }) {
                 </TableCell>
                 <TableCell className="text-muted-foreground max-md:hidden">{ROLE_LABEL[invite.role]}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {expired ? <Badge variant="secondary">Expired</Badge> : formatDate(invite.expiresAt)}
+                  {expired ? <Chip tone="warning" icon={ClockAlertIcon}>Expired</Chip> : formatDate(invite.expiresAt)}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button variant="ghost" size="sm" className="text-destructive" onClick={() => revoke.mutate(invite.id)}>

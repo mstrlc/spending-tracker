@@ -86,6 +86,23 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.178 0 0);
+    /* Tones for what a record is or what state it's in (chips, icons, signed amounts). */
+    --tone-income: oklch(0.56 0.14 152);
+    --tone-expense: oklch(0.6 0.15 48);
+    --tone-deduction: oklch(0.56 0.15 345);
+    --tone-transfer: oklch(0.55 0.15 255);
+    --tone-settlement: oklch(0.55 0.16 295);
+    --tone-warning: oklch(0.66 0.15 75);
+    --tone-danger: var(--destructive);
+    /* Eight hues for categories and people, told apart rather than meaning anything. */
+    --hue-1: oklch(0.6 0.14 25);
+    --hue-2: oklch(0.66 0.13 70);
+    --hue-3: oklch(0.62 0.13 125);
+    --hue-4: oklch(0.58 0.12 170);
+    --hue-5: oklch(0.6 0.12 215);
+    --hue-6: oklch(0.56 0.14 260);
+    --hue-7: oklch(0.56 0.15 305);
+    --hue-8: oklch(0.6 0.15 350);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -122,6 +139,20 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.97 0 0);
+    --tone-income: oklch(0.74 0.15 152);
+    --tone-expense: oklch(0.76 0.14 55);
+    --tone-deduction: oklch(0.74 0.14 345);
+    --tone-transfer: oklch(0.74 0.13 255);
+    --tone-settlement: oklch(0.74 0.14 295);
+    --tone-warning: oklch(0.8 0.14 80);
+    --hue-1: oklch(0.74 0.13 25);
+    --hue-2: oklch(0.8 0.12 70);
+    --hue-3: oklch(0.78 0.13 125);
+    --hue-4: oklch(0.76 0.11 170);
+    --hue-5: oklch(0.76 0.11 215);
+    --hue-6: oklch(0.74 0.12 260);
+    --hue-7: oklch(0.74 0.13 305);
+    --hue-8: oklch(0.76 0.13 350);
 }
 }
 
@@ -143,8 +174,10 @@
 
 /*
  * Design rules (see design/ui-pass/README.md):
- * - Black and white: neutral greys only; the accent is near-black (white in dark mode).
+ * - Black and white for the chrome: neutral greys, the accent is near-black (white in dark mode).
  *   Red is reserved for destructive actions and errors.
+ * - Colour carries meaning only in small doses (chips, dots, icons, signed amounts; web/src/chips.tsx):
+ *   `--tone-*` says what a record is or its state, `--hue-1..8` tells categories and people apart.
  * - Geist for the interface; every amount in Geist Mono with tabular figures (the `amount` utility).
  * - The one rich moment is the month's category bar: black for the biggest category, grey steps for the rest.
  * - Motion only for feedback: the side panel, press, saved-row highlight.

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAccounts, useCategories, useExpenses, useMembers } from "../api/hooks";
 import type { Category, Expense } from "../api/types";
 import { PlusIcon } from "lucide-react";
+import { AccountLabel, CategoryLabel, Dot, KindChip, PersonLabel, categoryTone, signedAmountClass } from "../chips";
 import { currentMonth, formatDay, formatMonth, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
@@ -123,12 +124,21 @@ export function ExpensesPage() {
             </TableHeader>
             <TableBody>
               {rows.map((e) => {
-                const category = categories.find((c) => c.id === e.categoryId);
-                const parent = category?.parentId ? categories.find((c) => c.id === category.parentId) : undefined;
-                const splitNames =
-                  e.lines && e.lines.length > 0
-                    ? [...new Set(e.lines.map((l) => categories.find((c) => c.id === l.categoryId)?.name ?? "Uncategorized"))].join(", ")
-                    : null;
+                const splitIds = e.lines && e.lines.length > 0 ? [...new Set(e.lines.map((l) => l.categoryId))] : null;
+                const categoryCell = splitIds ? (
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <span className="flex -space-x-0.5">
+                      {splitIds.map((id) => (
+                        <Dot key={id ?? "none"} tone={categoryTone(categories, id)} className="ring-2 ring-background" />
+                      ))}
+                    </span>
+                    <span className="truncate">
+                      {splitIds.map((id) => categories.find((c) => c.id === id)?.name ?? "Uncategorized").join(", ")}
+                    </span>
+                  </span>
+                ) : (
+                  <CategoryLabel categories={categories} id={e.categoryId} />
+                );
                 return (
                   <TableRow
                     key={e.id}
@@ -148,6 +158,7 @@ export function ExpensesPage() {
                       >
                         {e.merchant || "Untitled expense"}
                       </button>
+                      {e.amountMinor < 0 && <KindChip kind="refund" className="ml-2 align-middle" />}
                       {e.notes && <div className="text-xs text-muted-foreground">{e.notes}</div>}
                       {e.refundOfId && (
                         <div className="text-xs text-muted-foreground">
@@ -164,30 +175,23 @@ export function ExpensesPage() {
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground md:hidden">
-                        {formatDay(e.date)} · {splitNames ?? category?.name ?? "Uncategorized"}
+                        <span className="inline-flex min-w-0 items-center gap-1.5">
+                          {formatDay(e.date)} · {categoryCell}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell className="max-md:hidden">
-                      {splitNames ? (
-                        splitNames
-                      ) : category ? (
-                        <>
-                          {parent && <span className="text-muted-foreground">{parent.name} › </span>}
-                          {category.name}
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">Uncategorized</span>
-                      )}
+                      {categoryCell}
                     </TableCell>
                     <TableCell className="text-muted-foreground max-md:hidden">
-                      {accounts.find((a) => a.id === e.accountId)?.name ?? ""}
+                      <AccountLabel account={accounts.find((a) => a.id === e.accountId)} />
                     </TableCell>
                     {showPaidBy && (
                       <TableCell className="text-muted-foreground max-md:hidden">
-                        {members.find((m) => m.userId === e.paidByUserId)?.displayName ?? "Joint"}
+                        <PersonLabel members={members} userId={e.paidByUserId} />
                       </TableCell>
                     )}
-                    <TableCell className="amount text-right">
+                    <TableCell className={cn("amount text-right", signedAmountClass(-e.amountMinor))}>
                       {e.amountMinor < 0 ? "+" : ""}
                       {formatAmount(Math.abs(e.amountMinor), household.currency)}
                     </TableCell>

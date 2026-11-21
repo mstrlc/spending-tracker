@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { PlusIcon } from "lucide-react";
+import { LightbulbIcon, PlusIcon, ZapIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { Chip, KindChip, type RecordKind } from "../chips";
 import {
   useAccounts,
   useApplyInboxRules,
@@ -16,7 +18,6 @@ import { categoryLabel } from "../categories/tree";
 import { useConfirm } from "../dialogs";
 import { useHousehold } from "../households/HouseholdPages";
 import { EmptyState, ErrorText, PageHeader, PageIntro, RowMenu, Sheet, SkeletonRows, Surface } from "../ui";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -55,18 +56,29 @@ export function RulesPage() {
   const memberName = (id: string | null) => members.find((m) => m.userId === id)?.displayName;
 
   /** What the rule makes of a row, in a phrase. */
-  function becomes(rule: InboxRule): string {
+  function becomes(rule: InboxRule): ReactNode {
+    const kind: RecordKind = rule.outcome;
+    const detail = becomesDetail(rule);
+    return (
+      <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+        <KindChip kind={kind} />
+        {detail && <span>{detail}</span>}
+      </span>
+    );
+  }
+
+  function becomesDetail(rule: InboxRule): string {
     switch (rule.outcome) {
       case "expense":
-        return ["Expense", rule.merchant, categoryLabel(categories, rule.categoryId), memberName(rule.personUserId)].filter(Boolean).join(" · ");
+        return [rule.merchant, categoryLabel(categories, rule.categoryId), memberName(rule.personUserId)].filter(Boolean).join(" · ");
       case "income":
-        return ["Income", rule.incomeSource, memberName(rule.personUserId)].filter(Boolean).join(" · ");
+        return [rule.incomeSource, memberName(rule.personUserId)].filter(Boolean).join(" · ");
       case "deduction":
-        return ["Deduction", rule.incomeSource, memberName(rule.personUserId), monthLabel(rule.monthOffset)].filter(Boolean).join(" · ");
+        return [rule.incomeSource, memberName(rule.personUserId), monthLabel(rule.monthOffset)].filter(Boolean).join(" · ");
       case "transfer":
-        return `Transfer with ${accountName(rule.otherAccountId) || "another account"}`;
+        return `With ${accountName(rule.otherAccountId) || "another account"}`;
       case "skip":
-        return `Skip: ${rule.skipReason}`;
+        return rule.skipReason;
     }
   }
 
@@ -165,11 +177,11 @@ export function RulesPage() {
                         <button type="button" className="font-medium hover:underline" onClick={() => setEditor({ open: true, rule })}>
                           {rule.name}
                         </button>
-                        {rule.auto ? <Badge variant="secondary">Automatic</Badge> : <Badge variant="outline">Suggests</Badge>}
+                        {rule.auto ? <Chip tone="transfer" icon={ZapIcon}>Automatic</Chip> : <Chip icon={LightbulbIcon}>Suggests</Chip>}
                         {rule.priority !== 0 && <span className="text-xs text-muted-foreground">Priority {rule.priority}</span>}
                       </div>
                       <div className="text-xs text-muted-foreground md:hidden">{when}</div>
-                      <div className="text-xs text-muted-foreground md:hidden">{becomes(rule)}</div>
+                      <div className="mt-1 text-xs text-muted-foreground md:hidden">{becomes(rule)}</div>
                     </TableCell>
                     <TableCell className="whitespace-normal text-sm max-md:hidden">{when}</TableCell>
                     <TableCell className="whitespace-normal text-sm max-md:hidden">{becomes(rule)}</TableCell>

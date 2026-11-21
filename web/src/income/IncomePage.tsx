@@ -3,6 +3,7 @@ import { useAccounts, useCategories, useExpenses, useIncome, useMembers } from "
 import type { Income } from "../api/types";
 import { expenseTotals } from "../expenses/ExpensesPage";
 import { PlusIcon } from "lucide-react";
+import { AccountLabel, KindIcon, PersonLabel } from "../chips";
 import { currentMonth, formatDay, formatMonth, todayIso } from "../lib/dates";
 import { formatAmount } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
@@ -126,37 +127,39 @@ export function IncomePage() {
                   >
                     <TableCell className="text-muted-foreground max-md:hidden">{nested ? "" : formatDay(item.date)}</TableCell>
                     <TableCell className={cn("whitespace-normal", nested && "pl-6")}>
-                      {/* The button makes the row reachable by keyboard; the row click is a larger mouse target. */}
-                      <button
-                        className={cn(
-                          "text-left outline-none hover:underline focus-visible:underline",
-                          nested ? "font-normal" : "font-medium",
-                        )}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setEditor({ mode: "edit", income: item });
-                        }}
-                      >
-                        {item.source || (item.kind === "deduction" ? "Untitled deduction" : "Untitled income")}
-                      </button>
-                      {item.deductedMinor !== 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          Gross <span className="amount">{formatAmount(item.amountMinor, household.currency)}</span> → net{" "}
-                          <span className="amount">{formatAmount(item.amountMinor - item.deductedMinor, household.currency)}</span>
+                      <div className="flex items-start gap-2.5">
+                        <KindIcon kind={item.kind === "deduction" ? "deduction" : "income"} className={cn("mt-px", nested && "size-5")} />
+                        <div className="min-w-0">
+                          {/* The button makes the row reachable by keyboard; the row click is a larger mouse target. */}
+                          <button
+                            className={cn(
+                              "text-left outline-none hover:underline focus-visible:underline",
+                              nested ? "font-normal" : "font-medium",
+                            )}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setEditor({ mode: "edit", income: item });
+                            }}
+                          >
+                            {item.source || (item.kind === "deduction" ? "Untitled deduction" : "Untitled income")}
+                          </button>
+                          {item.deductedMinor !== 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              Gross <span className="amount">{formatAmount(item.amountMinor, household.currency)}</span> → net{" "}
+                              <span className="amount">{formatAmount(item.amountMinor - item.deductedMinor, household.currency)}</span>
+                            </div>
+                          )}
+                          {item.notes && <div className="text-xs text-muted-foreground">{item.notes}</div>}
+                          {!nested && <div className="text-xs text-muted-foreground md:hidden">{formatDay(item.date)}</div>}
                         </div>
-                      )}
-                      {item.kind === "deduction" && !nested && (
-                        <div className="text-xs text-muted-foreground">Deduction</div>
-                      )}
-                      {item.notes && <div className="text-xs text-muted-foreground">{item.notes}</div>}
-                      {!nested && <div className="text-xs text-muted-foreground md:hidden">{formatDay(item.date)}</div>}
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground max-md:hidden">
-                      {accounts.find((a) => a.id === item.accountId)?.name ?? ""}
+                      <AccountLabel account={accounts.find((a) => a.id === item.accountId)} />
                     </TableCell>
                     {showRecipient && (
                       <TableCell className="text-muted-foreground max-md:hidden">
-                        {members.find((m) => m.userId === item.recipientUserId)?.displayName ?? "Shared"}
+                        <PersonLabel members={members} userId={item.recipientUserId} jointLabel="Shared" />
                       </TableCell>
                     )}
                     <TableCell className={cn("amount text-right", item.kind === "deduction" && "text-muted-foreground")}>

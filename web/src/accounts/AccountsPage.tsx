@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from "react";
+import { AccountIcon, Chip, PersonLabel } from "../chips";
 import { useAccounts, useAssets, useDeleteAccount, useMembers, useSaveAccount } from "../api/hooks";
 import type { Account, AccountInput, AccountKind } from "../api/types";
 import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
 import { useConfirm, usePrompt } from "../dialogs";
 import { EmptyState, ErrorText, Field, FormError, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -152,20 +152,21 @@ export function AccountsPage() {
                 <TableRow key={a.id} className={cn(a.status === "closed" && "text-muted-foreground")}>
                   <TableCell className="whitespace-normal font-medium">
                     <span className="flex items-center gap-2">
+                      <AccountIcon kind={a.kind} className="size-4" />
                       <InlineRename
                         name={a.name}
                         editing={renaming === a.id}
                         onSave={(newName) => update(a, { name: newName })}
                         onDone={() => setRenaming(null)}
                       />
-                      {a.status === "closed" && <Badge variant="secondary">Closed</Badge>}
+                      {a.status === "closed" && <Chip>Closed</Chip>}
                     </span>
-                    {a.iban && <div className="amount text-xs font-normal text-muted-foreground">{formatIban(a.iban)}</div>}
+                    {a.iban && <div className="amount pl-6 text-xs font-normal text-muted-foreground">{formatIban(a.iban)}</div>}
                     {(() => {
                       const fed = assets.find((asset) => asset.accountId === a.id);
-                      return fed ? <div className="text-xs font-normal text-muted-foreground">Feeds {fed.name}</div> : null;
+                      return fed ? <div className="pl-6 text-xs font-normal text-muted-foreground">Feeds {fed.name}</div> : null;
                     })()}
-                    <div className="text-xs font-normal text-muted-foreground md:hidden">
+                    <div className="pl-6 text-xs font-normal text-muted-foreground md:hidden">
                       {kindLabel(a.kind)} · {ownerName(a)}
                     </div>
                   </TableCell>
@@ -183,7 +184,9 @@ export function AccountsPage() {
                       ))}
                     </NativeSelect>
                   </TableCell>
-                  <TableCell className="text-muted-foreground max-md:hidden">{ownerName(a)}</TableCell>
+                  <TableCell className="text-muted-foreground max-md:hidden">
+                    <PersonLabel members={members} userId={a.ownerUserId} jointLabel="Shared" />
+                  </TableCell>
                   <TableCell className="text-right">
                     <RowMenu
                       label={a.name}

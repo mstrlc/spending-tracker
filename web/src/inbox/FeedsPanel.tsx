@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { ConnectionStatus } from "../chips";
 import {
   useAccounts,
   useBankConnections,
@@ -19,7 +20,6 @@ import { formatMoney } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError, RowMenu, SheetBody } from "../ui";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -229,7 +229,7 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 font-medium">
                         {conn.institutionName}
-                        <Badge variant={conn.status === "active" ? "secondary" : "outline"}>{conn.status}</Badge>
+                        <ConnectionStatus status={conn.status} />
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {conn.accounts.length} {conn.accounts.length === 1 ? "account" : "accounts"}

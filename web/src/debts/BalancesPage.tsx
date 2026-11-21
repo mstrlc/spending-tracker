@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AccountLabel, Avatar, KindIcon, PersonLabel } from "../chips";
 import { PlusIcon } from "lucide-react";
 import { useAccounts, useBalances, useCategories, useExpenses, useMembers, useSettlements, useSplitRules } from "../api/hooks";
 import type { BalanceEntry, Debt, Expense, Settlement, SplitRule } from "../api/types";
@@ -122,15 +123,18 @@ export function BalancesPage() {
                 <TableRow key={`${entry.kind}-${entry.id}`} className="cursor-pointer" onClick={() => open(entry)}>
                   <TableCell className="align-top text-muted-foreground max-md:hidden">{formatDay(entry.date)}</TableCell>
                   <TableCell className="whitespace-normal align-top">
-                    <button
-                      className="text-left font-medium outline-none hover:underline focus-visible:underline"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        open(entry);
-                      }}
-                    >
-                      {entry.kind === "settlement" ? "Settlement" : entry.label || "Untitled expense"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <KindIcon kind={entry.kind === "settlement" ? "settlement" : "expense"} className="size-5 [&>svg]:size-3" />
+                      <button
+                        className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          open(entry);
+                        }}
+                      >
+                        {entry.kind === "settlement" ? "Settlement" : entry.label || "Untitled expense"}
+                      </button>
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       {entry.kind === "settlement"
                         ? entry.label
@@ -140,7 +144,11 @@ export function BalancesPage() {
                   </TableCell>
                   <TableCell className="whitespace-normal align-top text-muted-foreground">
                     {entry.debts.map((debt, i) => (
-                      <div key={i}>
+                      <div key={i} className="flex items-center gap-1.5">
+                        <span className="flex -space-x-1">
+                          <Avatar members={people} userId={debt.fromUserId} className="ring-2 ring-background" />
+                          <Avatar members={people} userId={debt.toUserId} className="ring-2 ring-background" />
+                        </span>
                         {entry.kind === "settlement"
                           ? `${memberName(people, debt.toUserId)} paid ${memberName(people, debt.fromUserId)} back`
                           : owesLine(debt, people)}
@@ -184,8 +192,12 @@ export function BalancesPage() {
               <TableBody>
                 {contributions.map((c) => (
                   <TableRow key={`${c.userId}-${c.accountId}`}>
-                    <TableCell className="font-medium">{memberName(people, c.userId)}</TableCell>
-                    <TableCell className="text-muted-foreground">{accounts.find((a) => a.id === c.accountId)?.name ?? "Account"}</TableCell>
+                    <TableCell className="font-medium">
+                      <PersonLabel members={people} userId={c.userId} />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <AccountLabel account={accounts.find((a) => a.id === c.accountId)} />
+                    </TableCell>
                     <TableCell className="amount text-right">
                       {c.amountMinor < 0 ? "−" : ""}
                       {formatAmount(Math.abs(c.amountMinor), household.currency)}
