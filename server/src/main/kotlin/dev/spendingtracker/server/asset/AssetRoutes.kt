@@ -652,6 +652,8 @@ private class Book(
             accountId = row[Assets.accountId]?.toString(),
             valueSource = standing.valueSource,
             contributedMinor = standing.contributedMinor,
+            repaidMinor = standing.repaidMinor,
+            borrowedMinor = standing.borrowedMinor,
             valueMinor = standing.valueMinor,
             valuedOn = standing.valuedOn,
             gainMinor = standing.gainMinor,

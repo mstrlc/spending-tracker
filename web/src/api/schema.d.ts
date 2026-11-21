@@ -373,23 +373,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/households/{householdId}/assets/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description What the holdings (or one of them) had put in and were worth at the end of each month since the first contribution, then today. */
-        get: operations["getAssetHistory"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/households/{householdId}/assets/summary": {
         parameters: {
             query?: never;
@@ -399,6 +382,23 @@ export interface paths {
         };
         /** @description Totals across owned assets and liabilities, and net worth as of today. */
         get: operations["getAssetSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/assets/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What the holdings (or one of them) had put in and were worth at the end of each month since the first contribution, then today. */
+        get: operations["getAssetHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1137,23 +1137,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/securities/fx": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description ČNB exchange rate for 1 unit of [from] in [to] on or before [date]. */
-        get: operations["getFxRate"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/securities/search": {
         parameters: {
             query?: never;
@@ -1163,6 +1146,23 @@ export interface paths {
         };
         /** @description Stocks, ETFs and funds matching a name, ticker or ISIN, for a holding to follow. */
         get: operations["searchSecurities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/securities/fx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ČNB exchange rate for 1 unit of [from] in [to] on or before [date]. */
+        get: operations["getFxRate"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1583,6 +1583,11 @@ export interface components {
              */
             deductedMinor: number;
         };
+        /**
+         * IncomeKind
+         * @enum {string}
+         */
+        IncomeKind: "earning" | "deduction";
         /** PayslipDeduction */
         PayslipDeduction: {
             /** String */
@@ -1595,11 +1600,6 @@ export interface components {
             /** String */
             notes?: string;
         };
-        /**
-         * IncomeKind
-         * @enum {string}
-         */
-        IncomeKind: "earning" | "deduction";
         /** IncomeInput */
         IncomeInput: {
             /** LocalDate */
@@ -1668,6 +1668,16 @@ export interface components {
              * Long
              * Format: int64
              */
+            repaidMinor: null | number;
+            /**
+             * Long
+             * Format: int64
+             */
+            borrowedMinor: null | number;
+            /**
+             * Long
+             * Format: int64
+             */
             valueMinor: number;
             /** LocalDate */
             valuedOn: null | string;
@@ -1694,6 +1704,24 @@ export interface components {
          * @enum {string}
          */
         AssetKind: "fund" | "stock" | "bond" | "crypto" | "savings" | "scheme" | "receivable" | "vehicle" | "property" | "other" | "loan" | "card_debt" | "payable";
+        /** SecurityQuote */
+        SecurityQuote: {
+            /** String */
+            symbol: string;
+            /** String */
+            name: string;
+            /** String */
+            exchange: string;
+            /** String */
+            currency: string;
+            /**
+             * Double
+             * Format: double
+             */
+            close: null | number;
+            /** LocalDate */
+            closeOn: null | string;
+        };
         /**
          * ValueSource
          * @enum {string}
@@ -1736,24 +1764,6 @@ export interface components {
              * Format: double
              */
             annualReturn: null | number;
-        };
-        /** SecurityQuote */
-        SecurityQuote: {
-            /** String */
-            symbol: string;
-            /** String */
-            name: string;
-            /** String */
-            exchange: string;
-            /** String */
-            currency: string;
-            /**
-             * Double
-             * Format: double
-             */
-            close: null | number;
-            /** LocalDate */
-            closeOn: null | string;
         };
         /** HistoryPoint */
         HistoryPoint: {
@@ -1839,13 +1849,6 @@ export interface components {
              */
             amountMinor?: null | number;
             /**
-             * Long
-             * Format: int64
-             */
-            originalAmountMinor?: null | number;
-            /** String */
-            originalCurrency?: null | string;
-            /**
              * Double
              * Format: double
              */
@@ -1859,20 +1862,13 @@ export interface components {
              * Format: int32
              */
             version?: null | number;
-        };
-        /** FxRateQuote */
-        FxRateQuote: {
-            /** String */
-            from: string;
-            /** String */
-            to: string;
-            /** LocalDate */
-            date: string;
             /**
-             * Double
-             * Format: double
+             * Long
+             * Format: int64
              */
-            rate: null | number;
+            originalAmountMinor?: null | number;
+            /** String */
+            originalCurrency?: null | string;
         };
         /** Valuation */
         Valuation: {
@@ -3261,6 +3257,20 @@ export interface components {
             exchange: string;
             /** String */
             type: string;
+        };
+        /** FxRateQuote */
+        FxRateQuote: {
+            /** String */
+            from: string;
+            /** String */
+            to: string;
+            /** LocalDate */
+            date: string;
+            /**
+             * Double
+             * Format: double
+             */
+            rate: null | number;
         };
     };
     responses: never;
@@ -4683,37 +4693,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    getFxRate: {
-        parameters: {
-            query: {
-                from: string;
-                to: string;
-                date: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FxRateQuote"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
             };
         };
     };
@@ -7475,6 +7454,37 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getFxRate: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                date: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FxRateQuote"];
+                };
+            };
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

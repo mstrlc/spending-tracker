@@ -21,10 +21,22 @@ data class Standing(
     val firstContributedOn: LocalDate?,
     val valueSource: ValueSource,
     val liability: Boolean = false,
+    val repaidMinor: Long? = null,
+    val borrowedMinor: Long? = null,
 ) {
     /** Valued at market prices rather than by valuations. */
     val marketValued: Boolean get() = valueSource == ValueSource.MARKET
     val gainMinor get() = if (liability) 0L else valueMinor - contributedMinor
+}
+
+private fun liabilityFlows(amounts: List<Long>, liability: Boolean): Pair<Long?, Long?> {
+    if (!liability) return null to null
+    var repaid = 0L
+    var borrowed = 0L
+    for (amount in amounts) {
+        if (amount > 0) repaid += amount else if (amount < 0) borrowed -= amount
+    }
+    return repaid to borrowed
 }
 
 /**
@@ -45,7 +57,8 @@ fun standing(contributions: List<Dated>, valuations: List<Dated>, liability: Boo
         base + contributions.filter { it.date > latest.date }.sumOf { it.amountMinor }
     }
     val source = if (latest != null) ValueSource.VALUATION else ValueSource.COST
-    return Standing(contributed, value, latest?.date, contributions.minOfOrNull { it.date }, valueSource = source, liability = liability)
+    val (repaid, borrowed) = liabilityFlows(contributions.map { it.amountMinor }, liability)
+    return Standing(contributed, value, latest?.date, contributions.minOfOrNull { it.date }, valueSource = source, liability = liability, repaidMinor = repaid, borrowedMinor = borrowed)
 }
 
 /**
@@ -76,7 +89,8 @@ fun standingOn(
     val bankPriced = bankValue?.invoke(on)
     if (bankPriced != null) {
         val contributed = held.sumOf { it.amountMinor }
-        return Standing(contributed, bankPriced.valueMinor, bankPriced.date, held.minOfOrNull { it.date }, ValueSource.BANK, liability = liability)
+        val (repaid, borrowed) = liabilityFlows(held.map { it.amountMinor }, liability)
+        return Standing(contributed, bankPriced.valueMinor, bankPriced.date, held.minOfOrNull { it.date }, ValueSource.BANK, liability = liability, repaidMinor = repaid, borrowedMinor = borrowed)
     }
     return standing(held.map { Dated(it.date, it.amountMinor) }, valuations.filter { it.date <= on }, liability = liability)
 }
