@@ -46,6 +46,8 @@ const assets = [
   asset({ id: "a2", name: "Portu · Bob", kind: "fund", ownerUserId: "u2", contributedMinor: 50_000_00, valueMinor: 60_000_00, gainMinor: 10_000_00 }),
   asset({ id: "a3", name: "Spoření", kind: "savings", valueSource: "bank", accountId: "acc1", contributedMinor: 48_000_00, valueMinor: 50_000_00 }),
   asset({ id: "a4", name: "Mortgage", kind: "loan", valueSource: "valuation", valueMinor: -80_000_00, contributedMinor: 20_000_00, repaidMinor: 20_000_00, borrowedMinor: 100_000_00, gainMinor: 0 }),
+  asset({ id: "a5", name: "Old car", kind: "vehicle", valueMinor: 0, contributedMinor: 30_000_00, gainMinor: -30_000_00 }),
+  asset({ id: "a6", name: "Paid-off loan", kind: "loan", valueSource: "valuation", valueMinor: 0, repaidMinor: 50_000_00, borrowedMinor: 50_000_00 }),
 ];
 
 /** The page's whole-CZK formatting, so the test doesn't hardcode a locale's grouping. */
@@ -157,4 +159,28 @@ test("can optionally group the assets by person instead of kind", async () => {
   expect(rowTexts().findIndex((r) => r.includes("Fund"))).toBeGreaterThanOrEqual(0);
   // Both tables show the Held by column again (exact name, so the "Filter Held by" buttons don't match).
   expect(screen.getAllByRole("button", { name: "Held by" })).toHaveLength(2);
+});
+
+test("collapses zero-value assets and liabilities into one expandable line per group", async () => {
+  renderAssets();
+  expect(await screen.findByText("Net worth")).toBeTruthy();
+
+  const rows = rowTexts();
+  const at = (text: string) => rows.findIndex((r) => r.includes(text));
+
+  // The zero-value asset ("Old car") is collapsed under the "Other"/vehicle group, not shown as its own row.
+  expect(at("Old car")).toBe(-1);
+  expect(at("1 more with no value")).toBeGreaterThan(at("Spoření"));
+
+  // The zero-value liability ("Paid-off loan") is collapsed under the Loan group.
+  expect(at("Paid-off loan")).toBe(-1);
+  expect(at("1 more with nothing owed")).toBeGreaterThan(at("Mortgage"));
+
+  // Expanding the owned zero line reveals the hidden asset.
+  fireEvent.click(screen.getByText("1 more with no value"));
+  expect(rowTexts().findIndex((r) => r.includes("Old car"))).toBeGreaterThanOrEqual(0);
+
+  // Expanding the liability zero line reveals the hidden liability.
+  fireEvent.click(screen.getByText("1 more with nothing owed"));
+  expect(rowTexts().findIndex((r) => r.includes("Paid-off loan"))).toBeGreaterThanOrEqual(0);
 });

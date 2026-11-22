@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { Link } from "react-router";
 import { AssetIcon, PersonLabel, assetKindTone, gainClass, memberTone, type Tone } from "../chips";
 import {
@@ -88,6 +89,15 @@ export function AssetsPage() {
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
   const [flashId, setFlashId] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>("kind");
+  /** Which group keys have their zero-value rows expanded (owned and liabilities share the keyspace by prefix). */
+  const [expandedZero, setExpandedZero] = useState<Set<string>>(new Set());
+  const toggleZero = (key: string) =>
+    setExpandedZero((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const pendingDeletes = usePendingDeleteIds();
   const rows = (assets.data ?? []).filter((a) => !pendingDeletes.has(a.id));
@@ -185,6 +195,18 @@ export function AssetsPage() {
   const viewing = editor.mode === "view" ? rows.find((i) => i.id === editor.id) : undefined;
   const openAdd = () => setEditor({ mode: "add" });
   const close = () => setEditor({ mode: "closed" });
+
+  /** Split a group's sorted rows into those with a value and those at zero, so the zero ones can collapse into one line. */
+  const splitByZero = (groupRows: Asset[]) => {
+    const withValue: Asset[] = [];
+    const atZero: Asset[] = [];
+    for (const r of groupRows) {
+      // Liabilities are stored negative; "0 owed" is valueMinor === 0 either way.
+      if (r.valueMinor === 0) atZero.push(r);
+      else withValue.push(r);
+    }
+    return { withValue, atZero };
+  };
 
   return (
     <>
@@ -303,6 +325,11 @@ export function AssetsPage() {
                 {/* Like the Income page's group-by-person: each group gets a header row with its totals. */}
                 {ownedGroups.map((group) => {
                   const groupRatio = gainRatio(group);
+                  const sorted = sortRows(group.rows, sort, ownedSortValues);
+                  const { withValue, atZero } = splitByZero(sorted);
+                  const zeroKey = `owned-${group.key}`;
+                  const zeroExpanded = expandedZero.has(zeroKey);
+                  const colSpan = showOwnerCol ? 6 : 5;
                   return (
                     <Fragment key={group.key}>
                       {/* One cell per column, so the group's worth and gain sit under their own columns. */}
@@ -334,7 +361,7 @@ export function AssetsPage() {
                           {groupRatio === null ? "–" : formatPercent(groupRatio)}
                         </TableCell>
                       </TableRow>
-                    {sortRows(group.rows, sort, ownedSortValues).map((i) => {
+                    {withValue.map((i) => {
                       const r = gainRatio(i);
                       return (
                         <TableRow
@@ -381,6 +408,64 @@ export function AssetsPage() {
                         </TableRow>
                       );
                     })}
+                    {atZero.length > 0 && (
+                      <>
+                        <TableRow
+                          className="cursor-pointer text-muted-foreground hover:bg-muted/40"
+                          onClick={() => toggleZero(zeroKey)}
+                        >
+                          <TableCell colSpan={colSpan} className="py-1.5 text-sm">
+                            <span className="inline-flex items-center gap-1">
+                              {zeroExpanded ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
+                              {atZero.length === 1 ? "1 more with no value" : `${atZero.length} more with no value`}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                        {zeroExpanded &&
+                          atZero.map((i) => {
+                            const r = gainRatio(i);
+                            return (
+                              <TableRow
+                                key={i.id}
+                                className={cn("cursor-pointer text-muted-foreground", i.id === flashId && "animate-flash")}
+                                onClick={() => setEditor({ mode: "view", id: i.id })}
+                                onAnimationEnd={() => setFlashId(null)}
+                              >
+                                <TableCell className="whitespace-normal">
+                                  <div className="flex items-center gap-3">
+                                    <AssetIcon kind={i.kind} />
+                                    <div className="min-w-0">
+                                      <button
+                                        className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setEditor({ mode: "view", id: i.id });
+                                        }}
+                                      >
+                                        {i.name}
+                                      </button>
+                                      <div className="text-xs text-muted-foreground">{valuedBy(i)}</div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                {showOwnerCol && (
+                                  <TableCell className="text-muted-foreground max-md:hidden">
+                                    <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
+                                  </TableCell>
+                                )}
+                                <TableCell className="amount text-right max-md:hidden">{formatAsset(i.contributedMinor, currency)}</TableCell>
+                                <TableCell className="amount text-right">{formatAsset(i.valueMinor, currency)}</TableCell>
+                                <TableCell className={cn("amount text-right max-md:hidden", i.gainMinor !== null && gainClass(i.gainMinor))}>
+                                  {i.gainMinor === null ? "–" : formatSigned(i.gainMinor, currency)}
+                                </TableCell>
+                                <TableCell className="amount text-right">
+                                  <div className={cn(r !== null && gainClass(r))}>{r === null ? "–" : formatPercent(r)}</div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                      </>
+                    )}
                     </Fragment>
                   );
                 })}
@@ -414,61 +499,117 @@ export function AssetsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {owedGroups.map((group) => (
-                  <Fragment key={group.key}>
-                    {/* One cell per column, so the group's owed total sits under the Owed column. */}
-                    <TableRow className="bg-muted/40 hover:bg-muted/40">
-                      <TableCell className="py-1.5">
-                        {group.kind ? (
-                          <span className="flex items-center gap-2 text-sm font-medium">
-                            <AssetIcon kind={group.kind} className="size-6" />
-                            {group.label}
-                          </span>
-                        ) : (
-                          <div className="text-sm font-medium">
-                            <PersonLabel members={members} userId={group.ownerUserId} jointLabel="Shared" />
-                          </div>
-                        )}
-                      </TableCell>
-                      {showOwnerCol && <TableCell className="py-1.5 max-md:hidden" />}
-                      <TableCell className="py-1.5 max-md:hidden" />
-                      <TableCell className="amount py-1.5 text-right font-medium">{formatAsset(-group.valueMinor, currency)}</TableCell>
-                    </TableRow>
-                    {sortRows(group.rows, owedSort, owedSortValues).map((i) => (
-                      <TableRow
-                        key={i.id}
-                        className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
-                        onClick={() => setEditor({ mode: "view", id: i.id })}
-                        onAnimationEnd={() => setFlashId(null)}
-                      >
-                        <TableCell className="whitespace-normal">
-                          <div className="flex items-center gap-3">
-                            <AssetIcon kind={i.kind} />
-                            <div className="min-w-0">
-                              <button
-                                className="text-left font-medium outline-none hover:underline focus-visible:underline"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setEditor({ mode: "view", id: i.id });
-                                }}
-                              >
-                                {i.name}
-                              </button>
-                              <div className="text-xs text-muted-foreground">{valuedBy(i)}</div>
+                {owedGroups.map((group) => {
+                  const sorted = sortRows(group.rows, owedSort, owedSortValues);
+                  const { withValue, atZero } = splitByZero(sorted);
+                  const zeroKey = `owed-${group.key}`;
+                  const zeroExpanded = expandedZero.has(zeroKey);
+                  const colSpan = showOwnerCol ? 4 : 3;
+                  return (
+                    <Fragment key={group.key}>
+                      {/* One cell per column, so the group's owed total sits under the Owed column. */}
+                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableCell className="py-1.5">
+                          {group.kind ? (
+                            <span className="flex items-center gap-2 text-sm font-medium">
+                              <AssetIcon kind={group.kind} className="size-6" />
+                              {group.label}
+                            </span>
+                          ) : (
+                            <div className="text-sm font-medium">
+                              <PersonLabel members={members} userId={group.ownerUserId} jointLabel="Shared" />
                             </div>
-                          </div>
+                          )}
                         </TableCell>
-                        {showOwnerCol && (
-                          <TableCell className="text-muted-foreground max-md:hidden">
-                            <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
-                          </TableCell>
-                        )}
-                        <TableCell className="amount text-right max-md:hidden">{formatAsset(i.repaidMinor ?? 0, currency)}</TableCell>
-                        <TableCell className="amount text-right">{formatAsset(-i.valueMinor, currency)}</TableCell>
+                        {showOwnerCol && <TableCell className="py-1.5 max-md:hidden" />}
+                        <TableCell className="py-1.5 max-md:hidden" />
+                        <TableCell className="amount py-1.5 text-right font-medium">{formatAsset(-group.valueMinor, currency)}</TableCell>
                       </TableRow>
-                    ))}
-                  </Fragment>
-                ))}
+                      {withValue.map((i) => (
+                        <TableRow
+                          key={i.id}
+                          className={cn("cursor-pointer", i.id === flashId && "animate-flash")}
+                          onClick={() => setEditor({ mode: "view", id: i.id })}
+                          onAnimationEnd={() => setFlashId(null)}
+                        >
+                          <TableCell className="whitespace-normal">
+                            <div className="flex items-center gap-3">
+                              <AssetIcon kind={i.kind} />
+                              <div className="min-w-0">
+                                <button
+                                  className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setEditor({ mode: "view", id: i.id });
+                                  }}
+                                >
+                                  {i.name}
+                                </button>
+                                <div className="text-xs text-muted-foreground">{valuedBy(i)}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          {showOwnerCol && (
+                            <TableCell className="text-muted-foreground max-md:hidden">
+                              <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
+                            </TableCell>
+                          )}
+                          <TableCell className="amount text-right max-md:hidden">{formatAsset(i.repaidMinor ?? 0, currency)}</TableCell>
+                          <TableCell className="amount text-right">{formatAsset(-i.valueMinor, currency)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {atZero.length > 0 && (
+                        <>
+                          <TableRow
+                            className="cursor-pointer text-muted-foreground hover:bg-muted/40"
+                            onClick={() => toggleZero(zeroKey)}
+                          >
+                            <TableCell colSpan={colSpan} className="py-1.5 text-sm">
+                              <span className="inline-flex items-center gap-1">
+                                {zeroExpanded ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
+                                {atZero.length === 1 ? "1 more with nothing owed" : `${atZero.length} more with nothing owed`}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                          {zeroExpanded &&
+                            atZero.map((i) => (
+                              <TableRow
+                                key={i.id}
+                                className={cn("cursor-pointer text-muted-foreground", i.id === flashId && "animate-flash")}
+                                onClick={() => setEditor({ mode: "view", id: i.id })}
+                                onAnimationEnd={() => setFlashId(null)}
+                              >
+                                <TableCell className="whitespace-normal">
+                                  <div className="flex items-center gap-3">
+                                    <AssetIcon kind={i.kind} />
+                                    <div className="min-w-0">
+                                      <button
+                                        className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setEditor({ mode: "view", id: i.id });
+                                        }}
+                                      >
+                                        {i.name}
+                                      </button>
+                                      <div className="text-xs text-muted-foreground">{valuedBy(i)}</div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                {showOwnerCol && (
+                                  <TableCell className="text-muted-foreground max-md:hidden">
+                                    <PersonLabel members={members} userId={i.ownerUserId} jointLabel="Shared" />
+                                  </TableCell>
+                                )}
+                                <TableCell className="amount text-right max-md:hidden">{formatAsset(i.repaidMinor ?? 0, currency)}</TableCell>
+                                <TableCell className="amount text-right">{formatAsset(-i.valueMinor, currency)}</TableCell>
+                              </TableRow>
+                            ))}
+                        </>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </TableBody>
             </Table>
           </Surface>

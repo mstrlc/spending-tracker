@@ -1,4 +1,5 @@
 import { Fragment, useState, type FormEvent } from "react";
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { AccountKindIcon, PersonLabel } from "../chips";
 import { useAccountBalances, useAccounts, useAccountValues, useAddAccountBalance, useDeleteAccountBalance, useMembers } from "../api/hooks";
 import type { Account, AccountKind, AccountValue } from "../api/types";
@@ -44,6 +45,15 @@ export function AccountsSection({ groupBy = "kind" }: { groupBy?: "kind" | "pers
   const values = useAccountValues(household.id);
   const members = useMembers(household.id).data ?? [];
   const [openId, setOpenId] = useState<string | null>(null);
+  /** Which group keys have their zero-balance rows expanded. */
+  const [expandedZero, setExpandedZero] = useState<Set<string>>(new Set());
+  const toggleZero = (key: string) =>
+    setExpandedZero((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const rows: Row[] = (values.data ?? [])
     .filter((v) => v.followedByAssetId === null || v.followedByAssetId === undefined)
@@ -90,7 +100,13 @@ export function AccountsSection({ groupBy = "kind" }: { groupBy?: "kind" | "pers
             </TableRow>
           </TableHeader>
           <TableBody>
-            {groups.map((group) => (
+            {groups.map((group) => {
+              // Accounts with no balance (null or 0) collapse into one line at the end of the group.
+              const withBalance = group.rows.filter((r) => r.value.valueMinor !== null && r.value.valueMinor !== 0);
+              const atZero = group.rows.filter((r) => r.value.valueMinor === null || r.value.valueMinor === 0);
+              const zeroExpanded = expandedZero.has(group.key);
+              const colSpan = showOwnerCol ? 3 : 2;
+              return (
               <Fragment key={group.key}>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
                   <TableCell className="py-1.5">
@@ -108,7 +124,7 @@ export function AccountsSection({ groupBy = "kind" }: { groupBy?: "kind" | "pers
                   {showOwnerCol && <TableCell className="py-1.5 max-md:hidden" />}
                   <TableCell className="amount py-1.5 text-right font-medium">{formatAsset(group.totalMinor, currency)}</TableCell>
                 </TableRow>
-            {group.rows.map(({ account, value }) => (
+            {withBalance.map(({ account, value }) => (
               <TableRow key={account.id} className="cursor-pointer" onClick={() => setOpenId(account.id)}>
                 <TableCell className="whitespace-normal">
                   <div className="flex items-center gap-3">
@@ -141,8 +157,58 @@ export function AccountsSection({ groupBy = "kind" }: { groupBy?: "kind" | "pers
                 </TableCell>
               </TableRow>
             ))}
+            {atZero.length > 0 && (
+              <>
+                <TableRow
+                  className="cursor-pointer text-muted-foreground hover:bg-muted/40"
+                  onClick={() => toggleZero(group.key)}
+                >
+                  <TableCell colSpan={colSpan} className="py-1.5 text-sm">
+                    <span className="inline-flex items-center gap-1">
+                      {zeroExpanded ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
+                      {atZero.length === 1 ? "1 more with no balance" : `${atZero.length} more with no balance`}
+                    </span>
+                  </TableCell>
+                </TableRow>
+                {zeroExpanded &&
+                  atZero.map(({ account, value }) => (
+                    <TableRow key={account.id} className="cursor-pointer text-muted-foreground" onClick={() => setOpenId(account.id)}>
+                      <TableCell className="whitespace-normal">
+                        <div className="flex items-center gap-3">
+                          <AccountKindIcon kind={account.kind} />
+                          <div className="min-w-0">
+                            <button
+                              className="text-left font-medium outline-none hover:underline focus-visible:underline"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setOpenId(account.id);
+                              }}
+                            >
+                              {account.name}
+                            </button>
+                            <div className="text-xs text-muted-foreground">{balanceSource(value)}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      {showOwnerCol && (
+                        <TableCell className="text-muted-foreground max-md:hidden">
+                          <PersonLabel members={members} userId={account.ownerUserId} jointLabel="Shared" />
+                        </TableCell>
+                      )}
+                      <TableCell className="amount text-right">
+                        {value.valueMinor === null ? (
+                          <span className="text-muted-foreground">Set balance</span>
+                        ) : (
+                          formatAsset(value.valueMinor, currency)
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </>
+            )}
               </Fragment>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </Surface>
