@@ -6,9 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import dev.spendingtracker.android.data.SessionApi
 import dev.spendingtracker.android.expenses.ExpenseEditorScreen
@@ -40,6 +42,12 @@ fun AppNav(isDebugBuild: Boolean) {
     NavDisplay(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
+        // The ViewModelStore decorator scopes each entry's ViewModels to that entry (so the editor gets a
+        // fresh ViewModel per expense, login starts blank after logout); saveable state is the default.
+        entryDecorators = listOf(
+            rememberSaveableStateHolderNavEntryDecorator(),
+            rememberViewModelStoreNavEntryDecorator(),
+        ),
         entryProvider = { key: NavKey -> entryFor(key, isDebugBuild, sessionApi, backStack) },
     )
 }
@@ -65,7 +73,8 @@ private fun entryFor(
     is Main -> NavEntry(key) { _ ->
         MainScreen(
             initialMonth = key.month,
-            onOpenExpense = { expenseId -> backStack.add(ExpenseEditor(key.month, expenseId)) },
+            // The month the user has paged to, not the one the entry started with.
+            onOpenExpense = { month, expenseId -> backStack.add(ExpenseEditor(month, expenseId)) },
             onLogout = {
                 backStack.clear()
                 backStack.add(Login)

@@ -44,7 +44,7 @@ private enum class Tab(val label: String) {
 @Composable
 fun MainScreen(
     initialMonth: String,
-    onOpenExpense: (String?) -> Unit,
+    onOpenExpense: (month: String, expenseId: String?) -> Unit,
     onLogout: () -> Unit,
 ) {
     val sessionApi = koinInject<SessionApi>()
@@ -107,8 +107,8 @@ fun MainScreen(
                 Tab.Overview -> OverviewScreen(month = month, sessionApi = sessionApi)
                 Tab.Expenses -> ExpensesScreen(
                     month = month,
-                    onAddExpense = { onOpenExpense(null) },
-                    onOpenExpense = { onOpenExpense(it) },
+                    onAddExpense = { onOpenExpense(month, null) },
+                    onOpenExpense = { onOpenExpense(month, it) },
                     sessionApi = sessionApi,
                 )
                 Tab.Account -> AccountScreen(sessionApi = sessionApi, onLogout = onLogout)
