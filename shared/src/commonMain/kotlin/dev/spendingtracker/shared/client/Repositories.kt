@@ -14,6 +14,11 @@ import io.ktor.client.request.url
 import io.ktor.http.parameters
 import kotlinx.datetime.LocalDate
 
+/**
+ * Thin suspend-function wrappers over [ApiClient], one per area the app uses. (The plan mentioned Flows too;
+ * these are all plain request/response calls, so suspend functions suffice — reactive streams come with the UI.)
+ */
+
 /** Login, current user, logout. Token login sets no cookie, so it's the one mobile clients use. */
 class AuthRepository(private val api: ApiClient) {
     suspend fun login(email: String, password: String): TokenResponse =
@@ -21,7 +26,8 @@ class AuthRepository(private val api: ApiClient) {
 
     suspend fun me(): Me = api.get("/api/auth/me")
 
-    suspend fun logout() = api.delete("/api/auth/logout")
+    /** The server's logout route is POST (it ends cookie sessions too); it answers 204. */
+    suspend fun logout() = api.postNoContent("/api/auth/logout")
 }
 
 class HouseholdRepository(private val api: ApiClient) {
