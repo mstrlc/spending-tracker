@@ -55,6 +55,7 @@ fun ExpensesScreen(
     viewModel: ExpensesViewModel = koinInject(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     val household by sessionApi.household.collectAsStateWithLifecycle()
     val currency = household?.currency ?: "CZK"
     val snackbarHostState = remember { SnackbarHostState() }
@@ -89,7 +90,7 @@ fun ExpensesScreen(
         },
     ) { padding ->
         PullToRefreshBox(
-            isRefreshing = state is ExpensesUiState.Loading,
+            isRefreshing = refreshing || state is ExpensesUiState.Loading,
             onRefresh = viewModel::refresh,
             modifier = Modifier
                 .fillMaxSize()

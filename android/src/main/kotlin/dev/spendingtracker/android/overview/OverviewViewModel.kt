@@ -29,18 +29,29 @@ class OverviewViewModel(
     private val _uiState = MutableStateFlow<OverviewUiState>(OverviewUiState.Loading)
     val uiState: StateFlow<OverviewUiState> = _uiState.asStateFlow()
 
+    /** True while a reload is in flight on top of existing content — drives the pull-to-refresh spinner. */
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+
     /** Loads [month] (YYYY-MM); the screen calls this when the month in the top bar changes. */
     fun load(month: String) {
         currentMonth = month
         val household = sessionApi.household.value ?: return
         viewModelScope.launch {
-            _uiState.value = OverviewUiState.Loading
+            // First load (or after an error) has nothing to show: full-screen spinner. Otherwise keep the
+            // old month on screen and just show the PTR indicator.
+            if (_uiState.value !is OverviewUiState.Ready) _uiState.value = OverviewUiState.Loading
+            _refreshing.value = true
             try {
                 val overview = overviewApi.get(household.id, month)
                 val categories = categoriesApi.list(household.id)
                 _uiState.value = OverviewUiState.Ready(overview, categories)
             } catch (e: Exception) {
-                _uiState.value = OverviewUiState.Error(e.message ?: "Could not load the overview.")
+                if (_uiState.value !is OverviewUiState.Ready) {
+                    _uiState.value = OverviewUiState.Error(e.message ?: "Could not load the overview.")
+                }
+            } finally {
+                _refreshing.value = false
             }
         }
     }
