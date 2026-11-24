@@ -3,6 +3,7 @@ package dev.spendingtracker.android.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -21,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import dev.spendingtracker.android.account.AccountScreen
 import dev.spendingtracker.android.data.SessionApi
 import dev.spendingtracker.android.expenses.ExpensesScreen
 import dev.spendingtracker.android.overview.OverviewScreen
@@ -32,6 +34,7 @@ import org.koin.compose.koinInject
 private enum class Tab(val label: String) {
     Overview("Overview"),
     Expenses("Expenses"),
+    Account("Account"),
 }
 
 /**
@@ -42,6 +45,7 @@ private enum class Tab(val label: String) {
 fun MainScreen(
     initialMonth: String,
     onOpenExpense: (String?) -> Unit,
+    onLogout: () -> Unit,
 ) {
     val sessionApi = koinInject<SessionApi>()
     var month by rememberSaveable { mutableStateOf(initialMonth) }
@@ -50,13 +54,15 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(formatMonth(month)) },
+                title = { Text(if (tab == Tab.Account) "Account" else formatMonth(month)) },
                 actions = {
-                    IconButton(onClick = { month = shiftMonth(month, -1) }) {
-                        Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous month")
-                    }
-                    IconButton(onClick = { month = shiftMonth(month, 1) }) {
-                        Icon(Icons.Outlined.ChevronRight, contentDescription = "Next month")
+                    if (tab != Tab.Account) {
+                        IconButton(onClick = { month = shiftMonth(month, -1) }) {
+                            Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous month")
+                        }
+                        IconButton(onClick = { month = shiftMonth(month, 1) }) {
+                            Icon(Icons.Outlined.ChevronRight, contentDescription = "Next month")
+                        }
                     }
                 },
             )
@@ -86,6 +92,13 @@ fun MainScreen(
                     label = { Text(Tab.Expenses.label) },
                     colors = colors,
                 )
+                NavigationBarItem(
+                    selected = tab == Tab.Account,
+                    onClick = { tab = Tab.Account },
+                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    label = { Text(Tab.Account.label) },
+                    colors = colors,
+                )
             }
         },
     ) { padding ->
@@ -98,6 +111,7 @@ fun MainScreen(
                     onOpenExpense = { onOpenExpense(it) },
                     sessionApi = sessionApi,
                 )
+                Tab.Account -> AccountScreen(sessionApi = sessionApi, onLogout = onLogout)
             }
         }
     }

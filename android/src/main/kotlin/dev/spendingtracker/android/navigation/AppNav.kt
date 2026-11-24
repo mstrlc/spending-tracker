@@ -66,6 +66,10 @@ private fun entryFor(
         MainScreen(
             initialMonth = key.month,
             onOpenExpense = { expenseId -> backStack.add(ExpenseEditor(key.month, expenseId)) },
+            onLogout = {
+                backStack.clear()
+                backStack.add(Login)
+            },
         )
     }
     is ExpenseEditor -> NavEntry(key) { _ ->

@@ -14,6 +14,7 @@ import dev.spendingtracker.android.data.HouseholdsApiImpl
 import dev.spendingtracker.android.data.OverviewApi
 import dev.spendingtracker.android.data.OverviewApiImpl
 import dev.spendingtracker.android.data.ServerUrlStore
+import dev.spendingtracker.android.account.AccountViewModel
 import dev.spendingtracker.android.data.SessionApi
 import dev.spendingtracker.android.data.SessionManager
 import dev.spendingtracker.android.expenses.ExpenseEditorViewModel
@@ -42,6 +43,7 @@ val appModule = module {
     // ViewModels. ExpensesViewModel is app-scoped so the editor shares its list and undo delete.
     factory { LoginViewModel(get()) }
     factory { HouseholdsViewModel(get(), get()) }
+    factory { AccountViewModel(get()) }
     factory { params -> OverviewViewModel(get(), get(), get(), params.get()) }
     single { ExpensesViewModel(get(), get(), get(), get(), get()) }
     factory { params ->
