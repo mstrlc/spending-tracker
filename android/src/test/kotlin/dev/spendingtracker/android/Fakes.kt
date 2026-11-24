@@ -27,6 +27,7 @@ import dev.spendingtracker.shared.api.Overview
 import dev.spendingtracker.shared.api.TypicalMonth
 import dev.spendingtracker.shared.client.ApiException
 import dev.spendingtracker.shared.api.ApiError
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.datetime.LocalDate
@@ -73,7 +74,9 @@ class FakeSessionApi(
     var loginResult: Result<Me> = Result.success(fakeMe),
 ) : SessionApi {
     override val serverUrl: StateFlow<String> = MutableStateFlow(initialUrl)
-    override val session: StateFlow<Session?> = MutableStateFlow(null)
+    /** Tests set this to log in or out. */
+    val sessionFlow = MutableStateFlow<Session?>(null)
+    override val session: StateFlow<Session?> = sessionFlow
     private val _household = MutableStateFlow<Household?>(fakeHousehold)
     override val household: StateFlow<Household?> = _household
     var lastLogin: Triple<String, String, String>? = null
@@ -94,9 +97,28 @@ class FakeHouseholdsApi(var households: List<Household> = listOf(fakeHousehold))
 }
 
 class FakeOverviewApi(var overview: Overview? = null) : OverviewApi {
-    override suspend fun get(householdId: String, month: String): Overview =
-        overview ?: error("no overview")
+    /** When set, answers each month with its own overview after that month's delay (paging-race tests). */
+    var byMonth: Map<String, Pair<Long, Overview>>? = null
+
+    override suspend fun get(householdId: String, month: String): Overview {
+        byMonth?.get(month)?.let { (delayMillis, overview) ->
+            delay(delayMillis)
+            return overview
+        }
+        return overview ?: error("no overview")
+    }
 }
+
+/** A logged-in [Session] for tests that log out; the client is never called. */
+fun fakeSession() = Session(
+    "http://10.0.2.2:8080",
+    dev.spendingtracker.shared.client.ApiClient("http://10.0.2.2:8080", object : dev.spendingtracker.shared.client.TokenStore {
+        override suspend fun get(): String? = null
+        override suspend fun set(token: String) {}
+        override suspend fun clear() {}
+    }),
+    fakeMe,
+)
 
 class FakeExpensesApi(
     var expenses: MutableList<Expense> = mutableListOf(),
@@ -106,7 +128,13 @@ class FakeExpensesApi(
     val deleted = mutableListOf<Pair<String, Int>>()
     var lastInput: ExpenseInput? = null
 
-    override suspend fun list(householdId: String, from: LocalDate, to: LocalDate): List<Expense> = expenses.toList()
+    /** How long list() takes for the month starting at [from]; lets tests make one month answer slower. */
+    var listDelayMillis: (from: LocalDate) -> Long = { 0L }
+
+    override suspend fun list(householdId: String, from: LocalDate, to: LocalDate): List<Expense> {
+        delay(listDelayMillis(from))
+        return expenses.filter { it.date in from..to }
+    }
     override suspend fun create(householdId: String, input: ExpenseInput): Expense {
         lastInput = input
         val e = fakeExpense("new", input.amountMinor, input.date, 1)
