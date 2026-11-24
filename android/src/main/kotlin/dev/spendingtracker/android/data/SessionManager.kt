@@ -59,6 +59,9 @@ class SessionManager(
             Result.success(response.me)
         } catch (e: ApiException) {
             Result.failure(e)
+        } catch (e: Exception) {
+            // Unreachable server, timeout, … — a login error on the screen, not a crash.
+            Result.failure(e)
         }
     }
 
