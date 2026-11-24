@@ -1,6 +1,7 @@
 package dev.spendingtracker.server.auth
 
 import de.mkammerer.argon2.Argon2Factory
+import dev.spendingtracker.server.common.badRequest
 
 /** Argon2id password hashing (OWASP baseline: 64 MiB memory, 3 iterations). */
 object Passwords {
@@ -19,4 +20,11 @@ object Passwords {
 
     fun verify(hash: String?, password: String): Boolean =
         argon2.verify(hash ?: dummyHash, password.toCharArray()) && hash != null
+
+    /** Throws a 400 naming [field] unless [password] is an acceptable new password. */
+    fun requireValid(password: String, field: String = "password") {
+        if (password.length !in MIN_LENGTH..MAX_LENGTH) {
+            throw badRequest("invalid_password", "Password must be $MIN_LENGTH to $MAX_LENGTH characters", field)
+        }
+    }
 }

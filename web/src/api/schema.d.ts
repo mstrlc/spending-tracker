@@ -85,6 +85,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Changes your own password. Signs out your other sessions; this one stays. */
+        post: operations["changePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/invites/{token}": {
         parameters: {
             query?: never;
@@ -166,6 +183,23 @@ export interface paths {
         post?: never;
         /** @description Owners can remove anyone; members can remove only themselves (leave). The last owner can't be removed. Their accounts and expenses become shared. A member without a login is deleted altogether. */
         delete: operations["removeMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/{householdId}/members/{userId}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Sets a household member's password and signs them out everywhere. Owners only, for members with a login other than themselves, and only when every other household the member belongs to is one the owner also owns. */
+        put: operations["setMemberPassword"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1458,6 +1492,13 @@ export interface components {
             /** String */
             password: string;
         };
+        /** ChangePasswordRequest */
+        ChangePasswordRequest: {
+            /** String */
+            currentPassword: string;
+            /** String */
+            newPassword: string;
+        };
         /**
          * HouseholdRole
          * @enum {string}
@@ -1520,6 +1561,11 @@ export interface components {
             displayName: string;
             /** String */
             legalName?: null | string;
+        };
+        /** SetPasswordRequest */
+        SetPasswordRequest: {
+            /** String */
+            newPassword: string;
         };
         /** HouseholdSettings */
         HouseholdSettings: {
@@ -4330,6 +4376,43 @@ export interface operations {
             };
         };
     };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     previewInvite: {
         parameters: {
             query?: never;
@@ -4614,6 +4697,62 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setMemberPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SetPasswordRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
             };
             403: {
                 headers: {

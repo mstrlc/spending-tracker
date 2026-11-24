@@ -9,6 +9,7 @@ import {
   ImportIcon,
   InboxIcon,
   ListFilterIcon,
+  KeyRoundIcon,
   LogOutIcon,
   LuggageIcon,
   StoreIcon,
@@ -25,6 +26,7 @@ import {
 import { useBankFeeds, useCreateHousehold, useHouseholds, useLogout, useMe } from "../api/hooks";
 import type { Household } from "../api/types";
 import { AuthShell } from "../auth/AuthShell";
+import { ChangePasswordDialog } from "../auth/PasswordDialog";
 import { ErrorText, Field, FormError, Loading, SheetSlot } from "../ui";
 import { UndoFlusher } from "../undo";
 import { Toaster } from "@/components/ui/sonner";
@@ -203,6 +205,7 @@ function AppSidebar({ household, households }: { household: Household; household
   const inboxCount = useBankFeeds(household.id).data?.reduce((sum, f) => sum + f.pendingCount, 0) ?? 0;
   const name = me.data?.displayName ?? "";
   const logOut = () => logout.mutate(undefined, { onSuccess: () => navigate("/login") });
+  const [changingPassword, setChangingPassword] = useState(false);
 
   return (
     <Sidebar>
@@ -283,10 +286,20 @@ function AppSidebar({ household, households }: { household: Household; household
             <span className="truncate font-medium">{name}</span>
             <span className="truncate text-xs text-muted-foreground">{me.data?.email}</span>
           </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Change password"
+            title="Change password"
+            onClick={() => setChangingPassword(true)}
+          >
+            <KeyRoundIcon />
+          </Button>
           <Button variant="ghost" size="icon" aria-label="Log out" title="Log out" onClick={logOut}>
             <LogOutIcon />
           </Button>
         </div>
+        <ChangePasswordDialog open={changingPassword} onOpenChange={setChangingPassword} />
       </SidebarFooter>
     </Sidebar>
   );

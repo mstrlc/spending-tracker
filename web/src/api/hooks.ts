@@ -134,6 +134,14 @@ export function useLogout() {
   });
 }
 
+/** Changes the signed-in user's password; their other sessions end, this one stays. */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: async (body: { currentPassword: string; newPassword: string }) =>
+      unwrap(await api.POST("/api/auth/password", { body })),
+  });
+}
+
 // ---- Households ----
 
 export function useHouseholds() {
@@ -188,6 +196,19 @@ export function useUpdateMember(householdId: string) {
         }),
       ),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.members(householdId) }),
+  });
+}
+
+/** An owner sets a member's password, signing them out everywhere. */
+export function useSetMemberPassword(householdId: string) {
+  return useMutation({
+    mutationFn: async ({ userId, newPassword }: { userId: string; newPassword: string }) =>
+      unwrap(
+        await api.PUT("/api/households/{householdId}/members/{userId}/password", {
+          params: { path: { householdId, userId } },
+          body: { newPassword },
+        }),
+      ),
   });
 }
 

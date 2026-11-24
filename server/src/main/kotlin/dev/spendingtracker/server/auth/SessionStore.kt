@@ -6,6 +6,7 @@ import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.lessEq
+import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -58,5 +59,15 @@ object SessionStore {
     suspend fun delete(token: String) {
         val hash = Tokens.hash(token) ?: return
         dbQuery { Sessions.deleteWhere { tokenHash eq hash } }
+    }
+
+    /** Ends every session of [userId], except the one holding [keepToken]. */
+    suspend fun deleteAllFor(userId: Uuid, keepToken: String? = null) {
+        val keep = keepToken?.let { Tokens.hash(it) }
+        dbQuery {
+            Sessions.deleteWhere {
+                if (keep == null) Sessions.userId eq userId else (Sessions.userId eq userId) and (tokenHash neq keep)
+            }
+        }
     }
 }

@@ -2,6 +2,8 @@ package dev.spendingtracker.server.household
 
 import dev.spendingtracker.server.account.accountRoutes
 import dev.spendingtracker.server.activity.activityRoutes
+import dev.spendingtracker.server.auth.Passwords
+import dev.spendingtracker.server.auth.SessionStore
 import dev.spendingtracker.server.auth.userId
 import dev.spendingtracker.server.category.categoryRoutes
 import dev.spendingtracker.server.category.seedDefaultCategories
@@ -35,6 +37,7 @@ import dev.spendingtracker.shared.api.HouseholdSettings
 import dev.spendingtracker.shared.api.JointFunding
 import dev.spendingtracker.shared.api.Member
 import dev.spendingtracker.shared.api.MemberInput
+import dev.spendingtracker.shared.api.SetPasswordRequest
 import io.github.smiley4.ktoropenapi.delete
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
@@ -244,6 +247,50 @@ fun Route.householdRoutes() = route("/households") {
                 // Without a login they exist only as this household's member.
                 Users.deleteWhere { (Users.id eq target) and email.isNull() }
             }
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        put("/members/{userId}/password", {
+            operationId = "setMemberPassword"
+            description = "Sets a household member's password and signs them out everywhere. Owners only, for members " +
+                "with a login other than themselves, and only when every other household the member belongs to " +
+                "is one the owner also owns."
+            request {
+                pathParameter<String>("userId")
+                body<SetPasswordRequest>()
+            }
+            response {
+                code(HttpStatusCode.NoContent) {}
+                code(HttpStatusCode.BadRequest) { body<ApiError>() }
+                code(HttpStatusCode.Forbidden) { body<ApiError>() }
+                code(HttpStatusCode.NotFound) { body<ApiError>() }
+                code(HttpStatusCode.Conflict) { body<ApiError>() }
+            }
+        }) {
+            call.requireOwner()
+            val target = call.pathId("userId", "Member")
+            if (target == call.userId) {
+                throw badRequest("own_password", "Change your own password from your account, with your current one")
+            }
+            val input = call.receive<SetPasswordRequest>()
+            Passwords.requireValid(input.newPassword, "newPassword")
+            val ownerId = call.userId
+            val householdId = call.household.id
+            dbQuery {
+                val row = memberRow(householdId, target) ?: throw notFound("Member")
+                if (row[Users.email] == null) throw conflict("member_without_login", "This member has no login; invite them to give them one")
+                // An owner here mustn't take over a login that also opens a household they don't run.
+                val theirs = HouseholdMembers.selectAll().where { HouseholdMembers.userId eq target }.map { it[HouseholdMembers.householdId] }
+                val owned = HouseholdMembers.selectAll()
+                    .where { (HouseholdMembers.userId eq ownerId) and (HouseholdMembers.role eq "owner") }
+                    .map { it[HouseholdMembers.householdId] }.toSet()
+                if (!owned.containsAll(theirs)) {
+                    throw conflict("member_in_other_household", "They also belong to a household you don't own, so only they can change their password")
+                }
+            }
+            val hash = Passwords.hash(input.newPassword)
+            dbQuery { Users.update({ Users.id eq target }) { it[passwordHash] = hash } }
+            SessionStore.deleteAllFor(target)
             call.respond(HttpStatusCode.NoContent)
         }
 

@@ -9,6 +9,7 @@ import dev.spendingtracker.server.db.Users
 import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.server.db.isUniqueViolation
 import dev.spendingtracker.shared.api.ApiError
+import dev.spendingtracker.shared.api.ChangePasswordRequest
 import dev.spendingtracker.shared.api.LoginRequest
 import dev.spendingtracker.shared.api.Me
 import dev.spendingtracker.shared.api.SignupRequest
@@ -26,6 +27,7 @@ import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
 import kotlin.uuid.Uuid
 
 val AUTH_RATE_LIMIT = RateLimitName("auth")
@@ -46,13 +48,7 @@ fun Route.authRoutes(secureCookies: Boolean, signupOpen: Boolean = true) = route
             val body = call.receive<SignupRequest>()
             val email = normalizeEmail(body.email)
             val displayName = requiredText(body.displayName, "displayName", max = 100)
-            if (body.password.length !in Passwords.MIN_LENGTH..Passwords.MAX_LENGTH) {
-                throw badRequest(
-                    "invalid_password",
-                    "Password must be ${Passwords.MIN_LENGTH} to ${Passwords.MAX_LENGTH} characters",
-                    "password",
-                )
-            }
+            Passwords.requireValid(body.password)
             val hash = Passwords.hash(body.password)
             val id = Uuid.random()
             try {
@@ -110,6 +106,31 @@ fun Route.authRoutes(secureCookies: Boolean, signupOpen: Boolean = true) = route
         }) {
             val me = dbQuery { Users.selectAll().where { Users.id eq call.userId }.single().toMe() }
             call.respond(me)
+        }
+
+        rateLimit(AUTH_RATE_LIMIT) {
+            post("/password", {
+                operationId = "changePassword"
+                description = "Changes your own password. Signs out your other sessions; this one stays."
+                request { body<ChangePasswordRequest>() }
+                response {
+                    code(HttpStatusCode.NoContent) {}
+                    code(HttpStatusCode.BadRequest) { body<ApiError>() }
+                    code(HttpStatusCode.Unauthorized) { body<ApiError>() }
+                }
+            }) {
+                val body = call.receive<ChangePasswordRequest>()
+                val userId = call.userId
+                val current = dbQuery { Users.selectAll().where { Users.id eq userId }.single()[Users.passwordHash] }
+                if (!Passwords.verify(current, body.currentPassword)) {
+                    throw badRequest("wrong_password", "That isn't your current password", "currentPassword")
+                }
+                Passwords.requireValid(body.newPassword, "newPassword")
+                val hash = Passwords.hash(body.newPassword)
+                dbQuery { Users.update({ Users.id eq userId }) { it[passwordHash] = hash } }
+                SessionStore.deleteAllFor(userId, keepToken = call.sessionToken())
+                call.respond(HttpStatusCode.NoContent)
+            }
         }
     }
 }

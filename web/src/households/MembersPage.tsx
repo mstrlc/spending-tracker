@@ -12,6 +12,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { useHousehold } from "./HouseholdPages";
+import { ChangePasswordDialog, SetMemberPasswordDialog } from "../auth/PasswordDialog";
 
 const ROLE_LABEL: Record<HouseholdRole, string> = { owner: "Owner", member: "Member" };
 
@@ -34,6 +35,8 @@ export function MembersPage() {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const prompt = usePrompt();
+  const [passwordFor, setPasswordFor] = useState<Member | null>(null);
+  const [changingOwn, setChangingOwn] = useState(false);
 
   async function editLegalName(member: Member) {
     const legalName = await prompt({
@@ -122,7 +125,19 @@ export function MembersPage() {
                   <TableCell className="text-muted-foreground">
                     {m.role === "owner" ? <Chip tone="settlement" icon={CrownIcon}>{ROLE_LABEL[m.role]}</Chip> : ROLE_LABEL[m.role]}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right whitespace-nowrap">
+                    {m.userId === me?.id ? (
+                      <Button variant="ghost" size="sm" onClick={() => setChangingOwn(true)}>
+                        Change password
+                      </Button>
+                    ) : (
+                      isOwner &&
+                      m.hasLogin && (
+                        <Button variant="ghost" size="sm" onClick={() => setPasswordFor(m)}>
+                          Set password
+                        </Button>
+                      )
+                    )}
                     {(m.userId === me?.id || isOwner) && (
                       <Button variant="ghost" size="sm" className="text-destructive" onClick={() => removeMember(m)}>
                         {m.userId === me?.id ? "Leave" : "Remove"}
@@ -137,6 +152,8 @@ export function MembersPage() {
       </Surface>
 
       {isOwner && invites.data && invites.data.length > 0 && <PendingInvites invites={invites.data} />}
+      <SetMemberPasswordDialog householdId={household.id} member={passwordFor} onOpenChange={(o) => !o && setPasswordFor(null)} />
+      <ChangePasswordDialog open={changingOwn} onOpenChange={setChangingOwn} />
     </>
   );
 }
