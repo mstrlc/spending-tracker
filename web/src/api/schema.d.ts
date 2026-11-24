@@ -1294,6 +1294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/{householdId}/bank-connections/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Reads the new rows and balances of every feed of every active connection, as the daily sync does. A feed is read at most 4 times a day. */
+        post: operations["syncAllBankConnections"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/{householdId}/bank-connections/{connectionId}/finish": {
         parameters: {
             query?: never;
@@ -3019,6 +3036,7 @@ export interface components {
              */
             syncsToday: number;
             balance: null | components["schemas"]["FeedBalance"];
+            lastSync?: null | components["schemas"]["FeedSyncAttempt"];
         };
         /** FeedBalance */
         FeedBalance: {
@@ -3035,6 +3053,22 @@ export interface components {
             balanceDate: null | string;
             /** String */
             type: string;
+        };
+        /** FeedSyncAttempt */
+        FeedSyncAttempt: {
+            /** String */
+            at: string;
+            /** String */
+            trigger: string;
+            /** String */
+            status: string;
+            /**
+             * Int
+             * Format: int32
+             */
+            added: number;
+            /** String */
+            error: string;
         };
         /** BankFeedInput */
         BankFeedInput: {
@@ -3782,6 +3816,8 @@ export interface components {
             configured: boolean;
             /** ArrayList<BankConnection> */
             connections: components["schemas"]["BankConnection"][];
+            /** String */
+            nextSyncAt?: null | string;
         };
         /** StartBankConnection */
         StartBankConnection: {
@@ -4284,6 +4320,14 @@ export interface operations {
                 };
             };
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9014,6 +9058,42 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiError"];
                 };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    syncAllBankConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                householdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+            /** @description Not a member of this household, or no such household */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             503: {
                 headers: {

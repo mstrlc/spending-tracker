@@ -391,6 +391,46 @@ class BankConnectionTest {
     }
 
     @Test
+    fun syncAllReadsEveryActiveConnectionAndFeedsShowTheirLastAttempt() {
+        val bank = FakeBankData().apply {
+            linkState = LinkState.LINKED
+            accountIds = listOf("ext-acc-1", "ext-acc-2")
+            accounts["ext-acc-2"] = BankAccountInfo("ext-acc-2", "CZ6508000000192000145400", null, "CZK", "Spořicí účet", "Alice")
+        }
+        apiTest(bank = bank) {
+            val client = newClient()
+            client.signup()
+            val household = client.createHousehold()
+            val base = "/api/households/${household.id}"
+            val account = client.post("$base/accounts") { setBody(AccountInput("Air Bank", kind = AccountKind.BANK)) }.body<Account>()
+            val connection = client.connect(household.id)
+            client.post("$base/bank-connections/${connection.id}/feeds") {
+                setBody(CreateConnectionFeeds(listOf(FeedFromAccount("ext-acc-1", account.id, "Běžný"), FeedFromAccount("ext-acc-2", account.id, "Spořicí"))))
+            }.also { assertEquals(HttpStatusCode.Created, it.status) }
+            // A connection still at the bank isn't asked.
+            client.post("$base/bank-connections") { setBody(StartBankConnection("AIRBANK_CZ")) }
+            bank.transactionsByAccount["ext-acc-1"] = listOf(gcTx("tx-1", "2026-03-10", "-250.00"))
+            assertNull(client.get("$base/bank-feeds").body<List<BankFeed>>().first().lastSync)
+
+            val results = client.post("$base/bank-connections/sync").body<SyncResult>().feeds
+            assertEquals(listOf("synced", "synced"), results.map { it.status })
+            assertEquals(2, bank.transactionCalls)
+
+            val feeds = client.get("$base/bank-feeds").body<List<BankFeed>>().associateBy { it.name }
+            val first = assertNotNull(feeds.getValue("Běžný").lastSync)
+            assertEquals("synced", first.status)
+            assertEquals("manual", first.trigger)
+            assertEquals(1, first.added)
+
+            bank.failWith = BankDataException(500, "Bank is down")
+            client.post("$base/bank-connections/sync").body<SyncResult>().feeds.forEach { assertEquals("error", it.status) }
+            val failed = assertNotNull(client.get("$base/bank-feeds").body<List<BankFeed>>().first().lastSync)
+            assertEquals("error", failed.status)
+            assertTrue(failed.error.contains("Bank is down"))
+        }
+    }
+
+    @Test
     fun newFeedFallsBackToTheHouseholdCurrency() {
         val bank = FakeBankData().apply {
             linkState = LinkState.LINKED

@@ -81,3 +81,12 @@ var Application.bankSetup: BankSetup?
     set(value) {
         if (value == null) attributes.remove(BankSetupKey) else attributes.put(BankSetupKey, value)
     }
+
+private val BankSyncHourKey = AttributeKey<Int>("BankSyncHour")
+
+/** The hour (Prague time) the daily sync runs, null when it doesn't: the web app shows when the next one is due. */
+var Application.bankSyncHour: Int?
+    get() = attributes.getOrNull(BankSyncHourKey)
+    set(value) {
+        if (value == null) attributes.remove(BankSyncHourKey) else attributes.put(BankSyncHourKey, value)
+    }

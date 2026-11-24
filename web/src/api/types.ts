@@ -84,6 +84,7 @@ export type BankConnections = Schemas["BankConnections"];
 export type FeedFromAccount = Schemas["FeedFromAccount"];
 export type FeedBalance = Schemas["FeedBalance"];
 export type FeedSyncResult = Schemas["FeedSyncResult"];
+export type FeedSyncAttempt = Schemas["FeedSyncAttempt"];
 export type SyncResult = Schemas["SyncResult"];
 export type BankFeed = Schemas["BankFeed"];
 export type BankFeedInput = Schemas["BankFeedInput"];

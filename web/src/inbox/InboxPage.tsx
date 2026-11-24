@@ -33,6 +33,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FeedsPanel } from "./FeedsPanel";
+import { SyncStatusBar } from "./SyncStatusBar";
 import { connectionWarning } from "./connections";
 import { loadDecision } from "./decisions";
 import { draftExpense, draftIncome, oppositeSides, skipReason } from "./drafts";
@@ -797,6 +798,8 @@ export function InboxPage() {
         Bank rows waiting for a decision: add each as an expense or income, file it under one you already entered, pair it
         with the other side of a transfer, or skip it. Suggestions come from what you decided before.
       </PageIntro>
+
+      <SyncStatusBar onDetails={() => setEditor({ mode: "feeds" })} />
 
       {(connections.data?.connections ?? [])
         .map((c) => ({ c, warning: connectionWarning(c) }))

@@ -1244,6 +1244,19 @@ export function useSyncBankConnection(householdId: string) {
   });
 }
 
+export function useSyncAllBanks(householdId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/api/households/{householdId}/bank-connections/sync", {
+          params: { path: { householdId } },
+        }),
+      ),
+    onSettled: () => invalidateInbox(qc, householdId),
+  });
+}
+
 export function useSyncBankFeed(householdId: string) {
   const qc = useQueryClient();
   return useMutation({

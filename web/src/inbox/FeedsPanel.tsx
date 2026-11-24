@@ -1,6 +1,6 @@
 import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { RefreshCwIcon, UploadIcon } from "lucide-react";
-import { AccountIcon, Chip, ConnectionStatus, PersonLabel } from "../chips";
+import { AccountIcon, Chip, ConnectionStatus, Dot, PersonLabel } from "../chips";
 import {
   useAccounts,
   useBankConnections,
@@ -28,6 +28,8 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { ConnectionFeedsForm } from "./ConnectionFeedsForm";
 import { connectionWarning } from "./connections";
 import { groupFeeds, type AccountFeeds } from "./feedGroups";
+import { SyncStatusBar } from "./SyncStatusBar";
+import { feedSyncState, SYNCS_PER_DAY } from "./syncStatus";
 import { cn } from "@/lib/utils";
 
 export const INSTITUTIONS: { value: BankInstitution; label: string }[] = [
@@ -252,6 +254,7 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
             {feed.rowCount === 0 && <span className="text-xs text-muted-foreground">{feedDetail(feed)}</span>}
           </div>
           {feed.rowCount > 0 && <div className="text-xs text-muted-foreground">{feedDetail(feed)}</div>}
+          <FeedSyncLine feed={feed} />
         </div>
         {feed.balance && (
           <span className="amount shrink-0 text-sm" title={feed.balance.balanceDate ? `Balance on ${formatDate(feed.balance.balanceDate)}` : "Balance"}>
@@ -269,8 +272,8 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
           actions={[
             ...(feed.connectionId
               ? [
-                  ...(feed.syncsToday < 4 && !syncFeed.isPending
-                    ? [{ label: `Sync this feed (${4 - feed.syncsToday} of 4 left today)`, onSelect: () => runFeedSync(feed) }]
+                  ...(feed.syncsToday < SYNCS_PER_DAY && !syncFeed.isPending
+                    ? [{ label: `Sync this feed (${SYNCS_PER_DAY - feed.syncsToday} of ${SYNCS_PER_DAY} left today)`, onSelect: () => runFeedSync(feed) }]
                     : []),
                   { label: "Upload statement", onSelect: () => pickFile(feed) },
                 ]
@@ -314,6 +317,8 @@ export function FeedsPanel({ onDone }: { onDone: () => void }) {
         A feed is what a bank gives you for one account and currency. Connect a bank for daily syncs, or upload
         statements (CSV from Revolut, ČSOB, KB or Raiffeisenbank, or GoCardless JSON).
       </p>
+
+      <SyncStatusBar />
 
       {connections.data && !configured && (
         <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
@@ -469,19 +474,45 @@ function shortDate(iso: string): string {
   return date.toLocaleDateString(undefined, { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
 }
 
-/** "Rows up to 16 Nov · 120 rows · synced 17 Nov (1 of 4 today)", or "No rows yet" for an empty one. */
+/** "Up to 16 Nov · 120 rows" (and "from 1 Oct" for statements), or "No rows yet" for an empty one. */
 function feedDetail(feed: BankFeed): string {
   if (feed.rowCount === 0) return "No rows yet";
   const parts = [
     feed.lastDate ? `Up to ${shortDate(feed.lastDate)}` : null,
     `${feed.rowCount} ${feed.rowCount === 1 ? "row" : "rows"}`,
-    feed.connectionId
-      ? `synced ${feed.lastSyncedAt ? shortDate(feed.lastSyncedAt) : "never"}${feed.syncsToday > 0 ? ` (${feed.syncsToday} of 4 today)` : ""}`
-      : feed.importFrom
-        ? `from ${shortDate(feed.importFrom)}`
-        : null,
+    !feed.connectionId && feed.importFrom ? `from ${shortDate(feed.importFrom)}` : null,
   ];
   return parts.filter(Boolean).join(" · ");
+}
+
+const SYNC_DOT = { ok: "income", stale: "warning", never: "neutral", error: "danger" } as const;
+
+/**
+ * A live feed's sync: a coloured dot with "Synced 2 h ago", how many of today's reads are used, what the last one
+ * brought, and the bank's reason when it failed (the exact time on hover).
+ */
+function FeedSyncLine({ feed }: { feed: BankFeed }) {
+  const state = feedSyncState(feed);
+  if (!state) return null;
+  const last = feed.lastSync;
+  const extra = [
+    state.tone === "ok" && last?.status === "synced" && last.added > 0 ? `${last.added} new` : null,
+    last?.trigger === "scheduled" && state.tone !== "never" ? "daily sync" : null,
+    feed.syncsToday > 0 ? `${feed.syncsToday} of ${SYNCS_PER_DAY} today` : null,
+  ].filter(Boolean);
+  const exact = last ? new Date(last.at).toLocaleString() : undefined;
+  return (
+    <div className="flex flex-col gap-0.5 text-xs">
+      <span className="flex items-center gap-1.5 text-muted-foreground" title={exact}>
+        <Dot tone={SYNC_DOT[state.tone]} />
+        <span className={cn(state.tone === "error" && "font-medium text-destructive", state.tone === "stale" && "text-(--tone-warning)")}>
+          {state.label}
+        </span>
+        {extra.length > 0 && <span>· {extra.join(" · ")}</span>}
+      </span>
+      {state.error && <span className="pl-3.5 text-destructive">{state.error}</span>}
+    </div>
+  );
 }
 
 function ConnectBankView({ onDone }: { onDone: () => void }) {

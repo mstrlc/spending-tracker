@@ -243,6 +243,17 @@ class BankSync(private val data: BankData, private val market: Market, private v
         return results
     }
 
+    /** Syncs every feed of the household's active connections, one connection after another. */
+    suspend fun syncHousehold(householdId: Uuid, householdCurrency: String, userId: Uuid): List<FeedSyncResult> {
+        val connectionIds = dbQuery {
+            BankConnections.select(BankConnections.id)
+                .where { (BankConnections.householdId eq householdId) and (BankConnections.status eq "active") }
+                .orderBy(BankConnections.institutionName)
+                .map { it[BankConnections.id] }
+        }
+        return connectionIds.flatMap { syncConnection(householdId, householdCurrency, it, userId) }
+    }
+
     /** Syncs every active connection across all households (the daily scheduled run). */
     suspend fun syncAll(): List<FeedSyncResult> {
         data class Target(val householdId: Uuid, val currency: String, val connectionId: Uuid, val userId: Uuid)

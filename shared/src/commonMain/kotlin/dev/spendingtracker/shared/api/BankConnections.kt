@@ -71,11 +71,15 @@ data class BankConnection(
     val accounts: List<BankConnectionAccount>,
 )
 
-/** The household's bank connections; [configured] is false when the server has no GoCardless keys. */
+/**
+ * The household's bank connections; [configured] is false when the server has no GoCardless keys. [nextSyncAt] is
+ * when the daily sync next runs (an ISO timestamp), null when the server doesn't run one.
+ */
 @Serializable
 data class BankConnections(
     val configured: Boolean,
     val connections: List<BankConnection>,
+    val nextSyncAt: String? = null,
 )
 
 /**
@@ -121,3 +125,17 @@ data class FeedSyncResult(
 
 @Serializable
 data class SyncResult(val feeds: List<FeedSyncResult>)
+
+/**
+ * The latest time the app asked the bank for a feed, whether it worked or not. [at] is an ISO timestamp; [trigger] is
+ * "manual" (someone pressed sync) or "scheduled" (the daily run); [status] is "synced" or "error", with the bank's
+ * reason in [error]. [added] counts the new rows it brought.
+ */
+@Serializable
+data class FeedSyncAttempt(
+    val at: String,
+    val trigger: String,
+    val status: String,
+    val added: Int,
+    val error: String,
+)

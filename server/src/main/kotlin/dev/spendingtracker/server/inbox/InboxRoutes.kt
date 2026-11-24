@@ -41,6 +41,7 @@ import dev.spendingtracker.shared.api.BankFeedInput
 import dev.spendingtracker.shared.api.BankRow
 import dev.spendingtracker.shared.api.CategoryKind
 import dev.spendingtracker.shared.api.FeedBalance
+import dev.spendingtracker.shared.api.FeedSyncAttempt
 import dev.spendingtracker.shared.api.LinkBankRows
 import dev.spendingtracker.shared.api.RememberBankRows
 import dev.spendingtracker.shared.api.DraftBankRow
@@ -568,6 +569,22 @@ fun loadFeeds(householdId: Uuid, id: Uuid? = null): List<BankFeed> {
         .where { (BankSyncs.householdId eq householdId) and (BankSyncs.startedAt greaterEq startOfPragueDay(Clock.System.now())) }
         .groupBy(BankSyncs.feedId)
         .associate { it[BankSyncs.feedId] to it[syncCount].toInt() }
+    val latestStart = BankSyncs.startedAt.max()
+    val latestSyncs = BankSyncs.select(BankSyncs.feedId, latestStart).where { BankSyncs.householdId eq householdId }
+        .groupBy(BankSyncs.feedId).associate { it[BankSyncs.feedId] to it[latestStart] }
+    val lastSyncs = if (latestSyncs.isEmpty()) emptyMap() else BankSyncs.selectAll()
+        .where { (BankSyncs.householdId eq householdId) and (BankSyncs.startedAt inList latestSyncs.values.filterNotNull()) }
+        .filter { latestSyncs[it[BankSyncs.feedId]] == it[BankSyncs.startedAt] }
+        .associate {
+            val error = it[BankSyncs.error]
+            it[BankSyncs.feedId] to FeedSyncAttempt(
+                at = it[BankSyncs.startedAt].toString(),
+                trigger = it[BankSyncs.trigger],
+                status = if (error.isEmpty()) "synced" else "error",
+                added = it[BankSyncs.added],
+                error = error,
+            )
+        }
     val latestRead = BankBalances.readAt.max()
     val latest = BankBalances.select(BankBalances.feedId, latestRead).where { BankBalances.householdId eq householdId }
         .groupBy(BankBalances.feedId).associate { it[BankBalances.feedId] to it[latestRead] }
@@ -601,6 +618,7 @@ fun loadFeeds(householdId: Uuid, id: Uuid? = null): List<BankFeed> {
             lastSyncedAt = it[BankFeeds.lastSyncedAt]?.toString(),
             syncsToday = syncs[feedId] ?: 0,
             balance = balances[feedId],
+            lastSync = lastSyncs[feedId],
         )
     }
 }

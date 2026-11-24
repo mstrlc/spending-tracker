@@ -115,7 +115,22 @@ fun Route.bankRoutes() {
         }) {
             val householdId = call.household.id
             val configured = call.application.bankSetup != null
-            call.respond(BankConnectionsResponse(configured, dbQuery { loadConnections(householdId) }))
+            val nextSync = call.application.bankSyncHour?.let { hour -> Clock.System.now() + nextPragueRunDelay(hour, Clock.System.now()) }
+            call.respond(BankConnectionsResponse(configured, dbQuery { loadConnections(householdId) }, nextSync?.toString()))
+        }
+
+        post("/sync", {
+            operationId = "syncAllBankConnections"
+            description = "Reads the new rows and balances of every feed of every active connection, as the daily sync does. A feed is read at most 4 times a day."
+            response {
+                code(HttpStatusCode.OK) { body<SyncResult>() }
+                code(HttpStatusCode.ServiceUnavailable) { body<ApiError>() }
+            }
+        }) {
+            val setup = call.setup()
+            val household = call.household
+            val results = BankSync(setup.data, call.application.market).syncHousehold(household.id, household.currency, call.userId)
+            call.respond(SyncResult(results))
         }
 
         post({

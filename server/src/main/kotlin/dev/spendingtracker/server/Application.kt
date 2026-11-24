@@ -9,6 +9,7 @@ import dev.spendingtracker.server.bank.BankSetup
 import dev.spendingtracker.server.bank.BankSync
 import dev.spendingtracker.server.bank.GoCardlessBankData
 import dev.spendingtracker.server.bank.bankSetup
+import dev.spendingtracker.server.bank.bankSyncHour
 import dev.spendingtracker.server.bank.nextPragueRunDelay
 import dev.spendingtracker.server.common.apiErrors
 import dev.spendingtracker.server.db.AuditActor
@@ -91,6 +92,7 @@ fun Application.module(
     market = Market(marketData)
     this.orderParsers = orderParsers
     this.bankSetup = bankSetup
+    this.bankSyncHour = bankSyncHour.takeIf { bankSetup != null }
     if (bankSetup != null && bankSyncHour != null) {
         launch {
             while (isActive) {

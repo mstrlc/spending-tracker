@@ -42,6 +42,8 @@ data class BankFeed(
     val syncsToday: Int,
     /** The latest balance a sync read. */
     val balance: FeedBalance?,
+    /** The latest sync attempt, failed or not; null for a feed never asked. */
+    val lastSync: FeedSyncAttempt? = null,
 )
 
 /** Body for creating and updating a feed; [version] is required when updating. */
