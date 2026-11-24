@@ -16,19 +16,35 @@ import dev.spendingtracker.android.data.OverviewApiImpl
 import dev.spendingtracker.android.data.ServerUrlStore
 import dev.spendingtracker.android.data.SessionApi
 import dev.spendingtracker.android.data.SessionManager
+import dev.spendingtracker.android.expenses.ExpenseEditorViewModel
+import dev.spendingtracker.android.expenses.ExpensesViewModel
+import dev.spendingtracker.android.households.HouseholdsViewModel
+import dev.spendingtracker.android.login.LoginViewModel
+import dev.spendingtracker.android.overview.OverviewViewModel
 import dev.spendingtracker.shared.client.TokenStore
 import org.koin.dsl.module
 
 val appModule = module {
     single<TokenStore> { EncryptedTokenStore(get()) }
     single { ServerUrlStore(get()) }
-    single<SessionApi> { SessionManager(get(), get()) }
-    // The API implementations read the session at call time; screens only compose once a session exists.
+    // One SessionManager instance, exposed both as itself (for the API impls) and as SessionApi (for VMs).
     single { SessionManager(get(), get()) }
+    single<SessionApi> { get<SessionManager>() }
+
+    // The API implementations read the session at call time; screens only compose once a session exists.
     factory<AuthApi> { AuthApiImpl(get()) }
     factory<HouseholdsApi> { HouseholdsApiImpl(get()) }
     factory<OverviewApi> { OverviewApiImpl(get()) }
     factory<ExpensesApi> { ExpensesApiImpl(get()) }
     factory<CategoriesApi> { CategoriesApiImpl(get()) }
     factory<AccountsApi> { AccountsApiImpl(get()) }
+
+    // ViewModels. ExpensesViewModel is app-scoped so the editor shares its list and undo delete.
+    factory { LoginViewModel(get()) }
+    factory { HouseholdsViewModel(get(), get()) }
+    factory { params -> OverviewViewModel(get(), get(), get(), params.get()) }
+    single { ExpensesViewModel(get(), get(), get(), get(), get()) }
+    factory { params ->
+        ExpenseEditorViewModel(get(), get(), get(), get(), get(), get(), params.get<String>(0), params.get<String?>(1))
+    }
 }
