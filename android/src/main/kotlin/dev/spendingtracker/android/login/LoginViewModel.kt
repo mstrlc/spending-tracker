@@ -63,7 +63,12 @@ class LoginViewModel(private val sessionApi: SessionApi) : ViewModel() {
                 onSuccess = { _events.send(LoginEvent.LoggedIn) },
                 onFailure = { e ->
                     val message = when (e) {
-                        is ApiException -> e.error.message ?: "Could not log in."
+                        is ApiException -> when {
+                            e.error.message != null -> e.error.message!!
+                            // The hosted server predates the bearer-token route the app logs in with.
+                            e.status == 404 -> "This server is too old for the app — update it and try again."
+                            else -> "Could not log in (HTTP ${e.status})."
+                        }
                         // ConnectException, timeout, …: the server wasn't reached at all.
                         else -> "Couldn't reach ${state.serverUrl} — check the URL and that the server is running."
                     }
