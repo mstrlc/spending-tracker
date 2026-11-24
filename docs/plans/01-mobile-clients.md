@@ -75,7 +75,7 @@ Not a goal: parity with the web. The Inbox, bank feeds, rules, assets, debts, tr
   - `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }`: a new push cancels the run still going.
   - Path filters per job (a small `changes` job with `dorny/paths-filter`): **server** on `server/**`, `shared/**`, Gradle files; **web** on `web/**`; **android** on `android/**`, `shared/**`, Gradle files. The workflow file itself triggers all of them.
   - `timeout-minutes` on every job (server 20, android 25, web 10), so a hung Testcontainers or emulator setup can't burn an hour.
-  - While a phase is in progress, check locally (`./gradlew build`, the web commands above) before pushing; run CI once per phase, by marking the PR ready for review or with `workflow_dispatch`, then back to draft if more work follows.
+  - While a phase is in progress, check locally (`./gradlew build`, the web commands above) before pushing; run CI once per phase by marking the PR ready for review, then back to draft if more work follows. (`workflow_dispatch` only works once the workflow is on `main`, so it can't run this branch before the PR merges.) The workflow needs `pull-requests: read` for `paths-filter` to list a PR's files.
   - If the repo goes public, standard Linux runners are free and these limits matter less; keep them anyway.
 - `README.md` "Running locally": add "Android: open the repo in Android Studio, run `scripts/dev.sh api`, run the `android` configuration on an emulator, log in with the server URL `http://10.0.2.2:<PORT>`". Worktree slots apply (`PORT` from `.env.local`).
 
@@ -93,6 +93,6 @@ Not a goal: parity with the web. The Inbox, bank feeds, rules, assets, debts, tr
 
 ## Done when
 
-- Phase 0: a `workflow_dispatch` run on the branch is green (server and web jobs), and a push to the draft PR starts no run; token login and header auth pass their tests; the web is unchanged; `./gradlew build` passes.
+- Phase 0: one CI run on the PR (marked ready for review) is green (server and web jobs), and a push to the draft PR starts no run; token login and header auth pass their tests; the web is unchanged; `./gradlew build` passes.
 - Phase 1: `shared` builds for JVM and Android with the Android-KMP library plugin; `commonTest` passes; the server uses the shared `Json`; the android CI job is green.
 - Phase 2: on an emulator against a local API over plain HTTP (debug build), you can log in, page through months on the Overview, list expenses, add, edit and delete one (with undo and a handled conflict); unit and UI tests pass; `README.md`, `AGENTS.md` and the two skills are in; the roadmap in `ARCHITECTURE.md` gets a "Mobile clients" entry in its usual style, with iOS as "Not yet".
