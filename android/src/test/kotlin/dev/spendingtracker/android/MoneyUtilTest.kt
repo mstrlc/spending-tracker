@@ -31,6 +31,13 @@ class MoneyUtilTest {
     }
 
     @Test
+    fun `parseMoney rejects amounts that overflow Long instead of crashing`() {
+        assertNull(parseMoney("12345678901234567890", "CZK"))
+        assertNull(parseMoney("99999999999999999999.99", "CZK"))
+        assertEquals(12990L, parseMoney("129.90", "CZK"))
+    }
+
+    @Test
     fun `toInputValue round-trips`() {
         assertEquals("129.90", toInputValue(12990, "CZK"))
         assertEquals("-45.50", toInputValue(-4550, "CZK"))

@@ -83,8 +83,13 @@ fun parseMoney(input: String, currency: String): Long? {
     val match = "^(-?)(\\d+)(?:[.,](\\d*))?$".toRegex().find(compact) ?: return null
     val (sign, whole, fraction) = match.destructured
     if (fraction.length > digits) return null
-    val minor = whole.toLong() * 10.0.pow(digits).toLong() + fraction.padEnd(digits, '0').toLong()
-    if (minor > Long.MAX_VALUE / 2) return null
+    val wholeLong = whole.toLongOrNull() ?: return null
+    val scale = 10.0.pow(digits).toLong()
+    // Overflow check before multiplying: a 20-digit whole part must be rejected, not crash toLong().
+    if (wholeLong > Long.MAX_VALUE / scale) return null
+    val fractionLong = fraction.padEnd(digits, '0').toLongOrNull() ?: return null
+    val minor = wholeLong * scale + fractionLong
+    if (minor < 0 || minor > Long.MAX_VALUE / 2) return null
     return if (sign == "-") -minor else minor
 }
 
