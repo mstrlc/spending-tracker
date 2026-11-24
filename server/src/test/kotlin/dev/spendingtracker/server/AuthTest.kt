@@ -116,6 +116,8 @@ class AuthTest {
         assertEquals("alice@example.com", me.body<Me>().email)
         // A header-authenticated call gets no cookie back, not even a renewal.
         assertNull(me.headers["Set-Cookie"])
+        // The scheme name is case-insensitive (RFC 9110).
+        assertEquals(HttpStatusCode.OK, client.get("/api/auth/me") { header("Authorization", "bearer $token") }.status)
     }
 
     @Test
@@ -124,6 +126,9 @@ class AuthTest {
         val client = newClient()
 
         client.get("/api/auth/me") { header("Authorization", "Bearer not-a-real-token") }
+            .assertError(HttpStatusCode.Unauthorized, "unauthorized")
+        // A malformed header is just no credentials, never a 500.
+        client.get("/api/auth/me") { header("Authorization", "Bearer a b") }
             .assertError(HttpStatusCode.Unauthorized, "unauthorized")
         val unknown = Tokens.generate().first
         client.get("/api/auth/me") { header("Authorization", "Bearer $unknown") }
@@ -149,6 +154,19 @@ class AuthTest {
         assertEquals(HttpStatusCode.NoContent, client.post("/api/auth/logout") { header("Authorization", "Bearer $token") }.status)
         client.get("/api/auth/me") { header("Authorization", "Bearer $token") }
             .assertError(HttpStatusCode.Unauthorized, "unauthorized")
+    }
+
+    @Test
+    fun tokenLoginSharesTheLoginRateLimit() = apiTest {
+        val client = newClient()
+        repeat(20) {
+            client.post("/api/auth/token") { setBody(LoginRequest("nobody@example.com", "wrong password")) }
+                .assertError(HttpStatusCode.Unauthorized, "invalid_credentials")
+        }
+        assertEquals(
+            HttpStatusCode.TooManyRequests,
+            client.post("/api/auth/token") { setBody(LoginRequest("nobody@example.com", "wrong password")) }.status,
+        )
     }
 
     @Test

@@ -3,6 +3,9 @@ package dev.spendingtracker.server.auth
 import dev.spendingtracker.shared.api.ApiError
 import io.ktor.http.Cookie
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.auth.HttpAuthHeader
+import io.ktor.http.auth.parseAuthorizationHeader
+import io.ktor.http.parsing.ParseException
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.auth.AuthenticationConfig
 import io.ktor.server.auth.AuthenticationFailedCause
@@ -14,7 +17,6 @@ import kotlin.uuid.Uuid
 const val SESSION_AUTH = "session"
 private const val COOKIE_NAME = "sid"
 private const val CHALLENGE_KEY = "SessionAuth"
-private const val BEARER_PREFIX = "Bearer "
 
 data class UserPrincipal(val userId: Uuid)
 
@@ -45,14 +47,24 @@ fun AuthenticationConfig.sessionCookie(secureCookies: Boolean) {
     }
 }
 
-/** The `Authorization: Bearer <token>` header's token, or null when absent or malformed. */
+/** The `Authorization: Bearer <token>` header's token, or null when absent or malformed. The scheme name is case-insensitive per RFC 9110. */
 fun ApplicationCall.bearerToken(): String? {
-    val header = request.headers["Authorization"] ?: return null
-    return header.takeIf { it.startsWith(BEARER_PREFIX) }?.removePrefix(BEARER_PREFIX)?.ifBlank { null }
+    val raw = request.headers["Authorization"] ?: return null
+    // A malformed header must not become a 500; it just carries no credentials.
+    val header = try {
+        parseAuthorizationHeader(raw)
+    } catch (e: ParseException) {
+        return null
+    } ?: return null
+    if (!header.authScheme.equals("Bearer", ignoreCase = true)) return null
+    return (header as? HttpAuthHeader.Single)?.blob?.ifBlank { null }
 }
 
+/** The session cookie's token, or null when the call carries no cookie. */
+fun ApplicationCall.cookieToken(): String? = request.cookies[COOKIE_NAME]
+
 /** The session token of this call, from the bearer header first, else the cookie. */
-fun ApplicationCall.sessionToken(): String? = bearerToken() ?: request.cookies[COOKIE_NAME]
+fun ApplicationCall.sessionToken(): String? = bearerToken() ?: cookieToken()
 
 fun ApplicationCall.setSessionCookie(token: String, secure: Boolean, maxAgeSeconds: Long = SessionStore.LIFETIME.inWholeSeconds) {
     response.cookies.append(
