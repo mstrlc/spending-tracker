@@ -71,13 +71,14 @@ class FakeSessionApi(
     override val session: StateFlow<Session?> = MutableStateFlow(null)
     override val household: StateFlow<Household?> = MutableStateFlow(fakeHousehold)
     var lastLogin: Triple<String, String, String>? = null
+    var loggedOut = false
 
     override suspend fun restore(): Boolean = false
     override suspend fun login(serverUrl: String, email: String, password: String): Result<Me> {
         lastLogin = Triple(serverUrl, email, password)
         return loginResult
     }
-    override suspend fun logout() {}
+    override suspend fun logout() { loggedOut = true }
     override fun selectHousehold(household: Household) {}
 }
 
