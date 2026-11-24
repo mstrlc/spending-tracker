@@ -23,7 +23,7 @@ web/dist/
 .claude/worktrees/
 .pnpm-store/
 
-# Real household data exported from ../household-spending-tracker (never commit)
+# Real household data exported from the old app (never commit)
 /data/legacy/
 
 # Real order emails, the order parsers' fixtures (never commit)
