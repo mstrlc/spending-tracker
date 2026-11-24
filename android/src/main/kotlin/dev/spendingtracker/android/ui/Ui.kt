@@ -141,7 +141,7 @@ fun AppTopBar(
 ) {
     TopAppBar(
         title = {
-            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+            Text(title, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
         },
         navigationIcon = { navigationIcon?.invoke() },
         actions = actions,
