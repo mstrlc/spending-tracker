@@ -18,6 +18,13 @@ Read `ARCHITECTURE.md` first: stack, conventions, the data-model decisions and t
 - Tests: `./gradlew build` (Testcontainers, needs Docker) and `pnpm --dir web test`. `./gradlew build` needs the Android SDK (set `ANDROID_HOME`); without it, `./gradlew :server:build :shared:jvmTest` still works. The CI **android** job runs `:shared:allTests` until the `android/` app module exists.
 - Migrations are append-only (`server/src/main/resources/db/migration/V*.sql`); new household tables need an `audit` trigger.
 - Add shadcn components with `pnpm --dir web dlx shadcn@latest add <name>`. Then check the new files' imports: the CLI has written `import { cn } from "cn"` (and installed an unrelated `cn` package) instead of `@/lib/utils`. Fix the imports and `pnpm --dir web remove cn` if it reappears.
+
+## Android
+
+- The app lives in `android/` (package `dev.spendingtracker.android`), a `com.android.application` module depending on `project(":shared")` for the API models and client SDK (`dev.spendingtracker.shared.client`). AGP 9 applies Kotlin itself; only the Compose and serialization plugins are declared. Build with `ANDROID_HOME` set: `./gradlew :android:assembleDebug :android:testDebugUnitTest :android:lintDebug`. CI's **android** job runs those plus `:shared:allTests`.
+- Stack: Jetpack Compose + Material 3, Navigation 3, Koin. The look follows the web: `theme/Theme.kt` holds the web's oklch palette converted to sRGB (light/dark follow the system) and bundles Geist/Geist Mono in `res/font` (amounts in mono, like the web's `amount`); `theme/Hues.kt` assigns category/member hues exactly like `web/src/chips.tsx`, so a category looks the same in both apps.
+- Structure: one package per screen (`login/`, `households/`, `overview/`, `expenses/`, `navigation/`), each screen a `ViewModel` exposing one `StateFlow<UiState>` plus a `Channel` of events. The data layer is interfaces (`data/Contracts.kt`) over the shared repositories, so tests fake them (`android/src/test/.../Fakes.kt`). Every screen gets a ViewModel test; Compose UI tests run on Robolectric.
+- The bearer token sits in DataStore encrypted with a Tink key from the Android Keystore (`data/EncryptedTokenStore.kt`); the server URL is remembered in `data/ServerUrlStore.kt` (default `http://10.0.2.2:8080`). Debug builds allow cleartext to 10.0.2.2/localhost via `src/debug/res/xml/network_security_config.xml`; release is HTTPS-only and the login screen refuses `http://`.
 - Web UI conventions (which components, `ui.tsx` helpers, confirm dialogs, the side panel) are under "Web UI" in `ARCHITECTURE.md`.
 
 ## Worktrees
