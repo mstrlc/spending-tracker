@@ -106,9 +106,9 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           # The default ('tools platform-tools') fails: the legacy 'tools' package no longer exists.
-          # compileSdk 37 matches shared/build.gradle.kts.
-          packages: 'platform-tools platforms;android-37.0'
+          # compileSdk 37 + minor 2 matches android/build.gradle.kts (the newest Compose BOM needs 37.1+).
+          packages: 'platform-tools platforms;android-37.2'
       - uses: gradle/actions/setup-gradle@v4
-      # Phase 1 builds and tests the shared client SDK for JVM and Android; the app module follows in phase 2.
+      # The shared client SDK for JVM and Android, plus the app module: unit tests, lint, and the debug APK.
       # allTests alone would only run the host tests, so assemble the Android AAR explicitly.
-      - run: ./gradlew :shared:allTests :shared:assembleAndroidMain
+      - run: ./gradlew :shared:allTests :shared:assembleAndroidMain :android:testDebugUnitTest :android:lintDebug :android:assembleDebug
