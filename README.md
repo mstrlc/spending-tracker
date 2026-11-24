@@ -54,6 +54,23 @@ Signup is off by default: start once with `SIGNUP=on` in the host's `.env` to cr
 redeploy (or invite people from the household page). Rerun `scripts/deploy.sh` after changing code: it copies only
 the images that changed (`scripts/deploy.sh api` or `web` limits it to one). New migrations run when the API starts. A gitignored `deploy/local.md` is the place for notes on your own deployment.
 
+#### Off-site backups
+
+`backup.sh` can also copy each nightly dump to Google Drive (or any rclone remote), encrypted with
+[age](https://age-encryption.org) so the host and Google only ever hold ciphertext. The remote keeps 30 days of
+dailies and the 1st of each month for a year.
+
+1. Here: `age-keygen -o spending-backup.key`. Keep that file in a password manager, off the host: without it the
+   copies can't be restored. Its `# public key: age1…` line is the recipient.
+2. On the host: `sudo apt install age rclone`, then `rclone config --config ~/spending-tracker/rclone.conf` and add a
+   Google Drive remote (say `gdrive`). It's headless, so answer "n" to auto config and run the `rclone authorize`
+   command it prints on a machine with a browser.
+3. In the host's `.env`: `BACKUP_REMOTE=gdrive:spending-tracker` and `BACKUP_AGE_RECIPIENT=age1…`. Test with
+   `sudo ~/spending-tracker/backup.sh`.
+
+Restore: `rclone --config rclone.conf cat gdrive:spending-tracker/FILE.age | age -d -i spending-backup.key > FILE`,
+then `pg_restore` as in the comment at the top of [deploy/backup.sh](deploy/backup.sh).
+
 After changing API endpoints, with the server running:
 
 ```bash
