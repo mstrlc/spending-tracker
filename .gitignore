@@ -32,3 +32,6 @@ web/dist/
 # Each checkout's own deployment (scripts/deploy.sh settings and notes)
 /deploy/local.env
 /deploy/local.md
+
+# age keys for the off-site backups (README, "Off-site backups")
+*.key
