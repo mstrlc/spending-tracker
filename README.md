@@ -24,6 +24,14 @@ see "Worktrees" in [AGENTS.md](AGENTS.md). `scripts/dev.sh status` lists them.
 Local demo account (created by hand during development, lives only in your local database):
 `demo@example.test` / `demo-password-123`. Or sign up with any email at http://localhost:5173/signup.
 
+### Android app
+
+Requires the Android SDK (`ANDROID_HOME`). Open the repo in Android Studio and run the `android`
+configuration on an emulator, or `./gradlew :android:assembleDebug` for the APK. Run `scripts/dev.sh api`
+first and log in with the server URL `http://10.0.2.2:<PORT>` (the emulator's route to the host; `PORT` is in
+this checkout's `.env.local`, 8080 for the main one). Plain HTTP works in debug builds only — on a device use
+`adb reverse tcp:<PORT> tcp:<PORT>` and `http://localhost:<PORT>`. Worktree slots apply.
+
 ### Production build, all in Docker
 
 Only Docker needed. Builds the API and the web app and serves both on one origin through Caddy, against the same database as dev:
