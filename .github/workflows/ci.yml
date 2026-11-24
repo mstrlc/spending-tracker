@@ -15,6 +15,7 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     outputs:
       server: ${{ steps.filter.outputs.server }}
       web: ${{ steps.filter.outputs.web }}
@@ -28,6 +29,8 @@ jobs:
               - 'server/**'
               - 'shared/**'
               - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
               - '*.gradle.kts'
               - 'gradle.properties'
               - 'settings.gradle.kts'
@@ -38,7 +41,8 @@ jobs:
 
   server:
     needs: changes
-    if: needs.changes.outputs.server == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    # A run started by hand always runs everything; paths-filter compares against the default branch there.
+    if: (needs.changes.outputs.server == 'true' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -53,17 +57,20 @@ jobs:
 
   web:
     needs: changes
-    if: needs.changes.outputs.web == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    # A run started by hand always runs everything; paths-filter compares against the default branch there.
+    if: (needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - run: corepack enable
       - run: pnpm --dir web install --frozen-lockfile
       - run: pnpm --dir web exec tsc --noEmit
       - run: pnpm --dir web test
