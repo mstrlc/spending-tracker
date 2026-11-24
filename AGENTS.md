@@ -10,6 +10,8 @@ Read `ARCHITECTURE.md` first: stack, conventions, the data-model decisions and t
 
 ## Working notes
 
+- Commit messages and PR titles follow [Conventional Commits](https://www.conventionalcommits.org): `type(scope): summary`, with `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `ci`, `build` or `perf`, and the area as the scope (`server`, `web`, `shared`, `android`, `plans`…). Older history predates this.
+
 - Run `scripts/dev.sh setup` once per checkout (see "Worktrees" below); it starts Postgres and writes `.claude/launch.json`. Then run the app with its `api` and `web` servers. The API doesn't reload: restart it after server changes. New migrations run on start.
 - After changing API endpoints or models, restart the API, then `scripts/dev.sh gen-api` to regenerate `web/src/api/schema.d.ts` from this checkout's API.
 - Typecheck the web app with `pnpm --dir web exec tsc --noEmit`. Plain `tsc -b` writes `.js` files next to the sources.
