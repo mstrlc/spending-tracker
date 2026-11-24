@@ -19,7 +19,12 @@ import dev.spendingtracker.shared.api.HouseholdRole
 import dev.spendingtracker.shared.api.JointFunding
 import dev.spendingtracker.shared.api.Me
 import dev.spendingtracker.shared.api.Member
+import dev.spendingtracker.shared.api.CategoryTotal
+import dev.spendingtracker.shared.api.Freshness
+import dev.spendingtracker.shared.api.MonthFlow
+import dev.spendingtracker.shared.api.NetWorth
 import dev.spendingtracker.shared.api.Overview
+import dev.spendingtracker.shared.api.TypicalMonth
 import dev.spendingtracker.shared.client.ApiException
 import dev.spendingtracker.shared.api.ApiError
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,7 +74,8 @@ class FakeSessionApi(
 ) : SessionApi {
     override val serverUrl: StateFlow<String> = MutableStateFlow(initialUrl)
     override val session: StateFlow<Session?> = MutableStateFlow(null)
-    override val household: StateFlow<Household?> = MutableStateFlow(fakeHousehold)
+    private val _household = MutableStateFlow<Household?>(fakeHousehold)
+    override val household: StateFlow<Household?> = _household
     var lastLogin: Triple<String, String, String>? = null
     var loggedOut = false
 
@@ -79,7 +85,7 @@ class FakeSessionApi(
         return loginResult
     }
     override suspend fun logout() { loggedOut = true }
-    override fun selectHousehold(household: Household) {}
+    override fun selectHousehold(household: Household) { _household.value = household }
 }
 
 class FakeHouseholdsApi(var households: List<Household> = listOf(fakeHousehold)) : HouseholdsApi {
@@ -125,6 +131,25 @@ class FakeExpensesApi(
 class FakeCategoriesApi : CategoriesApi {
     override suspend fun list(householdId: String): List<Category> = fakeCategories
 }
+
+fun fakeOverview(month: String, spendingMinor: Long = -44000) = Overview(
+    month = month,
+    daysElapsed = 24,
+    daysInMonth = 30,
+    thisMonth = MonthFlow(month, 38000, spendingMinor, 3700),
+    typicalMonth = TypicalMonth(36000, 42000, 3000, 3, emptyList()),
+    history = listOf(MonthFlow(month, 38000, spendingMinor, 3700)),
+    anomalyMonth = month,
+    anomalies = emptyList(),
+    subscriptions = emptyList(),
+    topCategories = listOf(CategoryTotal("c1", spendingMinor)),
+    topMerchants = emptyList(),
+    topSources = emptyList(),
+    incomeSources = emptyList(),
+    deductionsMinor = 0,
+    netWorth = NetWorth(LocalDate(2026, 11, 30), 100000, 100000, 0, 0, 100000, 2.0, 1),
+    freshness = Freshness(emptyList(), 0, 0),
+)
 
 class FakeAccountsApi : AccountsApi {
     override suspend fun list(householdId: String): List<Account> = fakeAccounts
