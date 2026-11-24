@@ -78,6 +78,18 @@ class LoginViewModelTest {
     }
 
     @Test
+    fun `a bare server domain is logged in as https`() = runTest(dispatcher) {
+        val session = FakeSessionApi()
+        val vm = LoginViewModel(session)
+        vm.onServerUrlChange("spend.brq.mstrlc.eu")
+        vm.onEmailChange("a@b.c")
+        vm.onPasswordChange("secret")
+        vm.submit(isDebugBuild = true)
+        advanceUntilIdle()
+        assertEquals(Triple("https://spend.brq.mstrlc.eu", "a@b.c", "secret"), session.lastLogin)
+    }
+
+    @Test
     fun `a release build refuses a plain http server url`() = runTest(dispatcher) {
         val session = FakeSessionApi()
         val vm = LoginViewModel(session)
