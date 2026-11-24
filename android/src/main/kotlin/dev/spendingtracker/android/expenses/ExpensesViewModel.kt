@@ -63,15 +63,32 @@ class ExpensesViewModel(
 
     private val pendingDeletes = mutableMapOf<String, Job>()
     private var loadedMonth: String? = null
+    private var loadedHouseholdId: String? = null
 
     /** True while a reload is in flight on top of existing content — drives the pull-to-refresh spinner. */
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
+    init {
+        // Logging out (or switching household) cancels deletes still waiting on the undo timer and makes
+        // the next loadMonth fetch fresh instead of returning the old session's month early.
+        viewModelScope.launch {
+            sessionApi.session.collect { session ->
+                if (session == null) {
+                    pendingDeletes.values.forEach { it.cancel() }
+                    pendingDeletes.clear()
+                    loadedMonth = null
+                    loadedHouseholdId = null
+                }
+            }
+        }
+    }
+
     fun loadMonth(month: String) {
-        if (loadedMonth == month) return
-        loadedMonth = month
         val household = sessionApi.household.value ?: return
+        if (loadedMonth == month && loadedHouseholdId == household.id) return
+        loadedMonth = month
+        loadedHouseholdId = household.id
         viewModelScope.launch {
             // First load (or after an error) has nothing to show: full-screen spinner. Otherwise keep the
             // old month on screen and just show the PTR indicator.
@@ -103,6 +120,7 @@ class ExpensesViewModel(
             is ExpensesUiState.Loading -> return
         }
         loadedMonth = null
+        loadedHouseholdId = null
         loadMonth(month)
     }
 
