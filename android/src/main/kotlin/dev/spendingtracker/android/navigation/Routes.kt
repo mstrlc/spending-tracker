@@ -9,17 +9,21 @@ import kotlinx.serialization.Serializable
 sealed interface Route : NavKey, android.os.Parcelable
 
 @Parcelize
+@Serializable
 object Login : Route
 
 @Parcelize
+@Serializable
 object Households : Route
 
 /**
  * The main shell (Overview and Expenses tabs); [month] is YYYY-MM, paged with the arrows in the top bar.
  */
 @Parcelize
+@Serializable
 data class Main(val month: String) : Route
 
 /** Create ([expenseId] null) or edit one expense of [month]. */
 @Parcelize
+@Serializable
 data class ExpenseEditor(val month: String, val expenseId: String?) : Route
