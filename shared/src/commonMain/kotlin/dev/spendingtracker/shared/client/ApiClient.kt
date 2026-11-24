@@ -38,8 +38,10 @@ class ApiClient(
     val baseUrl: String,
     val tokenStore: TokenStore,
     engine: HttpClientEngine? = null,
+    /** Debug builds bypass the system proxy (dev machines/emulators often carry a stale global http_proxy); release builds use it. */
+    debugBuild: Boolean = false,
 ) {
-    internal val http: HttpClient = HttpClient(engine ?: defaultEngine()) {
+    internal val http: HttpClient = HttpClient(engine ?: defaultEngine(debugBuild)) {
         install(ContentNegotiation) { json(ApiJson) }
         // A hung server must surface as an error, not spin a spinner forever.
         install(HttpTimeout) { requestTimeoutMillis = 30_000; connectTimeoutMillis = 10_000; socketTimeoutMillis = 30_000 }
@@ -98,4 +100,4 @@ inline fun <reified T> HttpRequestBuilder.jsonBody(value: T) {
 }
 
 /** The platform's HTTP engine: OkHttp on Android, Darwin on iOS, Java on the JVM (tests). */
-internal expect fun defaultEngine(): HttpClientEngine
+internal expect fun defaultEngine(debugBuild: Boolean): HttpClientEngine
