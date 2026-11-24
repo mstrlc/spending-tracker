@@ -17,8 +17,9 @@ Not a goal: parity with the web. The Inbox, bank feeds, rules, assets, debts, tr
 
 ## Phases
 
-### Phase 0: server, bearer auth (small)
+### Phase 0: CI and bearer auth (small)
 
+- CI first: `.github/workflows/ci.yml` with the **server** and **web** jobs ("Build and CI" below). The **android** job comes in phase 1, once there's something for it to build.
 - `SessionAuth.kt`: the `session` provider reads `Authorization: Bearer <token>` first, else the `sid` cookie. When the token came from the header, don't call `setSessionCookie` on renewal (the expiry still extends in `SessionStore.find`).
 - `AuthRoutes.kt`: `POST /api/auth/token` takes `LoginRequest`, returns `TokenResponse(token, me)` and sets no cookie. Same rate limit and same wrong-password response as `/login`. `POST /api/auth/logout` deletes the session from either the header or the cookie.
 - `shared/api/Auth.kt`: add `TokenResponse(token: String, me: Me)`.
@@ -28,7 +29,7 @@ Not a goal: parity with the web. The Inbox, bank feeds, rules, assets, debts, tr
 
 ### Phase 1: `shared` becomes a client SDK
 
-- Targets: keep `jvm()`, add `androidTarget()` now (the Android library plugin in the root `build.gradle.kts` and `libs.versions.toml`). Leave `iosArm64()` / `iosSimulatorArm64()` for phase 3 so the Android build doesn't need Xcode, but keep `commonMain` free of JVM-only APIs from the start (check: `kotlin.uuid` and `kotlinx.datetime` are fine; no `java.*`).
+- Targets: keep `jvm()` and add Android through the **Android-KMP library plugin** (`com.android.kotlin.multiplatform.library`, configured in an `androidLibrary {}` block inside `kotlin {}`), not the older `com.android.library` + `androidTarget()` pair. Add it and the Android Gradle Plugin to the root `build.gradle.kts` (`apply false`) and `libs.versions.toml`; pick the newest AGP that supports the repo's Kotlin (2.4.21) and Gradle versions, and check that before writing code. Leave `iosArm64()` / `iosSimulatorArm64()` for phase 3 so the Android build doesn't need Xcode, but keep `commonMain` free of JVM-only APIs from the start (check: `kotlin.uuid` and `kotlinx.datetime` are fine; no `java.*`).
 - One `Json` config in `shared` (`ApiJson`, today `apiJson = Json { ignoreUnknownKeys = true }` in `Application.kt`), used by the server and the client so they can't drift. Response models have no defaults (Conventions), so a missing field fails loudly in the client too.
 - `dev.spendingtracker.shared.client` (new package, `commonMain`):
   - `ApiClient(baseUrl, tokenStore)`: a Ktor `HttpClient` with content negotiation, the bearer header from `TokenStore`, `ApiError` decoded from non-2xx into a typed `ApiException(status, error)`, and 401 clearing the token.
@@ -37,10 +38,12 @@ Not a goal: parity with the web. The Inbox, bank feeds, rules, assets, debts, tr
   - Thin repositories, one per area the app uses: `AuthRepository` (token login, me, logout), `HouseholdRepository` (`listHouseholds`, `listMembers`), `OverviewRepository` (`/overview?month=`), `ExpenseRepository` (list by `from`/`to`, create, update with `version`, delete with `version`), `CategoryRepository`, `AccountRepository`. Suspend functions and `Flow`s, no platform types in signatures (keeps the Swift interop clean later).
 - `shared` stays free of DI frameworks; the app wires it by hand or with Koin (below).
 - Tests in `commonTest` with `ktor-client-mock` (already in the catalog): header sent, `ApiError` mapping, 401 clears the token, `version_conflict` surfaces as its own error.
+- CI: add the **android** job, running `:shared:allTests` for now; phase 2 extends it.
 
 ### Phase 2: the Android app
 
 - Module `android/` (`com.android.application`), package `dev.spendingtracker.android`, min SDK 26, target the latest.
+- Plain HTTP for local development only: Android blocks cleartext traffic by default, so a login to `http://10.0.2.2:<PORT>` would fail with an unclear error. Add a network security config in the **debug** source set that allows cleartext for `10.0.2.2` and `localhost` only; release builds stay HTTPS-only. The login screen says so when a release build is given an `http://` URL.
 - Stack: Kotlin (same version as the rest), Jetpack Compose with the Compose BOM, Material 3, Navigation 3, `lifecycle-viewmodel-compose`, Koin for DI (works in KMP, so iOS can reuse the module graph later; Hilt is Android-only).
 - Screens (each a `ViewModel` exposing one `StateFlow<UiState>`, unidirectional events):
   1. **Login**: server URL, email, password. Remembers the URL; token goes to `TokenStore`.
@@ -56,16 +59,24 @@ Not a goal: parity with the web. The Inbox, bank feeds, rules, assets, debts, tr
 
 - `shared`: add `iosArm64()` and `iosSimulatorArm64()`, Darwin engine, Keychain `TokenStore`, and export an XCFramework (or SPM via KMMBridge). Use SKIE so `suspend` becomes `async` and `Flow` becomes `AsyncSequence`.
 - `ios/`: an Xcode project with the same five screens in SwiftUI, `@Observable` screen models calling the shared repositories.
+- CI: macOS runners count 10× against private-repo minutes, so an iOS job runs only on `workflow_dispatch` and when the PR is ready for review, never per push. Check SKIE's support for the repo's Kotlin version first.
 - Expected size: mostly SwiftUI, if phase 1 kept platform types out of `commonMain`.
 
 ## Build and CI
 
 - `settings.gradle.kts`: `include(":android")`. `./gradlew build` then needs the Android SDK; keep `./gradlew :server:build :shared:jvmTest` working without it and say so in `AGENTS.md` ("Working notes").
-- GitHub Actions (`.github/workflows/ci.yml`; the repo has no CI yet), on pull requests and pushes to `main`, three parallel jobs:
-  - **server**: JDK 21, `./gradlew :server:build :shared:jvmTest` (Testcontainers uses the runner's Docker).
-  - **android**: JDK 21 + Android SDK, `./gradlew :shared:allTests :android:testDebugUnitTest :android:lintDebug :android:assembleDebug`.
-  - **web**: pnpm, `pnpm --dir web install --frozen-lockfile`, `pnpm --dir web exec tsc --noEmit`, `pnpm --dir web test`.
-  - Gradle cache via `gradle/actions/setup-gradle`; no secrets needed (GoCardless keys aren't used by tests). Add CI first in phase 0, so every later phase is checked by it.
+- GitHub Actions (`.github/workflows/ci.yml`; the repo has no CI yet), three parallel jobs:
+  - **server** (phase 0): JDK 21, `./gradlew :server:build :shared:jvmTest` (Testcontainers uses the runner's Docker).
+  - **web** (phase 0): pnpm, `pnpm --dir web install --frozen-lockfile`, `pnpm --dir web exec tsc --noEmit`, `pnpm --dir web test`.
+  - **android** (phase 1, extended in phase 2): JDK 21 + Android SDK, `./gradlew :shared:allTests`, then also `:android:testDebugUnitTest :android:lintDebug :android:assembleDebug`.
+  - Gradle cache via `gradle/actions/setup-gradle`, pnpm cache via `actions/setup-node`; no secrets needed (GoCardless keys aren't used by tests).
+- **Keep it cheap.** The repo is private, so every run counts against the account's Actions minutes (a full run is roughly 15–20 Linux minutes):
+  - Triggers: `pull_request` with `types: [opened, synchronize, reopened, ready_for_review]`, pushes to `main`, and `workflow_dispatch` for a run by hand. Every job has `if: github.event_name != 'pull_request' || !github.event.pull_request.draft`, so **draft PRs don't run CI**.
+  - `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }`: a new push cancels the run still going.
+  - Path filters per job (a small `changes` job with `dorny/paths-filter`): **server** on `server/**`, `shared/**`, Gradle files; **web** on `web/**`; **android** on `android/**`, `shared/**`, Gradle files. The workflow file itself triggers all of them.
+  - `timeout-minutes` on every job (server 20, android 25, web 10), so a hung Testcontainers or emulator setup can't burn an hour.
+  - While a phase is in progress, check locally (`./gradlew build`, the web commands above) before pushing; run CI once per phase, by marking the PR ready for review or with `workflow_dispatch`, then back to draft if more work follows.
+  - If the repo goes public, standard Linux runners are free and these limits matter less; keep them anyway.
 - `README.md` "Running locally": add "Android: open the repo in Android Studio, run `scripts/dev.sh api`, run the `android` configuration on an emulator, log in with the server URL `http://10.0.2.2:<PORT>`". Worktree slots apply (`PORT` from `.env.local`).
 
 ## Agent setup (part of the work, not an afterthought)
@@ -75,13 +86,13 @@ Not a goal: parity with the web. The Inbox, bank feeds, rules, assets, debts, tr
 
 ## Decided
 
-- Min SDK 26, Koin, GitHub Actions CI in this work (above).
+- Min SDK 26, Koin, GitHub Actions CI in this work, no CI runs on draft PRs (above).
 - Work happens on the `android-client` branch, one PR into `main`, with a commit per phase.
 - Demo data comes later, in its own plan: a `scripts/dev.sh seed-demo` with a fake household (members, accounts, categories, a few months of expenses), needed before the repo goes public. Until then, test against a fresh signup or a `setup --copy` database (real data: keep screenshots of it off GitHub).
 - Open-sourcing is a separate decision (license, the example card digits in docs and tests, the private `origin`); this plan doesn't depend on it.
 
 ## Done when
 
-- Phase 0: CI runs on the PR and is green; token login and header auth pass their tests; the web is unchanged; `./gradlew build` passes.
-- Phase 1: `shared` builds for JVM and Android; `commonTest` passes; the server uses the shared `Json`.
-- Phase 2: on an emulator against a local API, you can log in, page through months on the Overview, list expenses, add, edit and delete one (with undo and a handled conflict); unit and UI tests pass; `README.md`, `AGENTS.md` and the two skills are in; the roadmap in `ARCHITECTURE.md` gets a "Mobile clients" entry in its usual style, with iOS as "Not yet".
+- Phase 0: a `workflow_dispatch` run on the branch is green (server and web jobs), and a push to the draft PR starts no run; token login and header auth pass their tests; the web is unchanged; `./gradlew build` passes.
+- Phase 1: `shared` builds for JVM and Android with the Android-KMP library plugin; `commonTest` passes; the server uses the shared `Json`; the android CI job is green.
+- Phase 2: on an emulator against a local API over plain HTTP (debug build), you can log in, page through months on the Overview, list expenses, add, edit and delete one (with undo and a handled conflict); unit and UI tests pass; `README.md`, `AGENTS.md` and the two skills are in; the roadmap in `ARCHITECTURE.md` gets a "Mobile clients" entry in its usual style, with iOS as "Not yet".
