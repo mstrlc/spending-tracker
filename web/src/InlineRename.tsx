@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 
 /** A name that becomes a text field while [editing]; the Rename trigger lives with the row's other actions. */
@@ -33,9 +34,9 @@ export function InlineRename({
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === "Escape" && onDone()}
       />
-      <Button type="submit" size="sm">
+      <SubmitButton size="sm">
         Save
-      </Button>
+      </SubmitButton>
       <Button type="button" variant="ghost" size="sm" onClick={onDone}>
         Cancel
       </Button>

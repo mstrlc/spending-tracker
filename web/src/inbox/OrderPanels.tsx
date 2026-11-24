@@ -10,6 +10,7 @@ import { formatMoney } from "../lib/money";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { Chip } from "../chips";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
@@ -53,9 +54,9 @@ export function OrderEmailForm({ onDone }: { onDone: () => void }) {
       <SheetBody
         footer={
           <>
-            <Button type="submit" disabled={busy || (files.length === 0 && !text.trim())}>
+            <SubmitButton disabled={busy || (files.length === 0 && !text.trim())}>
               {busy ? "Reading…" : "Read"}
-            </Button>
+            </SubmitButton>
             <Button type="button" variant="ghost" onClick={onDone}>
               {results.length > 0 ? "Done" : "Cancel"}
             </Button>
@@ -129,9 +130,9 @@ export function OrderItemsForm({ order, onDone }: { order: Order; onDone: () => 
       <SheetBody
         footer={
           <>
-            <Button type="submit" disabled={assign.isPending}>
+            <SubmitButton disabled={assign.isPending}>
               Save
-            </Button>
+            </SubmitButton>
             <Button type="button" variant="ghost" onClick={onDone}>
               Cancel
             </Button>

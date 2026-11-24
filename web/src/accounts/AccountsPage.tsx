@@ -9,7 +9,7 @@ import { InlineRename } from "../InlineRename";
 import { usePrompt } from "../dialogs";
 import { EmptyState, ErrorText, Field, FormError, Money, PageHeader, PageIntro, RowMenu, SkeletonRows, Summary, Surface } from "../ui";
 import { usePendingDeleteIds, useUndoableDelete, useUndoableSave } from "../undo";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -225,9 +225,9 @@ export function AccountsPage() {
               <Input inputMode="numeric" value={interestTax} onChange={(e) => setInterestTax(e.target.value)} />
             </Field>
           )}
-          <Button type="submit" disabled={save.isPending}>
+          <SubmitButton disabled={save.isPending}>
             Add account
-          </Button>
+          </SubmitButton>
         </form>
         <FormError error={save.error} fields={["name", "ownerUserId", "kind", "iban", "interestTaxPercent"]} />
       </Surface>

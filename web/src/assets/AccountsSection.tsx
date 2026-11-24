@@ -9,6 +9,7 @@ import { parseMoney } from "../lib/money";
 import { ErrorText, Field, FormError, Money, Sheet, SheetBody, Surface } from "../ui";
 import { useUndoableDelete, usePendingDeleteIds } from "../undo";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatAsset } from "./holdings";
@@ -331,9 +332,9 @@ function BalanceCheckForm({ accountId }: { accountId: string }) {
       </Field>
       <FormError error={add.error} fields={["amountMinor", "date", "notes"]} />
       <div className="flex justify-end">
-        <Button type="submit" disabled={add.isPending || parsed === null}>
+        <SubmitButton disabled={add.isPending || parsed === null}>
           Save balance
-        </Button>
+        </SubmitButton>
       </div>
     </form>
   );

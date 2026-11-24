@@ -8,6 +8,7 @@ import { useHousehold } from "../households/HouseholdPages";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 
@@ -90,9 +91,9 @@ function BankRowTransferForm({
             <Button type="button" variant="outline" onClick={onDone}>
               Cancel
             </Button>
-            <Button type="submit" disabled={decide.isPending || !accountId}>
+            <SubmitButton disabled={decide.isPending || !accountId}>
               Transfer
-            </Button>
+            </SubmitButton>
           </>
         }
       >
@@ -243,9 +244,9 @@ function ManualTransferForm({
             <Button type="button" variant="outline" onClick={onDone}>
               Cancel
             </Button>
-            <Button type="submit" disabled={save.isPending || !fromAccountId || !toAccountId}>
+            <SubmitButton disabled={save.isPending || !fromAccountId || !toAccountId}>
               {transfer ? "Save" : "Add"}
-            </Button>
+            </SubmitButton>
           </>
         }
       >

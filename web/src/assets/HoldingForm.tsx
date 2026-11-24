@@ -6,6 +6,7 @@ import { useConfirm } from "../dialogs";
 import { useUndoableDelete, useUndoableSave } from "../undo";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
@@ -130,9 +131,9 @@ export function HoldingForm({
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
-            <Button type="submit" disabled={save.isPending}>
+            <SubmitButton disabled={save.isPending}>
               {asset ? "Save" : "Add asset"}
-            </Button>
+            </SubmitButton>
           </>
         }
       >

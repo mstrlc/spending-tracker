@@ -18,6 +18,7 @@ import { useHousehold } from "../households/HouseholdPages";
 import { useUndoableDelete, useUndoableSave } from "../undo";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -405,9 +406,9 @@ export function ExpenseForm({
             <Button type="button" variant="outline" onClick={onDone}>
               {expense || bankRows ? "Cancel" : "Done"}
             </Button>
-            <Button type="submit" disabled={save.isPending}>
+            <SubmitButton disabled={save.isPending}>
               {expense ? "Save" : "Add expense"}
-            </Button>
+            </SubmitButton>
           </>
         }
       >

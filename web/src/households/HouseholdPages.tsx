@@ -32,6 +32,7 @@ import { UndoFlusher } from "../undo";
 import { Toaster } from "@/components/ui/sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -110,9 +111,9 @@ export function OnboardingPage() {
           </NativeSelect>
         </Field>
         <FormError error={create.error} fields={["name", "currency"]} />
-        <Button type="submit" size="lg" className="w-full" disabled={create.isPending}>
+        <SubmitButton size="lg" className="w-full" disabled={create.isPending}>
           Create household
-        </Button>
+        </SubmitButton>
       </form>
     </AuthShell>
   );

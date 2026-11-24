@@ -10,6 +10,7 @@ import { formatMoney } from "../lib/money";
 import { EmptyState, ErrorText, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
 import { usePendingDeleteIds, useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -212,9 +213,9 @@ function MergeDialog({ merchant, merchants, onClose }: { merchant: Merchant; mer
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={merge.isPending || !intoId}>
+            <SubmitButton disabled={merge.isPending || !intoId}>
               Merge
-            </Button>
+            </SubmitButton>
           </DialogFooter>
         </form>
       </DialogContent>

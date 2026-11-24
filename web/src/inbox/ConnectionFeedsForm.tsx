@@ -5,6 +5,7 @@ import { importFromAfter } from "./connections";
 import { useHousehold } from "../households/HouseholdPages";
 import { ErrorText } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -200,9 +201,9 @@ export function ConnectionFeedsForm({
         <Button type="button" variant="outline" onClick={onDone}>
           {cancelLabel}
         </Button>
-        <Button type="submit" disabled={chosenCount === 0 || createFeeds.isPending}>
+        <SubmitButton disabled={chosenCount === 0 || createFeeds.isPending}>
           {createFeeds.isPending ? "Saving…" : `Connect ${chosenCount === 1 ? "account" : `${chosenCount} accounts`}`}
-        </Button>
+        </SubmitButton>
       </div>
     </form>
   );

@@ -7,6 +7,7 @@ import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 import { SplitEditor } from "./SplitEditor";
@@ -70,9 +71,9 @@ export function SplitRuleForm({ rule, onDone }: { rule?: SplitRule; onDone: () =
             <Button type="button" variant="outline" onClick={onDone}>
               Cancel
             </Button>
-            <Button type="submit" disabled={save.isPending}>
+            <SubmitButton disabled={save.isPending}>
               {rule ? "Save" : "Add split"}
-            </Button>
+            </SubmitButton>
           </>
         }
       >

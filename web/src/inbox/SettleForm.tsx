@@ -6,6 +6,7 @@ import { formatMoney } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { draftSettle } from "./drafts";
@@ -51,9 +52,9 @@ export function SettleForm({ rows, onSaved, onDone }: { rows: BankRow[]; onSaved
             <Button type="button" variant="outline" onClick={onDone}>
               Cancel
             </Button>
-            <Button type="submit" disabled={decide.isPending || !fromUserId || !toUserId}>
+            <SubmitButton disabled={decide.isPending || !fromUserId || !toUserId}>
               Settle
-            </Button>
+            </SubmitButton>
           </>
         }
       >

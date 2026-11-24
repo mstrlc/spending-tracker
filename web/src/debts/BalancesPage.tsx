@@ -22,6 +22,7 @@ import { MonthTitle, useMonthParam, useMonthShortcuts } from "../month";
 import { EmptyState, ErrorText, Money, PageHeader, PageIntro, Sheet, SkeletonRows, Summary, Surface } from "../ui";
 import { usePendingDeleteIds } from "../undo";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -163,9 +164,9 @@ export function BalancesPage() {
               className="h-8 w-auto"
               required
             />
-            <Button type="submit" size="sm" disabled={saveSettings.isPending}>
+            <SubmitButton size="sm" disabled={saveSettings.isPending}>
               Save
-            </Button>
+            </SubmitButton>
             {debtsFrom && (
               <Button type="button" variant="ghost" size="sm" onClick={clearDebtsFrom} disabled={saveSettings.isPending}>
                 Clear

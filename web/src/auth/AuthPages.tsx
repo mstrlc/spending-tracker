@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { useLogin, useMe, useSignup } from "../api/hooks";
 import { Field, FormError } from "../ui";
 import { AuthShell } from "./AuthShell";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 
 /** Router state the auth pages accept: where to go afterwards, and an email to prefill (from an invite). */
@@ -60,9 +60,9 @@ export function LoginPage() {
           />
         </Field>
         <FormError error={login.error} fields={["email", "password"]} />
-        <Button type="submit" size="lg" className="w-full" disabled={login.isPending}>
+        <SubmitButton size="lg" className="w-full" disabled={login.isPending}>
           {login.isPending ? "Logging in…" : "Log in"}
-        </Button>
+        </SubmitButton>
       </form>
     </AuthShell>
   );
@@ -114,9 +114,9 @@ export function SignupPage() {
           />
         </Field>
         <FormError error={signup.error} fields={["email", "password", "displayName"]} />
-        <Button type="submit" size="lg" className="w-full" disabled={signup.isPending}>
+        <SubmitButton size="lg" className="w-full" disabled={signup.isPending}>
           {signup.isPending ? "Creating account…" : "Sign up"}
-        </Button>
+        </SubmitButton>
       </form>
     </AuthShell>
   );

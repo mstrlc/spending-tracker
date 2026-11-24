@@ -7,7 +7,7 @@ import { useHousehold } from "../households/HouseholdPages";
 import { InlineRename } from "../InlineRename";
 import { ErrorText, Field, FormError, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
 import { usePendingDeleteIds, useUndoableDelete, useUndoableSave } from "../undo";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
@@ -141,9 +141,9 @@ export function CategoriesPage() {
               </NativeSelect>
             </Field>
           )}
-          <Button type="submit" disabled={save.isPending}>
+          <SubmitButton disabled={save.isPending}>
             {side === "income" ? "Add income category" : "Add category"}
-          </Button>
+          </SubmitButton>
         </form>
         <FormError error={save.error} fields={["name", "parentId", "kind"]} />
       </Surface>

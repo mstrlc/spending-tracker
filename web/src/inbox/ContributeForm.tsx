@@ -6,6 +6,7 @@ import { formatMoney } from "../lib/money";
 import { useHousehold } from "../households/HouseholdPages";
 import { Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
@@ -53,9 +54,9 @@ export function ContributeForm({
             <Button type="button" variant="outline" onClick={onDone}>
               Cancel
             </Button>
-            <Button type="submit" disabled={decide.isPending || !assetId}>
+            <SubmitButton disabled={decide.isPending || !assetId}>
               {putIn ? "Put in" : "Take out"}
-            </Button>
+            </SubmitButton>
           </>
         }
       >

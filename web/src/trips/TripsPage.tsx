@@ -7,7 +7,7 @@ import { InlineRename } from "../InlineRename";
 import { formatMoney } from "../lib/money";
 import { EmptyState, ErrorText, Field, FormError, PageHeader, PageIntro, RowMenu, SkeletonRows, Surface } from "../ui";
 import { usePendingDeleteIds, useUndoableDelete, useUndoableSave } from "../undo";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -89,9 +89,9 @@ export function TripsPage() {
           <Field label="To" name="endDate" error={save.error} className="w-40">
             <Input type="date" value={endDate} min={startDate || undefined} onChange={(e) => setEndDate(e.target.value)} />
           </Field>
-          <Button type="submit" disabled={save.isPending}>
+          <SubmitButton disabled={save.isPending}>
             Add trip
-          </Button>
+          </SubmitButton>
         </form>
         <FormError error={save.error} fields={["name", "startDate", "endDate"]} />
       </Surface>

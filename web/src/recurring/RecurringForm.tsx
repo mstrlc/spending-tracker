@@ -8,6 +8,7 @@ import { parseMoney, toInputValue } from "../lib/money";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 
@@ -124,9 +125,9 @@ export function RecurringForm({
             <Button type="button" variant="outline" onClick={onDone}>
               Cancel
             </Button>
-            <Button type="submit" disabled={save.isPending}>
+            <SubmitButton disabled={save.isPending}>
               {payment ? "Save" : suggestion ? "Confirm" : "Add"}
-            </Button>
+            </SubmitButton>
           </>
         }
       >

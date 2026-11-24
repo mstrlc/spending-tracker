@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { useChangePassword, useSetMemberPassword } from "../api/hooks";
 import { Field, FormError } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
@@ -152,9 +153,9 @@ function PasswordForm({ title, description, askCurrent = false, pending, error, 
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={pending}>
+        <SubmitButton disabled={pending}>
           {askCurrent ? "Change password" : "Set password"}
-        </Button>
+        </SubmitButton>
       </DialogFooter>
     </form>
   );

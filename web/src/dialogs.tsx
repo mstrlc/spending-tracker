@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import {
   Dialog,
   DialogContent,
@@ -143,7 +144,7 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
                 <Button type="button" variant="outline" onClick={() => answer(null)}>
                   Cancel
                 </Button>
-                <Button type="submit">Save</Button>
+                <SubmitButton>Save</SubmitButton>
               </DialogFooter>
             </form>
           </DialogContent>

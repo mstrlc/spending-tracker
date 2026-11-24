@@ -18,6 +18,7 @@ import { formatAsset } from "./holdings";
 import { ErrorText, Field, FormError } from "../ui";
 import { useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
@@ -310,9 +311,9 @@ export function EntryForm({
           {fromTransfer ? "Close" : "Cancel"}
         </Button>
         {!fromTransfer && (
-          <Button type="submit" disabled={save.isPending}>
+          <SubmitButton disabled={save.isPending}>
             {existing ? "Save" : target.type === "valuation" ? `Save ${kind.noun}` : kind.add}
-          </Button>
+          </SubmitButton>
         )}
       </div>
     </form>

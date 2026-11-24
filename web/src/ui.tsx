@@ -6,6 +6,7 @@ import {
   useEffect,
   useId,
   useRef,
+  type ComponentProps,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -14,6 +15,7 @@ import { EllipsisIcon, XIcon } from "lucide-react";
 import { ApiFailure, errorMessage } from "./api/errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Kbd } from "@/components/ui/kbd";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -261,6 +263,47 @@ export function Sheet({
       {children}
     </aside>,
     slot,
+  );
+}
+
+/** The modifier key for shortcut hints: ⌘ on Apple platforms, Ctrl elsewhere. */
+const modKey = typeof navigator !== "undefined" && /Mac|iP(hone|ad|od)/.test(navigator.platform) ? "⌘" : "Ctrl";
+
+/**
+ * A form's submit button with a ⌘↵ (Ctrl↵ elsewhere) hint. Cmd/Ctrl+Enter anywhere in the form submits
+ * it. The hint is aria-hidden, so the button's accessible name stays just its label, and hidden on
+ * phones, where there is no keyboard.
+ */
+export function SubmitButton({ children, variant, ...props }: ComponentProps<typeof Button>) {
+  const ref = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const form = ref.current?.closest("form");
+    if (!form) return;
+    const formEl: HTMLFormElement = form;
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.defaultPrevented && !ref.current?.disabled) {
+        e.preventDefault();
+        formEl.requestSubmit();
+      }
+    }
+    formEl.addEventListener("keydown", onKey);
+    return () => formEl.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <Button type="submit" variant={variant} ref={ref} {...props}>
+      {children}
+      <Kbd
+        aria-hidden
+        className={cn(
+          "hidden sm:inline-flex",
+          (variant === undefined || variant === "default") && "bg-primary-foreground/15 text-primary-foreground",
+        )}
+      >
+        {modKey}↵
+      </Kbd>
+    </Button>
   );
 }
 

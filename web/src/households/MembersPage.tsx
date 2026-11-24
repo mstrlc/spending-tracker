@@ -7,6 +7,7 @@ import type { HouseholdRole, Invite, Member } from "../api/types";
 import { useConfirm, usePrompt } from "../dialogs";
 import { ErrorText, Field, FormError, PageHeader, PageIntro, SkeletonRows, Surface } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -175,9 +176,9 @@ function AddMemberForm() {
         <Field label="Name" name="displayName" error={add.error} className="w-56">
           <Input required placeholder="Without a login" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Button type="submit" variant="outline" disabled={add.isPending}>
+        <SubmitButton variant="outline" disabled={add.isPending}>
           Add person
-        </Button>
+        </SubmitButton>
       </form>
       <FormError error={add.error} fields={["displayName"]} />
     </Surface>
@@ -239,9 +240,9 @@ function InviteForm({ claimable }: { claimable: Member[] }) {
             </NativeSelect>
           </Field>
         )}
-        <Button type="submit" disabled={create.isPending}>
+        <SubmitButton disabled={create.isPending}>
           Create invite link
-        </Button>
+        </SubmitButton>
       </form>
       <FormError error={create.error} fields={["email", "role", "claimUserId"]} />
       {created?.token && (

@@ -23,6 +23,7 @@ import { useHousehold } from "../households/HouseholdPages";
 import { useConfirm } from "../dialogs";
 import { ErrorText, Field, FormError, RowMenu, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ConnectionFeedsForm } from "./ConnectionFeedsForm";
@@ -640,9 +641,9 @@ function FeedForm({ feed, onDone }: { feed?: BankFeed; onDone: () => void }) {
             <Button type="button" variant="outline" onClick={onDone}>
               Cancel
             </Button>
-            <Button type="submit" disabled={save.isPending}>
+            <SubmitButton disabled={save.isPending}>
               {feed ? "Save" : "Add feed"}
-            </Button>
+            </SubmitButton>
           </>
         }
       >

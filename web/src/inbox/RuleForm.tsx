@@ -5,6 +5,7 @@ import { categoryTree, incomeCategories, spendingCategories } from "../categorie
 import { useHousehold } from "../households/HouseholdPages";
 import { Field, FormError, SheetBody } from "../ui";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -131,9 +132,9 @@ export function RuleForm({ rule, draft, onDone }: { rule?: InboxRule; draft?: Ru
             <Button type="button" variant="outline" onClick={onDone}>
               Cancel
             </Button>
-            <Button type="submit" disabled={save.isPending || noMatch}>
+            <SubmitButton disabled={save.isPending || noMatch}>
               {rule ? "Save rule" : "Add rule"}
-            </Button>
+            </SubmitButton>
           </>
         }
       >

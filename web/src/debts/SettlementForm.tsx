@@ -7,6 +7,7 @@ import { useHousehold } from "../households/HouseholdPages";
 import { ErrorText, Field, FormError, SheetBody } from "../ui";
 import { useUndoableDelete, useUndoableSave } from "../undo";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/ui";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
@@ -92,9 +93,9 @@ export function SettlementForm({
             <Button type="button" variant="outline" onClick={onDone}>
               Cancel
             </Button>
-            <Button type="submit" disabled={save.isPending}>
+            <SubmitButton disabled={save.isPending}>
               {settlement ? "Save" : "Record"}
-            </Button>
+            </SubmitButton>
           </>
         }
       >
