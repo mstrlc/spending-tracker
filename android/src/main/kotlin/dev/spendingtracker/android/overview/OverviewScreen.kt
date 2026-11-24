@@ -1,5 +1,6 @@
 package dev.spendingtracker.android.overview
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.spendingtracker.android.data.SessionApi
@@ -122,7 +125,7 @@ private fun OverviewContent(overview: Overview, categories: List<Category>, curr
     }
 }
 
-/** Spending, income, saved and invested, the first one large like the web's `Summary`. */
+/** Spending, income, saved and invested as a 2×2 grid of cards; the first one is emphasized, like the web's `Summary`. */
 @Composable
 private fun SummaryFigures(overview: Overview, currency: String) {
     val flow = overview.thisMonth
@@ -135,20 +138,38 @@ private fun SummaryFigures(overview: Overview, currency: String) {
         } else null
     }
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Figure("Spending", formatMoney(flow.spendingMinor, currency), pace?.let { "${(it * 100).toInt()}% of a typical month" })
-        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Figure("Income", formatMoney(flow.incomeMinor, currency))
-            Figure("Saved", formatMoney(saved, currency))
-            Figure("Invested", formatMoney(flow.investedMinor, currency))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FigureCard(
+                "Spending",
+                formatMoney(flow.spendingMinor, currency),
+                pace?.let { "${(it * 100).toInt()}% of a typical month" },
+                big = true,
+                modifier = Modifier.weight(1f),
+            )
+            FigureCard("Income", formatMoney(flow.incomeMinor, currency), null, big = false, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FigureCard("Saved", formatMoney(saved, currency), null, big = false, modifier = Modifier.weight(1f))
+            FigureCard("Invested", formatMoney(flow.investedMinor, currency), null, big = false, modifier = Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun Figure(label: String, value: String, sub: String? = null) {
-    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+private fun FigureCard(label: String, value: String, sub: String?, big: Boolean, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(12.dp),
+    ) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontFamily = GeistMono, style = MaterialTheme.typography.headlineMedium)
+        Text(
+            value,
+            fontFamily = GeistMono,
+            style = if (big) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+        )
         if (sub != null) {
             Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
