@@ -165,7 +165,7 @@ class ApiClientTest {
         })
         val input = ExpenseInput(
             date = LocalDate(2026, 11, 20),
-            amountMinor = -1299,
+            amountMinor = 1299,
             merchant = "Test Merchant",
             notes = "probe",
         )
@@ -174,7 +174,7 @@ class ApiClientTest {
         assertEquals("/api/households/h1/expenses", path)
         val sent = body!!
         assertTrue(sent.contains(""""date":"2026-11-20""""))
-        assertTrue(sent.contains(""""amountMinor":-1299"""))
+        assertTrue(sent.contains(""""amountMinor":1299"""))
         assertTrue(sent.contains(""""merchant":"Test Merchant"""))
         assertEquals("e1", expense.id)
     }
@@ -195,7 +195,7 @@ class ApiClientTest {
 
     private val expenseJson = """
         {
-          "id": "e1", "date": "2026-11-20", "amountMinor": -1299, "merchantId": null, "merchant": "Test Merchant",
+          "id": "e1", "date": "2026-11-20", "amountMinor": 1299, "merchantId": null, "merchant": "Test Merchant",
           "categoryId": null, "accountId": null, "paidByUserId": null, "notes": "probe", "version": 1,
           "tripId": null, "originalAmountMinor": null, "originalCurrency": null, "split": null,
           "createsDebt": true, "debts": [], "lines": [], "refundOfId": null, "refundedMinor": 0
