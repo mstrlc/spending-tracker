@@ -1,9 +1,13 @@
-.git
-.gradle
-.kotlin
+# The API image (server/Dockerfile, built from the repo root) only needs the Gradle build. An allowlist keeps
+# unrelated changes (web, docs, deploy) from invalidating its build cache, and keeps .env and data/ out of it.
+*
+!gradle
+!gradlew
+!gradle.properties
+!settings.gradle.kts
+!build.gradle.kts
+!shared
+!server
 **/build
-**/node_modules
-web/dist
-design
-.claude
-.agents
+**/.gradle
+**/.kotlin

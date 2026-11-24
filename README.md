@@ -51,8 +51,8 @@ JDK or Node, and it works on a Raspberry Pi.
    allowlist, a VPN like Tailscale).
 
 Signup is off by default: start once with `SIGNUP=on` in the host's `.env` to create the accounts, then remove it and
-redeploy (or invite people from the household page). Rerun `scripts/deploy.sh` after changing code; new migrations
-run when the API starts. A gitignored `deploy/local.md` is the place for notes on your own deployment.
+redeploy (or invite people from the household page). Rerun `scripts/deploy.sh` after changing code: it copies only
+the images that changed (`scripts/deploy.sh api` or `web` limits it to one). New migrations run when the API starts. A gitignored `deploy/local.md` is the place for notes on your own deployment.
 
 After changing API endpoints, with the server running:
 
