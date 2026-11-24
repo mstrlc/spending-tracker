@@ -138,32 +138,37 @@ class ExpenseEditorViewModel(
         val amountMinor = -kotlin.math.abs(parsed)
         viewModelScope.launch {
             update { it.copy(saving = true, error = null) }
-            val input = ExpenseInput(
-                date = editor.date,
-                amountMinor = amountMinor,
-                merchant = editor.merchant.trim(),
-                categoryId = editor.categoryId,
-                accountId = editor.accountId,
-                paidByUserId = editor.paidByUserId,
-                notes = editor.notes.trim(),
-                version = state.version,
-            )
             try {
-                val saved = if (state.expenseId == null) {
-                    expensesApi.create(household.id, input)
-                } else {
-                    expensesApi.update(household.id, state.expenseId, input)
+                val input = ExpenseInput(
+                    date = editor.date,
+                    amountMinor = amountMinor,
+                    merchant = editor.merchant.trim(),
+                    categoryId = editor.categoryId,
+                    accountId = editor.accountId,
+                    paidByUserId = editor.paidByUserId,
+                    notes = editor.notes.trim(),
+                    version = state.version,
+                )
+                try {
+                    val saved = if (state.expenseId == null) {
+                        expensesApi.create(household.id, input)
+                    } else {
+                        expensesApi.update(household.id, state.expenseId, input)
+                    }
+                    expensesList.upsert(saved)
+                    _events.send(EditorEvent.Saved(saved))
+                } catch (e: ApiException) {
+                    if (e.status == 409 && e.error.code == "version_conflict") {
+                        load(errorAfter = "Changed on another device — reloaded.")
+                    } else {
+                        update { it.copy(saving = false, error = e.error.message ?: "Could not save.") }
+                    }
+                } catch (e: Exception) {
+                    update { it.copy(saving = false, error = e.message ?: "Could not save.") }
                 }
-                expensesList.upsert(saved)
-                _events.send(EditorEvent.Saved(saved))
-            } catch (e: ApiException) {
-                if (e.status == 409 && e.error.code == "version_conflict") {
-                    load(errorAfter = "Changed on another device — reloaded.")
-                } else {
-                    update { it.copy(saving = false, error = e.error.message ?: "Could not save.") }
-                }
-            } catch (e: Exception) {
-                update { it.copy(saving = false, error = e.message ?: "Could not save.") }
+            } finally {
+                // On success the screen navigates away; make sure a failure never leaves the spinner on.
+                update { it.copy(saving = false) }
             }
         }
     }
