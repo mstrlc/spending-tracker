@@ -47,6 +47,7 @@ fun OverviewScreen(
     viewModel: OverviewViewModel = koinViewModel(parameters = { parametersOf(month) }),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     val household by sessionApi.household.collectAsStateWithLifecycle()
     val currency = household?.currency ?: "CZK"
 
@@ -54,7 +55,7 @@ fun OverviewScreen(
     LaunchedEffect(month) { viewModel.load(month) }
 
     PullToRefreshBox(
-        isRefreshing = state is OverviewUiState.Loading,
+        isRefreshing = refreshing || state is OverviewUiState.Loading,
         onRefresh = viewModel::load,
         modifier = Modifier.fillMaxSize(),
     ) {

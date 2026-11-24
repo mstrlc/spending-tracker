@@ -64,12 +64,19 @@ class ExpensesViewModel(
     private val pendingDeletes = mutableMapOf<String, Job>()
     private var loadedMonth: String? = null
 
+    /** True while a reload is in flight on top of existing content — drives the pull-to-refresh spinner. */
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+
     fun loadMonth(month: String) {
         if (loadedMonth == month) return
         loadedMonth = month
         val household = sessionApi.household.value ?: return
         viewModelScope.launch {
-            _uiState.value = ExpensesUiState.Loading
+            // First load (or after an error) has nothing to show: full-screen spinner. Otherwise keep the
+            // old month on screen and just show the PTR indicator.
+            if (_uiState.value !is ExpensesUiState.Ready) _uiState.value = ExpensesUiState.Loading
+            _refreshing.value = true
             try {
                 val (from, to) = monthRange(month)
                 val expenses = expensesApi.list(household.id, from, to)
@@ -79,7 +86,11 @@ class ExpensesViewModel(
                 val members = householdsApi.listMembers(household.id)
                 _uiState.value = ExpensesUiState.Ready(month, expenses, categories, accounts, members)
             } catch (e: Exception) {
-                _uiState.value = ExpensesUiState.Error(month, e.message ?: "Could not load expenses.")
+                if (_uiState.value !is ExpensesUiState.Ready) {
+                    _uiState.value = ExpensesUiState.Error(month, e.message ?: "Could not load expenses.")
+                }
+            } finally {
+                _refreshing.value = false
             }
         }
     }
