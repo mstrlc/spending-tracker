@@ -3,6 +3,7 @@ package dev.spendingtracker.android.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.spendingtracker.android.data.SessionApi
+import dev.spendingtracker.android.util.normalizeServerUrl
 import dev.spendingtracker.shared.client.ApiException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,13 +50,14 @@ class LoginViewModel(private val sessionApi: SessionApi) : ViewModel() {
     fun submit(isDebugBuild: Boolean = true) {
         val state = _uiState.value
         if (!state.canSubmit) return
-        if (!isDebugBuild && state.serverUrl.startsWith("http://")) {
+        val serverUrl = normalizeServerUrl(state.serverUrl)
+        if (!isDebugBuild && serverUrl.startsWith("http://")) {
             _uiState.update { it.copy(error = "This build only accepts https:// server URLs.") }
             return
         }
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, error = null) }
-            val result = sessionApi.login(state.serverUrl, state.email, state.password)
+            val result = sessionApi.login(serverUrl, state.email, state.password)
             _uiState.update { it.copy(loading = false) }
             result.fold(
                 onSuccess = { _events.send(LoginEvent.LoggedIn) },
