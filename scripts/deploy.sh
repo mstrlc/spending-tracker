@@ -65,12 +65,12 @@ for app in api web; do
 done
 
 if (( ${#images[@]} )); then
-  echo "Copying ${images[*]} to $host…"
+  echo "Copying ${images[*]} to ${host}…"
   docker save "${images[@]}" | gzip -1 | ssh "$host" 'gunzip | docker load'
   printf '%s' "$record" | ssh "$host" "cat > $dir/.images"
 fi
 
-echo "Updating the app on $host…"
+echo "Updating the app on ${host}…"
 scp -q deploy/compose.prod.yml "$host:$dir/compose.yml"
 scp -q deploy/backup.sh "$host:$dir/backup.sh"
 ssh "$host" "cd $dir && chmod 700 backup.sh && docker compose up -d --wait --remove-orphans && docker image prune -f >/dev/null"
