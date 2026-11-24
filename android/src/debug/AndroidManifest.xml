@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Debug builds may talk plain HTTP to the local dev API (10.0.2.2 is the host from an emulator,
+      localhost from a device on the same network via adb reverse). Release builds stay HTTPS-only:
+      the login screen refuses an http:// URL there.
+    -->
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+
+</manifest>

@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A near-black rounded square with a white "S", echoing the web's near-black primary. -->
+    <path
+        android:fillColor="#111111"
+        android:pathData="M14,14h80v80h-80z"
+        android:strokeWidth="0" />
+    <path
+        android:fillColor="#FAFAFA"
+        android:pathData="M66.5,38.5c-1.9,-2.3 -4.8,-3.5 -8.5,-3.5c-8,0 -13,4.5 -13,11c0,5.5 3.5,8.5 10.5,10l5,1c4,0.8 6,2.2 6,4.5c0,3 -2.8,4.8 -7,4.8c-4,0 -7,-1.5 -8.5,-4.5l-7,4c2.5,5 7.5,7.5 15.5,7.5c8.5,0 14,-4.3 14,-11.2c0,-5.8 -3.8,-9 -11,-10.5l-5,-1c-3.5,-0.8 -5,-2 -5,-4c0,-2.5 2.5,-4 6,-4c3.2,0 5.8,1.2 7.5,3.5z" />
+</vector>
