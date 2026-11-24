@@ -5,6 +5,7 @@ import dev.spendingtracker.shared.api.Me
 import dev.spendingtracker.shared.client.ApiClient
 import dev.spendingtracker.shared.client.ApiException
 import dev.spendingtracker.shared.client.AuthRepository
+import dev.spendingtracker.android.BuildConfig
 import dev.spendingtracker.android.util.normalizeServerUrl
 import dev.spendingtracker.shared.client.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +37,7 @@ class SessionManager(
         val url = serverUrlStore.current()
         val token = tokenStore.get()
         if (token == null) return false
-        val api = ApiClient(url, tokenStore)
+        val api = ApiClient(url, tokenStore, debugBuild = BuildConfig.DEBUG)
         return try {
             // A 401 clears the token in the client itself; anything else (server down) keeps it for later.
             _session.value = Session(url, api, AuthRepository(api).me())
@@ -51,7 +52,7 @@ class SessionManager(
 
     override suspend fun login(serverUrl: String, email: String, password: String): Result<Me> {
         val normalized = normalizeServerUrl(serverUrl)
-        val api = ApiClient(normalized, tokenStore)
+        val api = ApiClient(normalized, tokenStore, debugBuild = BuildConfig.DEBUG)
         return try {
             val response = AuthRepository(api).login(email, password)
             tokenStore.set(response.token)
