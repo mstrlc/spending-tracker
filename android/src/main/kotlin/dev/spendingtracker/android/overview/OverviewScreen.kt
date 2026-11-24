@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +49,9 @@ fun OverviewScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val household by sessionApi.household.collectAsStateWithLifecycle()
     val currency = household?.currency ?: "CZK"
+
+    // The VM is created once, so month changes come through here, not the constructor.
+    LaunchedEffect(month) { viewModel.load(month) }
 
     PullToRefreshBox(
         isRefreshing = state is OverviewUiState.Loading,
@@ -160,6 +165,7 @@ private fun SummaryFigures(overview: Overview, currency: String) {
 private fun FigureCard(label: String, value: String, sub: String?, big: Boolean, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
+            .height(104.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
             .padding(12.dp),

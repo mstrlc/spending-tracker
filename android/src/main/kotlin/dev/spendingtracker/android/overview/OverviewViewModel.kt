@@ -18,21 +18,20 @@ sealed interface OverviewUiState {
     data class Error(val message: String) : OverviewUiState
 }
 
-/** One month of the overview; [month] is YYYY-MM. Categories come along for the top-category names and hues. */
+/** One month of the overview; [initialMonth] is YYYY-MM and [load] switches months. Categories come along for the top-category names and hues. */
 class OverviewViewModel(
     private val sessionApi: SessionApi,
     private val overviewApi: OverviewApi,
     private val categoriesApi: CategoriesApi,
-    private val month: String,
+    initialMonth: String,
 ) : ViewModel() {
+    private var currentMonth: String = initialMonth
     private val _uiState = MutableStateFlow<OverviewUiState>(OverviewUiState.Loading)
     val uiState: StateFlow<OverviewUiState> = _uiState.asStateFlow()
 
-    init {
-        load()
-    }
-
-    fun load() {
+    /** Loads [month] (YYYY-MM); the screen calls this when the month in the top bar changes. */
+    fun load(month: String) {
+        currentMonth = month
         val household = sessionApi.household.value ?: return
         viewModelScope.launch {
             _uiState.value = OverviewUiState.Loading
@@ -45,4 +44,7 @@ class OverviewViewModel(
             }
         }
     }
+
+    /** Reloads the current month (pull to refresh). */
+    fun load() = load(currentMonth)
 }
