@@ -13,9 +13,11 @@ import dev.spendingtracker.shared.api.ChangePasswordRequest
 import dev.spendingtracker.shared.api.LoginRequest
 import dev.spendingtracker.shared.api.Me
 import dev.spendingtracker.shared.api.SignupRequest
+import dev.spendingtracker.shared.api.TokenResponse
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.auth.authenticate
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
@@ -76,14 +78,23 @@ fun Route.authRoutes(secureCookies: Boolean, signupOpen: Boolean = true) = route
                 code(HttpStatusCode.Unauthorized) { body<ApiError>() }
             }
         }) {
-            val body = call.receive<LoginRequest>()
-            val email = body.email.trim().lowercase()
-            val row = dbQuery { Users.selectAll().where { Users.email eq email }.singleOrNull() }
-            if (!Passwords.verify(row?.get(Users.passwordHash), body.password)) {
-                throw ApiException(HttpStatusCode.Unauthorized, "invalid_credentials", "Wrong email or password")
-            }
-            call.setSessionCookie(SessionStore.create(row!![Users.id]), secureCookies)
+            val row = call.checkCredentials(call.receive<LoginRequest>())
+            call.setSessionCookie(SessionStore.create(row[Users.id]), secureCookies)
             call.respond(row.toMe())
+        }
+
+        post("/token", {
+            operationId = "loginToken"
+            description = "Logs in and returns a bearer token instead of a session cookie, for mobile clients."
+            request { body<LoginRequest>() }
+            response {
+                code(HttpStatusCode.OK) { body<TokenResponse>() }
+                code(HttpStatusCode.Unauthorized) { body<ApiError>() }
+            }
+        }) {
+            val row = call.checkCredentials(call.receive<LoginRequest>())
+            val token = SessionStore.create(row[Users.id])
+            call.respond(TokenResponse(token, row.toMe()))
         }
     }
 
@@ -133,6 +144,16 @@ fun Route.authRoutes(secureCookies: Boolean, signupOpen: Boolean = true) = route
             }
         }
     }
+}
+
+// Same wrong-password response for /login and /token, so the two don't leak which exists.
+private suspend fun ApplicationCall.checkCredentials(body: LoginRequest): ResultRow {
+    val email = body.email.trim().lowercase()
+    val row = dbQuery { Users.selectAll().where { Users.email eq email }.singleOrNull() }
+    if (!Passwords.verify(row?.get(Users.passwordHash), body.password)) {
+        throw ApiException(HttpStatusCode.Unauthorized, "invalid_credentials", "Wrong email or password")
+    }
+    return row!!
 }
 
 internal fun normalizeEmail(raw: String): String {
