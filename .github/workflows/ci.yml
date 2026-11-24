@@ -104,6 +104,10 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: android-actions/setup-android@v3
+        with:
+          # The default ('tools platform-tools') fails: the legacy 'tools' package no longer exists.
+          # compileSdk 37 matches shared/build.gradle.kts.
+          packages: 'platform-tools platforms;android-37.0'
       - uses: gradle/actions/setup-gradle@v4
       # Phase 1 builds and tests the shared client SDK for JVM and Android; the app module follows in phase 2.
       # allTests alone would only run the host tests, so assemble the Android AAR explicitly.
