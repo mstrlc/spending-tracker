@@ -8,8 +8,10 @@ import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -61,17 +63,28 @@ fun MainScreen(
         },
         bottomBar = {
             NavigationBar {
+                // The web marks the active tab with the foreground color on a muted pill; the default
+                // secondaryContainer is near-white and invisible on the white bar, so set colors explicitly.
+                val colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    indicatorColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                )
                 NavigationBarItem(
                     selected = tab == Tab.Overview,
                     onClick = { tab = Tab.Overview },
                     icon = { Icon(Icons.Default.Home, contentDescription = null) },
                     label = { Text(Tab.Overview.label) },
+                    colors = colors,
                 )
                 NavigationBarItem(
                     selected = tab == Tab.Expenses,
                     onClick = { tab = Tab.Expenses },
                     icon = { Icon(Icons.Default.Receipt, contentDescription = null) },
                     label = { Text(Tab.Expenses.label) },
+                    colors = colors,
                 )
             }
         },
