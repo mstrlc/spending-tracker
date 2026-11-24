@@ -178,7 +178,7 @@
 }
 
 /*
- * Design rules (see design/ui-pass/README.md):
+ * Design rules (see "Web UI" in ARCHITECTURE.md):
  * - Black and white for the chrome: neutral greys, the accent is near-black (white in dark mode).
  *   Red is reserved for destructive actions and errors.
  * - Colour carries meaning only in small doses (chips, dots, icons, signed amounts; web/src/chips.tsx):

@@ -81,7 +81,7 @@ scripts/dev.sh gen-api             # regenerates web/src/api/schema.d.ts from th
 
 The household's Import page (owners only) accepts an import file with people, accounts, categories, trips,
 expenses, income and assets (see `POST /import` in the API docs). `data/legacy/` (gitignored) holds the old app's
-exported database; convert it to an import file with Node 22.5+ (built-in `node:sqlite`).
+exported database and the import file made from it; the script that converted it is gone with the cutover.
 
 ## Tests
 
