@@ -27,10 +27,10 @@ if [[ ${1:-} != --no-build ]]; then
   docker buildx build --platform "$platform" -t spending-tracker-web:latest --load web
 fi
 
-echo "Copying images to $host…"
+echo "Copying images to ${host}…"
 docker save spending-tracker-api:latest spending-tracker-web:latest | gzip -1 | ssh "$host" 'gunzip | docker load'
 
-echo "Updating the app on $host…"
+echo "Updating the app on ${host}…"
 scp -q deploy/compose.prod.yml "$host:$dir/compose.yml"
 scp -q deploy/backup.sh "$host:$dir/backup.sh"
 ssh "$host" "cd $dir && chmod 700 backup.sh && docker compose up -d --wait --remove-orphans && docker image prune -f >/dev/null"
