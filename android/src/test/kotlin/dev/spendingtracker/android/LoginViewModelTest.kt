@@ -78,6 +78,17 @@ class LoginViewModelTest {
     }
 
     @Test
+    fun `a 404 from login means the server is too old for the app`() = runTest(dispatcher) {
+        val session = FakeSessionApi(loginResult = Result.failure(apiException(404, "not_found")))
+        val vm = LoginViewModel(session)
+        vm.onEmailChange("a@b.c")
+        vm.onPasswordChange("secret")
+        vm.submit(isDebugBuild = true)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.error!!.contains("too old"))
+    }
+
+    @Test
     fun `a bare server domain is logged in as https`() = runTest(dispatcher) {
         val session = FakeSessionApi()
         val vm = LoginViewModel(session)
