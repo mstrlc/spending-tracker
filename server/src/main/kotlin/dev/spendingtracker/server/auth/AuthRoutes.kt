@@ -102,8 +102,10 @@ fun Route.authRoutes(secureCookies: Boolean, signupOpen: Boolean = true) = route
         operationId = "logout"
         response { code(HttpStatusCode.NoContent) {} }
     }) {
-        call.sessionToken()?.let { SessionStore.delete(it) }
-        call.clearSessionCookie(secureCookies)
+        // A call can carry both; end both sessions, but don't send cookies to a token-only client.
+        call.bearerToken()?.let { SessionStore.delete(it) }
+        call.cookieToken()?.let { SessionStore.delete(it) }
+        if (call.cookieToken() != null) call.clearSessionCookie(secureCookies)
         call.respond(HttpStatusCode.NoContent)
     }
 

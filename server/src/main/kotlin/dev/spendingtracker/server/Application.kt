@@ -142,6 +142,8 @@ fun Application.module(
                 scheme = AuthScheme.BEARER
                 description = "Session token from POST /auth/token, sent as 'Authorization: Bearer <token>' (mobile clients)."
             }
+            // Every authenticated route takes either; login and signup are the exceptions.
+            defaultSecuritySchemeNames("sessionCookie", "bearer")
         }
         schemas {
             // Generate schemas from the same serializers the API uses, named "Health"
