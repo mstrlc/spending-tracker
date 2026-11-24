@@ -1,14 +1,13 @@
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
-import { useIsMobile } from "@/hooks/use-mobile"
 
 const Toaster = ({ position, ...props }: ToasterProps) => {
-  const isMobile = useIsMobile()
-
   return (
     <Sonner
       theme="system"
-      position={position ?? (isMobile ? "top-center" : "bottom-right")}
+      // Top-center on every screen size: bottom-right would cover the side panel's
+      // footer, where the Add/Save button of an open "new transaction" form sits.
+      position={position ?? "top-center"}
       className="toaster group"
       icons={{
         success: (
