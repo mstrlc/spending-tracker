@@ -4,6 +4,7 @@ import dev.spendingtracker.shared.ApiJson
 import dev.spendingtracker.shared.api.ApiError
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.request.HttpRequestBuilder
@@ -40,6 +41,8 @@ class ApiClient(
 ) {
     internal val http: HttpClient = HttpClient(engine ?: defaultEngine()) {
         install(ContentNegotiation) { json(ApiJson) }
+        // A hung server must surface as an error, not spin a spinner forever.
+        install(HttpTimeout) { requestTimeoutMillis = 30_000; connectTimeoutMillis = 10_000; socketTimeoutMillis = 30_000 }
         defaultRequest { url(baseUrl) }
         install(createClientPlugin("BearerToken") {
             onRequest { request, _ ->
