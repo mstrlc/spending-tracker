@@ -10,8 +10,11 @@ plugins {
 kotlin {
     androidLibrary {
         namespace = "dev.spendingtracker.shared"
-        compileSdk = 36
+        // OkHttp 5.x (via ktor-client-okhttp) requires compileSdk 37.
+        compileSdk = 37
         minSdk = 26
+        // Run commonTest on the Android target too (host tests), so :shared:allTests covers it.
+        withHostTestBuilder {}
     }
 
     // iOS targets are added in the iOS phase; keep commonMain free of JVM-only APIs so they compile as they are.

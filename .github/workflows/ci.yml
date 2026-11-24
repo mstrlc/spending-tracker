@@ -106,4 +106,5 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
       # Phase 1 builds and tests the shared client SDK for JVM and Android; the app module follows in phase 2.
-      - run: ./gradlew :shared:allTests
+      # allTests alone would only run the host tests, so assemble the Android AAR explicitly.
+      - run: ./gradlew :shared:allTests :shared:assembleAndroidMain
