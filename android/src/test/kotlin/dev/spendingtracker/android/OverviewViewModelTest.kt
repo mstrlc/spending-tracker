@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -70,5 +71,22 @@ class OverviewViewModelTest {
         advanceUntilIdle()
         val state = vm.uiState.value as OverviewUiState.Ready
         assertEquals("2026-11", state.overview.month)
+    }
+
+    @Test
+    fun `paging quickly shows the newest month even when an older one answers last`() = runTest(dispatcher) {
+        val api = FakeOverviewApi().apply {
+            byMonth = mapOf(
+                "2026-11" to (1_000L to fakeOverview("2026-11")),
+                "2026-10" to (10L to fakeOverview("2026-10")),
+            )
+        }
+        val vm = OverviewViewModel(FakeSessionApi(), api, FakeCategoriesApi(), "2026-11")
+        vm.load("2026-11")
+        runCurrent()
+        vm.load("2026-10")
+        advanceUntilIdle()
+        assertEquals("2026-10", (vm.uiState.value as OverviewUiState.Ready).overview.month)
+        assertEquals(false, vm.refreshing.value)
     }
 }
