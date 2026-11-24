@@ -61,6 +61,23 @@ class LoginViewModelTest {
     }
 
     @Test
+    fun `an unreachable server surfaces a friendly error and emits nothing`() = runTest(dispatcher) {
+        val session = FakeSessionApi(loginResult = Result.failure(java.net.ConnectException("Failed to connect to /192.168.0.8:9090")))
+        val vm = LoginViewModel(session)
+        vm.events.test {
+            vm.onEmailChange("a@b.c")
+            vm.onPasswordChange("secret")
+            vm.submit(isDebugBuild = true)
+            expectNoEvents()
+        }
+        advanceUntilIdle()
+        val state = vm.uiState.value
+        assertTrue(state.error!!.contains("Couldn't reach"))
+        assertTrue(state.error!!.contains("http://10.0.2.2:8080"))
+        assertEquals(false, state.loading)
+    }
+
+    @Test
     fun `a release build refuses a plain http server url`() = runTest(dispatcher) {
         val session = FakeSessionApi()
         val vm = LoginViewModel(session)

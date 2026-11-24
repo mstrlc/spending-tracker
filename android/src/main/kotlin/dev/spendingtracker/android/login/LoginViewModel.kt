@@ -60,9 +60,12 @@ class LoginViewModel(private val sessionApi: SessionApi) : ViewModel() {
             result.fold(
                 onSuccess = { _events.send(LoginEvent.LoggedIn) },
                 onFailure = { e ->
-                    _uiState.update {
-                        it.copy(error = (e as? ApiException)?.error?.message ?: e.message ?: "Could not log in.")
+                    val message = when (e) {
+                        is ApiException -> e.error.message ?: "Could not log in."
+                        // ConnectException, timeout, …: the server wasn't reached at all.
+                        else -> "Couldn't reach ${state.serverUrl} — check the URL and that the server is running."
                     }
+                    _uiState.update { it.copy(error = message) }
                 },
             )
         }
