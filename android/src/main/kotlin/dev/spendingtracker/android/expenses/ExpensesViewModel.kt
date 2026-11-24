@@ -12,15 +12,21 @@ import dev.spendingtracker.shared.api.Account
 import dev.spendingtracker.shared.api.Category
 import dev.spendingtracker.shared.api.Expense
 import dev.spendingtracker.shared.api.Member
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.coroutines.coroutineContext
 
 sealed interface ExpensesUiState {
     data object Loading : ExpensesUiState
@@ -64,22 +70,26 @@ class ExpensesViewModel(
     private val pendingDeletes = mutableMapOf<String, Job>()
     private var loadedMonth: String? = null
     private var loadedHouseholdId: String? = null
+    private var loadJob: Job? = null
 
     /** True while a reload is in flight on top of existing content — drives the pull-to-refresh spinner. */
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
     init {
-        // Logging out (or switching household) cancels deletes still waiting on the undo timer and makes
-        // the next loadMonth fetch fresh instead of returning the old session's month early.
+        // Logging out cancels deletes still waiting on the undo timer and any load in flight, drops the old
+        // session's list so the next login never shows it, and makes the next loadMonth fetch fresh.
         viewModelScope.launch {
-            sessionApi.session.collect { session ->
-                if (session == null) {
-                    pendingDeletes.values.forEach { it.cancel() }
-                    pendingDeletes.clear()
-                    loadedMonth = null
-                    loadedHouseholdId = null
-                }
+            // Only the change from logged in to logged out counts, not a session that starts out null.
+            sessionApi.session.map { it != null }.distinctUntilChanged().drop(1).filter { !it }.collect {
+                pendingDeletes.values.forEach { it.cancel() }
+                pendingDeletes.clear()
+                loadJob?.cancel()
+                loadJob = null
+                loadedMonth = null
+                loadedHouseholdId = null
+                _refreshing.value = false
+                _uiState.value = ExpensesUiState.Loading
             }
         }
     }
@@ -89,7 +99,9 @@ class ExpensesViewModel(
         if (loadedMonth == month && loadedHouseholdId == household.id) return
         loadedMonth = month
         loadedHouseholdId = household.id
-        viewModelScope.launch {
+        // A new month cancels the load in flight, so paging quickly can't let an older month land last.
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             // First load (or after an error) has nothing to show: full-screen spinner. Otherwise keep the
             // old month on screen and just show the PTR indicator.
             if (_uiState.value !is ExpensesUiState.Ready) _uiState.value = ExpensesUiState.Loading
@@ -102,12 +114,15 @@ class ExpensesViewModel(
                 val accounts = accountsApi.list(household.id)
                 val members = householdsApi.listMembers(household.id)
                 _uiState.value = ExpensesUiState.Ready(month, expenses, categories, accounts, members)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (_uiState.value !is ExpensesUiState.Ready) {
                     _uiState.value = ExpensesUiState.Error(month, e.message ?: "Could not load expenses.")
                 }
             } finally {
-                _refreshing.value = false
+                // A cancelled load leaves the spinner to the load that replaced it.
+                if (loadJob == coroutineContext[Job]) _refreshing.value = false
             }
         }
     }
