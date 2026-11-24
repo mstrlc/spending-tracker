@@ -24,6 +24,7 @@ jobs:
     outputs:
       server: ${{ steps.filter.outputs.server }}
       web: ${{ steps.filter.outputs.web }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -42,6 +43,16 @@ jobs:
               - '.github/workflows/ci.yml'
             web:
               - 'web/**'
+              - '.github/workflows/ci.yml'
+            android:
+              - 'android/**'
+              - 'shared/**'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - '*.gradle.kts'
+              - 'gradle.properties'
+              - 'settings.gradle.kts'
               - '.github/workflows/ci.yml'
 
   server:
@@ -79,3 +90,20 @@ jobs:
       - run: pnpm --dir web install --frozen-lockfile
       - run: pnpm --dir web exec tsc --noEmit
       - run: pnpm --dir web test
+
+  android:
+    needs: changes
+    # A run started by hand always runs everything; paths-filter compares against the default branch there.
+    if: (needs.changes.outputs.android == 'true' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      # Phase 1 builds and tests the shared client SDK for JVM and Android; the app module follows in phase 2.
+      - run: ./gradlew :shared:allTests
