@@ -25,6 +25,9 @@ import dev.spendingtracker.server.order.OrderParser
 import dev.spendingtracker.server.order.defaultOrderParsers
 import dev.spendingtracker.server.order.orderParsers
 import io.github.smiley4.ktoropenapi.OpenApi
+import io.github.smiley4.ktoropenapi.config.AuthKeyLocation
+import io.github.smiley4.ktoropenapi.config.AuthScheme
+import io.github.smiley4.ktoropenapi.config.AuthType
 import io.github.smiley4.ktoropenapi.config.SchemaGenerator
 import io.github.smiley4.ktoropenapi.openApi
 import io.github.smiley4.ktorswaggerui.swaggerUI
@@ -126,6 +129,19 @@ fun Application.module(
         info {
             title = "Spending Tracker API"
             version = "0.1.0"
+        }
+        security {
+            securityScheme("sessionCookie") {
+                type = AuthType.API_KEY
+                name = "sid"
+                location = AuthKeyLocation.COOKIE
+                description = "Session cookie set by /auth/login or /auth/signup (web clients)."
+            }
+            securityScheme("bearer") {
+                type = AuthType.HTTP
+                scheme = AuthScheme.BEARER
+                description = "Session token from POST /auth/token, sent as 'Authorization: Bearer <token>' (mobile clients)."
+            }
         }
         schemas {
             // Generate schemas from the same serializers the API uses, named "Health"

@@ -8,6 +8,10 @@ data class SignupRequest(val email: String, val password: String, val displayNam
 @Serializable
 data class LoginRequest(val email: String, val password: String)
 
+/** Response of `POST /auth/token`: a bearer token for mobile clients, which set no cookie. */
+@Serializable
+data class TokenResponse(val token: String, val me: Me)
+
 @Serializable
 data class Me(val id: String, val email: String, val displayName: String)
 

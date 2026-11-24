@@ -1,8 +1,12 @@
 package dev.spendingtracker.server
 
+import dev.spendingtracker.server.auth.Tokens
+import dev.spendingtracker.server.db.Sessions
+import dev.spendingtracker.server.db.dbQuery
 import dev.spendingtracker.shared.api.LoginRequest
 import dev.spendingtracker.shared.api.Me
 import dev.spendingtracker.shared.api.SignupRequest
+import dev.spendingtracker.shared.api.TokenResponse
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -12,6 +16,11 @@ import io.ktor.http.HttpStatusCode
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.update
 
 class AuthTest {
     @Test
@@ -77,6 +86,69 @@ class AuthTest {
     fun signupCanBeClosed() = apiTest(signupOpen = false) {
         newClient().post("/api/auth/signup") { setBody(SignupRequest("bob@example.com", "correct horse battery", "Bob")) }
             .assertError(HttpStatusCode.Forbidden, "signup_closed")
+    }
+
+    @Test
+    fun tokenLoginReturnsBearerAndSetsNoCookie() = apiTest {
+        newClient().signup("alice@example.com")
+        val client = newClient()
+
+        val response = client.post("/api/auth/token") { setBody(LoginRequest("alice@example.com", "correct horse battery")) }
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertNull(response.headers["Set-Cookie"])
+        val token = response.body<TokenResponse>()
+        assertEquals("alice@example.com", token.me.email)
+
+        // Same wrong-password answer as /login.
+        client.post("/api/auth/token") { setBody(LoginRequest("alice@example.com", "wrong password")) }
+            .assertError(HttpStatusCode.Unauthorized, "invalid_credentials")
+    }
+
+    @Test
+    fun bearerTokenAuthenticatesWithoutACookie() = apiTest {
+        newClient().signup("alice@example.com")
+        val token = newClient().post("/api/auth/token") { setBody(LoginRequest("alice@example.com", "correct horse battery")) }
+            .body<TokenResponse>().token
+        val client = newClient()
+
+        val me = client.get("/api/auth/me") { header("Authorization", "Bearer $token") }
+        assertEquals(HttpStatusCode.OK, me.status)
+        assertEquals("alice@example.com", me.body<Me>().email)
+        // A header-authenticated call gets no cookie back, not even a renewal.
+        assertNull(me.headers["Set-Cookie"])
+    }
+
+    @Test
+    fun badOrExpiredBearerGetsUnauthorized() = apiTest {
+        newClient().signup("alice@example.com")
+        val client = newClient()
+
+        client.get("/api/auth/me") { header("Authorization", "Bearer not-a-real-token") }
+            .assertError(HttpStatusCode.Unauthorized, "unauthorized")
+        val unknown = Tokens.generate().first
+        client.get("/api/auth/me") { header("Authorization", "Bearer $unknown") }
+            .assertError(HttpStatusCode.Unauthorized, "unauthorized")
+
+        val token = client.post("/api/auth/token") { setBody(LoginRequest("alice@example.com", "correct horse battery")) }
+            .body<TokenResponse>().token
+        dbQuery {
+            Sessions.update({ Sessions.tokenHash eq Tokens.hash(token)!! }) { it[expiresAt] = Clock.System.now() - 1.days }
+        }
+        client.get("/api/auth/me") { header("Authorization", "Bearer $token") }
+            .assertError(HttpStatusCode.Unauthorized, "unauthorized")
+    }
+
+    @Test
+    fun logoutWithBearerKillsTheSession() = apiTest {
+        newClient().signup("alice@example.com")
+        val client = newClient()
+        val token = client.post("/api/auth/token") { setBody(LoginRequest("alice@example.com", "correct horse battery")) }
+            .body<TokenResponse>().token
+
+        assertEquals(HttpStatusCode.OK, client.get("/api/auth/me") { header("Authorization", "Bearer $token") }.status)
+        assertEquals(HttpStatusCode.NoContent, client.post("/api/auth/logout") { header("Authorization", "Bearer $token") }.status)
+        client.get("/api/auth/me") { header("Authorization", "Bearer $token") }
+            .assertError(HttpStatusCode.Unauthorized, "unauthorized")
     }
 
     @Test

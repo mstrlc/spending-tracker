@@ -14,6 +14,7 @@ import kotlin.uuid.Uuid
 const val SESSION_AUTH = "session"
 private const val COOKIE_NAME = "sid"
 private const val CHALLENGE_KEY = "SessionAuth"
+private const val BEARER_PREFIX = "Bearer "
 
 data class UserPrincipal(val userId: Uuid)
 
@@ -23,7 +24,9 @@ val ApplicationCall.userId: Uuid
 fun AuthenticationConfig.sessionCookie(secureCookies: Boolean) {
     provider(SESSION_AUTH) {
         authenticate { context ->
-            val token = context.call.request.cookies[COOKIE_NAME]
+            // Mobile clients send the session as a bearer token; browsers use the cookie.
+            val bearer = context.call.bearerToken()
+            val token = bearer ?: context.call.request.cookies[COOKIE_NAME]
             val session = token?.let { SessionStore.find(it) }
             if (session == null) {
                 context.challenge(CHALLENGE_KEY, AuthenticationFailedCause.NoCredentials) { challenge, call ->
@@ -31,15 +34,25 @@ fun AuthenticationConfig.sessionCookie(secureCookies: Boolean) {
                     challenge.complete()
                 }
             } else {
-                // Keep the cookie's lifetime in step with a renewed session.
-                context.call.setSessionCookie(token, secureCookies, (session.expiresAt - Clock.System.now()).inWholeSeconds)
+                // Keep the cookie's lifetime in step with a renewed session; a bearer token
+                // is held by the client, so renewing must not set a cookie for it.
+                if (bearer == null) {
+                    context.call.setSessionCookie(token, secureCookies, (session.expiresAt - Clock.System.now()).inWholeSeconds)
+                }
                 context.principal(UserPrincipal(session.userId))
             }
         }
     }
 }
 
-fun ApplicationCall.sessionToken(): String? = request.cookies[COOKIE_NAME]
+/** The `Authorization: Bearer <token>` header's token, or null when absent or malformed. */
+fun ApplicationCall.bearerToken(): String? {
+    val header = request.headers["Authorization"] ?: return null
+    return header.takeIf { it.startsWith(BEARER_PREFIX) }?.removePrefix(BEARER_PREFIX)?.ifBlank { null }
+}
+
+/** The session token of this call, from the bearer header first, else the cookie. */
+fun ApplicationCall.sessionToken(): String? = bearerToken() ?: request.cookies[COOKIE_NAME]
 
 fun ApplicationCall.setSessionCookie(token: String, secure: Boolean, maxAgeSeconds: Long = SessionStore.LIFETIME.inWholeSeconds) {
     response.cookies.append(
