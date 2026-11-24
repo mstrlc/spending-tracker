@@ -28,7 +28,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +46,7 @@ import dev.spendingtracker.shared.api.Account
 import dev.spendingtracker.shared.api.Category
 import dev.spendingtracker.shared.api.Member
 import kotlinx.coroutines.flow.collectLatest
+import dev.spendingtracker.android.ui.AppTopBar
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -75,8 +75,8 @@ fun ExpenseEditorScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(if (expenseId == null) "New expense" else "Edit expense") },
+            AppTopBar(
+                title = if (expenseId == null) "New expense" else "Edit expense",
                 navigationIcon = {
                     IconButton(onClick = onDone) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

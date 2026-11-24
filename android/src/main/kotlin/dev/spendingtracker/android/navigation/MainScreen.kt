@@ -15,7 +15,6 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +28,7 @@ import dev.spendingtracker.android.overview.OverviewScreen
 import dev.spendingtracker.android.util.currentMonth
 import dev.spendingtracker.android.util.formatMonth
 import dev.spendingtracker.android.util.shiftMonth
+import dev.spendingtracker.android.ui.AppTopBar
 import org.koin.compose.koinInject
 
 private enum class Tab(val label: String) {
@@ -53,8 +53,8 @@ fun MainScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(if (tab == Tab.Account) "Account" else formatMonth(month)) },
+            AppTopBar(
+                title = if (tab == Tab.Account) "Account" else formatMonth(month),
                 actions = {
                     if (tab != Tab.Account) {
                         IconButton(onClick = { month = shiftMonth(month, -1) }) {
