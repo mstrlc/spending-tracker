@@ -35,6 +35,25 @@ docker compose --profile app down                   # stop it (data stays in the
 
 Rerun the first command after pulling or changing code to rebuild.
 
+### Self-hosting
+
+`scripts/deploy.sh` runs the app on any Docker host you can reach over ssh, behind a reverse proxy that terminates
+TLS (Caddy, Traefik, nginx…) and sits on a Docker network. It builds the images here, so the host doesn't need the
+JDK or Node, and it works on a Raspberry Pi.
+
+1. On the host, create `~/spending-tracker/.env` from [deploy/server.env.example](deploy/server.env.example): the
+   domain, the proxy's Docker network, a backup directory and a database password.
+2. Here, create `deploy/local.env` (gitignored) with `DEPLOY_HOST=<ssh destination>`; optionally `DEPLOY_DIR` and
+   `DEPLOY_PLATFORM` (default `linux/arm64`).
+3. Run `scripts/deploy.sh`. It loads the images on the host, starts [deploy/compose.prod.yml](deploy/compose.prod.yml)
+   (Postgres, API, web; no host ports), and installs a nightly `pg_dump` into `BACKUP_DIR` in root's crontab.
+4. Point the proxy at `spending-web:80` for your domain. Limit who can reach it there if it's only for you (an IP
+   allowlist, a VPN like Tailscale).
+
+Signup is off by default: start once with `SIGNUP=on` in the host's `.env` to create the accounts, then remove it and
+redeploy (or invite people from the household page). Rerun `scripts/deploy.sh` after changing code; new migrations
+run when the API starts. A gitignored `deploy/local.md` is the place for notes on your own deployment.
+
 After changing API endpoints, with the server running:
 
 ```bash

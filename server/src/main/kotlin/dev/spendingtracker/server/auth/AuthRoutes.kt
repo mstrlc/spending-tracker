@@ -3,6 +3,7 @@ package dev.spendingtracker.server.auth
 import dev.spendingtracker.server.common.ApiException
 import dev.spendingtracker.server.common.badRequest
 import dev.spendingtracker.server.common.conflict
+import dev.spendingtracker.server.common.forbidden
 import dev.spendingtracker.server.common.requiredText
 import dev.spendingtracker.server.db.Users
 import dev.spendingtracker.server.db.dbQuery
@@ -29,7 +30,7 @@ import kotlin.uuid.Uuid
 
 val AUTH_RATE_LIMIT = RateLimitName("auth")
 
-fun Route.authRoutes(secureCookies: Boolean) = route("/auth") {
+fun Route.authRoutes(secureCookies: Boolean, signupOpen: Boolean = true) = route("/auth") {
     rateLimit(AUTH_RATE_LIMIT) {
         post("/signup", {
             operationId = "signup"
@@ -37,9 +38,11 @@ fun Route.authRoutes(secureCookies: Boolean) = route("/auth") {
             response {
                 code(HttpStatusCode.Created) { body<Me>() }
                 code(HttpStatusCode.BadRequest) { body<ApiError>() }
+                code(HttpStatusCode.Forbidden) { body<ApiError>() }
                 code(HttpStatusCode.Conflict) { body<ApiError>() }
             }
         }) {
+            if (!signupOpen) throw forbidden("signup_closed", "New accounts can't be created here")
             val body = call.receive<SignupRequest>()
             val email = normalizeEmail(body.email)
             val displayName = requiredText(body.displayName, "displayName", max = 100)

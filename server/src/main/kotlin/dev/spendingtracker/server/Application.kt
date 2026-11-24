@@ -40,6 +40,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitRouteSelector
@@ -64,7 +65,14 @@ fun main() {
     val dataSource = connectDatabase(config.db)
     val bankSetup = config.goCardless?.let { BankSetup(GoCardlessBankData(it.secretId, it.secretKey), config.appUrl) }
     embeddedServer(Netty, port = config.port) {
-        module(dataSource, config.secureCookies, bankSetup = bankSetup, bankSyncHour = config.bankSyncHour)
+        module(
+            dataSource,
+            config.secureCookies,
+            bankSetup = bankSetup,
+            bankSyncHour = config.bankSyncHour,
+            signupOpen = config.signupOpen,
+            behindProxy = config.behindProxy,
+        )
     }.start(wait = true)
 }
 
@@ -77,6 +85,8 @@ fun Application.module(
     bankSetup: BankSetup? = null,
     bankSyncHour: Int? = null,
     orderParsers: List<OrderParser> = defaultOrderParsers,
+    signupOpen: Boolean = true,
+    behindProxy: Boolean = false,
 ) {
     market = Market(marketData)
     this.orderParsers = orderParsers
@@ -96,6 +106,8 @@ fun Application.module(
             }
         }
     }
+    // Before anything reads the client address (the auth rate limit, call logging).
+    if (behindProxy) install(XForwardedHeaders)
     install(CallLogging)
     install(ContentNegotiation) { json(apiJson) }
     install(StatusPages) { apiErrors() }
@@ -132,7 +144,7 @@ fun Application.module(
             route("/openapi.json") { openApi() }
             route("/docs") { swaggerUI("/api/openapi.json") }
             healthRoutes(dataSource)
-            authRoutes(secureCookies)
+            authRoutes(secureCookies, signupOpen)
             inviteLinkRoutes()
             authenticate(SESSION_AUTH) {
                 householdRoutes()

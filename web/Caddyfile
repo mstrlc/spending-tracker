@@ -1,4 +1,11 @@
 # Serves the built app and proxies /api on one origin, so session cookies work without CORS.
+{
+	# Behind another proxy (the Pi's Caddy), keep its X-Forwarded-For so the API sees the real client.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
 :80 {
 	encode zstd gzip
 	handle /api/* {

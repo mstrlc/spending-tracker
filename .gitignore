@@ -28,3 +28,7 @@ web/dist/
 
 # Real order emails, the order parsers' fixtures (never commit)
 /data/order-emails/
+
+# Each checkout's own deployment (scripts/deploy.sh settings and notes)
+/deploy/local.env
+/deploy/local.md

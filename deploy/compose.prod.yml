@@ -1,0 +1,69 @@
+# A self-hosted deployment on one Docker host, behind a reverse proxy that terminates TLS. scripts/deploy.sh copies
+# this file to the host as <DEPLOY_DIR>/compose.yml; its settings and secrets come from <DEPLOY_DIR>/.env there
+# (see deploy/server.env.example).
+#
+# Nothing is published on a host port: the reverse proxy joins the Docker network PROXY_NETWORK and proxies
+# https://DOMAIN to the container spending-web on port 80.
+name: spending-tracker
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: spending-postgres
+    environment:
+      POSTGRES_DB: spending_tracker
+      POSTGRES_USER: spending_tracker
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spending_tracker"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    image: spending-tracker-api:latest
+    container_name: spending-api
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/spending_tracker
+      DB_USER: spending_tracker
+      DB_PASSWORD: ${DB_PASSWORD}
+      GOCARDLESS_SECRET_ID: ${GOCARDLESS_SECRET_ID:-}
+      GOCARDLESS_SECRET_KEY: ${GOCARDLESS_SECRET_KEY:-}
+      BANK_SYNC_HOUR: ${BANK_SYNC_HOUR:-5}
+      APP_URL: https://${DOMAIN:?set DOMAIN in .env}
+      SECURE_COOKIES: "true"
+      SIGNUP: ${SIGNUP:-off}
+      BEHIND_PROXY: "true"
+      TZ: Europe/Prague
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx384m -XX:+UseSerialGC -XX:MaxMetaspaceSize=160m}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8080'"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    restart: unless-stopped
+
+  web:
+    image: spending-tracker-web:latest
+    container_name: spending-web
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - default
+      - proxy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+
+networks:
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:?set PROXY_NETWORK in .env}

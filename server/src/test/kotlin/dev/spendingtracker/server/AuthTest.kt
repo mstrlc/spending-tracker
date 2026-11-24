@@ -5,6 +5,7 @@ import dev.spendingtracker.shared.api.Me
 import dev.spendingtracker.shared.api.SignupRequest
 import io.ktor.client.call.body
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.HttpStatusCode
@@ -70,5 +71,24 @@ class AuthTest {
         assertEquals(HttpStatusCode.NoContent, client.post("/api/auth/logout").status)
 
         client.get("/api/auth/me").assertError(HttpStatusCode.Unauthorized, "unauthorized")
+    }
+
+    @Test
+    fun signupCanBeClosed() = apiTest(signupOpen = false) {
+        newClient().post("/api/auth/signup") { setBody(SignupRequest("bob@example.com", "correct horse battery", "Bob")) }
+            .assertError(HttpStatusCode.Forbidden, "signup_closed")
+    }
+
+    @Test
+    fun behindAProxyTheLoginLimitIsPerClient() = apiTest(behindProxy = true) {
+        val client = newClient()
+        suspend fun loginFrom(ip: String) = client.post("/api/auth/login") {
+            header("X-Forwarded-For", ip)
+            setBody(LoginRequest("nobody@example.com", "wrong password"))
+        }.status
+
+        repeat(20) { assertEquals(HttpStatusCode.Unauthorized, loginFrom("203.0.113.1")) }
+        assertEquals(HttpStatusCode.TooManyRequests, loginFrom("203.0.113.1"))
+        assertEquals(HttpStatusCode.Unauthorized, loginFrom("203.0.113.2"))
     }
 }

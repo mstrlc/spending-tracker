@@ -45,11 +45,22 @@ fun apiTest(
     market: MarketData = FakeMarketData(),
     bank: BankData? = null,
     orderParsers: List<dev.spendingtracker.server.order.OrderParser> = emptyList(),
+    signupOpen: Boolean = true,
+    behindProxy: Boolean = false,
     block: suspend ApplicationTestBuilder.() -> Unit,
 ) = testApplication {
     TestDatabase.reset()
     val setup = bank?.let { BankSetup(it, "http://localhost:5173") }
-    application { module(TestDatabase.dataSource, marketData = market, bankSetup = setup, orderParsers = orderParsers) }
+    application {
+        module(
+            TestDatabase.dataSource,
+            marketData = market,
+            bankSetup = setup,
+            orderParsers = orderParsers,
+            signupOpen = signupOpen,
+            behindProxy = behindProxy,
+        )
+    }
     block()
 }
 

@@ -11,6 +11,10 @@ data class Config(
     val appUrl: String,
     /** The hour (0-23, Prague time) the daily bank sync runs; null turns it off. */
     val bankSyncHour: Int?,
+    /** Whether anyone can create an account; `SIGNUP=off` closes it on a private deployment. */
+    val signupOpen: Boolean = true,
+    /** Behind a reverse proxy: take the client address from X-Forwarded-For (`BEHIND_PROXY=true`). */
+    val behindProxy: Boolean = false,
 ) {
     companion object {
         fun fromEnv(env: Map<String, String> = System.getenv()) = Config(
@@ -26,6 +30,8 @@ data class Config(
             },
             appUrl = env["APP_URL"]?.trim()?.takeIf { it.isNotEmpty() } ?: "http://localhost:5173",
             bankSyncHour = syncHour(env["BANK_SYNC_HOUR"]),
+            signupOpen = !env["SIGNUP"].orEmpty().trim().equals("off", ignoreCase = true),
+            behindProxy = env["BEHIND_PROXY"]?.toBoolean() ?: false,
         )
 
         /** Absent means 5 (Prague time), "off" none. */
