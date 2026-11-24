@@ -3,12 +3,15 @@ package dev.spendingtracker.android.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -123,4 +126,24 @@ fun PersonLabel(members: List<Member>, userId: String?, modifier: Modifier = Mod
             style = MaterialTheme.typography.bodyMedium,
         )
     }
+}
+
+/**
+ * The app's top bar with a bold title, like the web's font-semibold headings. [navigationIcon] and [actions]
+ * are optional.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppTopBar(
+    title: String,
+    navigationIcon: @Composable (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    TopAppBar(
+        title = {
+            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+        },
+        navigationIcon = { navigationIcon?.invoke() },
+        actions = actions,
+    )
 }
