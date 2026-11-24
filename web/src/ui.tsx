@@ -144,15 +144,26 @@ export function Money({ children, currency }: { children: ReactNode; currency?: 
   );
 }
 
-/** The figures at the top of a page: the first one large, the rest beside it. */
-export function Summary({ items }: { items: ({ label: ReactNode; value: ReactNode } | false | null)[] }) {
+/**
+ * The figures at the top of a page: the first one large, the rest beside it. While [pending], each figure is a placeholder
+ * bar, so a month that's still loading doesn't flash zeros.
+ */
+export function Summary({
+  items,
+  pending = false,
+}: {
+  items: ({ label: ReactNode; value: ReactNode } | false | null)[];
+  pending?: boolean;
+}) {
   const shown = items.filter((i): i is { label: ReactNode; value: ReactNode } => !!i);
   return (
     <dl className="flex flex-wrap items-end gap-x-10 gap-y-4">
       {shown.map((item, i) => (
         <div key={i} className={cn("flex flex-col gap-1", i === 0 && "basis-full sm:basis-auto")}>
           <dt className="text-sm text-muted-foreground">{item.label}</dt>
-          <dd className={i === 0 ? "text-3xl font-medium" : "text-xl"}>{item.value}</dd>
+          <dd className={i === 0 ? "text-3xl font-medium" : "text-xl"} aria-busy={pending || undefined}>
+            {pending ? <Skeleton className={cn("my-1", i === 0 ? "h-7 w-40" : "h-5 w-24")} /> : item.value}
+          </dd>
         </div>
       ))}
     </dl>

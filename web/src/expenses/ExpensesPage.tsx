@@ -117,6 +117,7 @@ export function ExpensesPage() {
 
       <div className="flex flex-col gap-5">
         <Summary
+          pending={expenses.isPending}
           items={[
             { label: "Spent", value: <Money currency={household.currency}>{formatAmount(spent, household.currency)}</Money> },
             { label: "Invested", value: <Money currency={household.currency}>{formatAmount(invested, household.currency)}</Money> },

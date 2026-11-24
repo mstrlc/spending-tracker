@@ -127,6 +127,7 @@ export function IncomePage() {
 
       <div className="flex flex-col gap-5">
         <Summary
+          pending={income.isPending || expenses.isPending}
           items={[
             // Gross and deductions only add something once there's a deduction; until then net is what was earned.
             { label: deducted !== 0 ? "Net" : "Earned", value: money(net) },
