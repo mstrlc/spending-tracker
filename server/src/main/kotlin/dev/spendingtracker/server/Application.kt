@@ -56,7 +56,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
+import dev.spendingtracker.shared.ApiJson
 import org.slf4j.LoggerFactory
 import javax.sql.DataSource
 import kotlin.time.Clock
@@ -80,7 +80,8 @@ fun main() {
     }.start(wait = true)
 }
 
-val apiJson = Json { ignoreUnknownKeys = true }
+// The server and mobile clients share one JSON config, so the two can't drift.
+val apiJson = ApiJson
 
 fun Application.module(
     dataSource: DataSource,
