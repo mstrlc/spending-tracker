@@ -6,43 +6,33 @@ November 2026). Made-up data only.
 
 ## Web
 
-Web app at http://localhost:5173, 1440x900 @2x, logged in as Alice:
+Web app at http://localhost:5173, logged in as Alice (1440x900 @2x):
 
-![Web overview](web/01-overview.png)
+<img src="web/01-overview.png" alt="Overview" width="760">
 
 Overview — month summary, category bar, "Where the money went" sankey.
 
-![Web inbox](web/02-inbox.png)
+<img src="web/02-inbox.png" alt="Inbox" width="760">
 
 Inbox — pending bank rows with suggestions and chips.
 
-![Web expenses](web/03-expenses.png)
-
-![Web expense editor](web/04-expense-editor.png)
+<img src="web/03-expenses.png" alt="Expenses" width="370"> <img src="web/04-expense-editor.png" alt="Expense editor" width="370">
 
 Expenses — list and the side-panel editor.
 
-![Web reports](web/05-reports.png)
+<img src="web/05-reports.png" alt="Reports" width="760">
 
 Reports — yearly report with monthly bars, category and merchant breakdowns.
 
-![Web balances](web/06-balances.png)
+<img src="web/06-balances.png" alt="Balances" width="370"> <img src="web/07-assets.png" alt="Assets" width="370">
 
-Balances — debts between members and split rules.
+Balances — debts between members and split rules. Assets — net worth, assets and liabilities.
 
-![Web assets](web/07-assets.png)
+<img src="web/08-recurring.png" alt="Recurring" width="370"> <img src="web/09-income.png" alt="Income" width="370">
 
-Assets — net worth, assets and liabilities.
+Recurring — subscription radar (active, suggestions, missed/changed). Income — gross, deductions, net.
 
-![Web recurring](web/08-recurring.png)
-
-Recurring — subscription radar (active, suggestions, missed/changed).
-
-![Web income](web/09-income.png)
-
-Income — gross, deductions, net.
-
-![Web overview dark](web/10-overview-dark.png) ![Web inbox dark](web/11-inbox-dark.png)
+<img src="web/10-overview-dark.png" alt="Overview dark" width="370"> <img src="web/11-inbox-dark.png" alt="Inbox dark" width="370">
 
 Dark mode.
 
@@ -50,14 +40,14 @@ Dark mode.
 
 Debug build on an emulator (1080x2400), logged in as Alice:
 
-![Android overview](android/01-overview.png) ![Android overview dark](android/04-overview-dark.png)
+<img src="android/01-overview.png" alt="Overview" width="210"> <img src="android/04-overview-dark.png" alt="Overview dark" width="210">
 
 Overview — month cards, top categories and merchants, light and dark.
 
-![Android expenses](android/02-expenses.png) ![Android expenses dark](android/05-expenses-dark.png)
+<img src="android/02-expenses.png" alt="Expenses" width="210"> <img src="android/05-expenses-dark.png" alt="Expenses dark" width="210">
 
 Expenses — list grouped by day, light and dark.
 
-![Android expense editor](android/03-expense-editor.png)
+<img src="android/03-expense-editor.png" alt="Expense editor" width="210">
 
 Expense editor.
