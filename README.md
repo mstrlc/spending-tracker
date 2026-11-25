@@ -4,11 +4,15 @@ Multi-tenant spending tracker. See [ARCHITECTURE.md](ARCHITECTURE.md) for decisi
 
 ## Screenshots
 
-![Web overview](docs/screenshots/web/01-overview.png)
+Web app — Overview with the month summary and the "Where the money went" sankey:
 
-![Android overview](docs/screenshots/android/01-overview.png) ![Android expenses](docs/screenshots/android/02-expenses.png)
+<img src="docs/screenshots/web/01-overview.png" alt="Web overview" width="760">
 
-More in [docs/screenshots](docs/screenshots/README.md) — web and Android, light and dark.
+Android app — Overview and Expenses:
+
+<img src="docs/screenshots/android/01-overview.png" alt="Android overview" width="210"> <img src="docs/screenshots/android/02-expenses.png" alt="Android expenses" width="210">
+
+Full gallery in [docs/screenshots](docs/screenshots/README.md) — web and Android, light and dark.
 
 ## Layout
 
