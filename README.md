@@ -2,6 +2,14 @@
 
 Multi-tenant spending tracker. See [ARCHITECTURE.md](ARCHITECTURE.md) for decisions and roadmap.
 
+## Screenshots
+
+![Web overview](docs/screenshots/web/01-overview.png)
+
+![Android overview](docs/screenshots/android/01-overview.png) ![Android expenses](docs/screenshots/android/02-expenses.png)
+
+More in [docs/screenshots](docs/screenshots/README.md) — web and Android, light and dark.
+
 ## Layout
 
 - `server/`: Ktor API (Kotlin, JVM 21 bytecode), Flyway migrations in `src/main/resources/db/migration`
@@ -23,6 +31,11 @@ see "Worktrees" in [AGENTS.md](AGENTS.md). `scripts/dev.sh status` lists them.
 
 Local demo account (created by hand during development, lives only in your local database):
 `demo@example.test` / `demo-password-123`. Or sign up with any email at http://localhost:5173/signup.
+
+For a household full of realistic made-up data, run `scripts/dev.sh demo` with the API running: a Prague couple
+with a year of expenses, income, trips, assets and debts, and the last two weeks waiting in the Inbox. Sign in as
+`demo.alice@example.com` or `demo.bob@example.com` / `demo-password`. `--email-prefix other` makes another one;
+`--seed` and `--today` vary it (see `scripts/demo-data.mjs`).
 
 ### Android app
 
